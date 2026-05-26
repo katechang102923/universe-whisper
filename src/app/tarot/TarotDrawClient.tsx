@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { TarotCardBack, TarotCardFace, type TarotCardFaceData } from "@/components/TarotCardFace";
 
 type DrawStatus = "idle" | "drawing" | "revealed";
 type ReadingStatus = "idle" | "loading" | "done" | "error";
+type FreeReadingStatus = "idle" | "loading" | "done" | "error";
 type ReadingTopic = "love" | "career" | "ambiguous" | "general";
 type SpreadPosition = "past" | "present" | "future";
 
@@ -15,6 +16,8 @@ const modes = [
 
 const topics = ["感情", "工作", "曖昧"] as const;
 type TarotTopicOption = (typeof topics)[number];
+const zodiacSigns = ["牡羊座", "金牛座", "雙子座", "巨蟹座", "獅子座", "處女座", "天秤座", "天蠍座", "射手座", "摩羯座", "水瓶座", "雙魚座"] as const;
+type ZodiacSign = (typeof zodiacSigns)[number];
 
 const spreadQuestionGroups = {
   感情: {
@@ -63,25 +66,17 @@ function toSpreadPosition(position: TarotCardFaceData["position"]): SpreadPositi
   return undefined;
 }
 
-function getShortMessage(card: TarotCardFaceData) {
-  const firstSentence = card.cosmicMessage.split("。")[0]?.trim();
-  const message = firstSentence ? `${firstSentence}。` : card.cosmicMessage;
-
-  if (message.length <= 88) {
-    return message;
-  }
-
-  return `${message.slice(0, 86)}…`;
-}
-
 export function TarotDrawClient() {
   const [mode, setMode] = useState<(typeof modes)[number]["key"]>("single_tarot");
   const [topic, setTopic] = useState<TarotTopicOption>("感情");
   const [question, setQuestion] = useState("");
   const [selectedSpreadQuestion, setSelectedSpreadQuestion] = useState("");
+  const [selectedZodiac, setSelectedZodiac] = useState<ZodiacSign | "">("");
   const [cards, setCards] = useState<TarotCardFaceData[]>([]);
   const [error, setError] = useState("");
   const [status, setStatus] = useState<DrawStatus>("idle");
+  const [freeReadingStatus, setFreeReadingStatus] = useState<FreeReadingStatus>("idle");
+  const [freeReading, setFreeReading] = useState("");
   const [readingStatus, setReadingStatus] = useState<ReadingStatus>("idle");
   const [reading, setReading] = useState("");
   const [readingError, setReadingError] = useState("");
@@ -92,11 +87,63 @@ export function TarotDrawClient() {
   const canShowReadings = status === "revealed" && cards.length > 0;
   const currentSpreadGroup = spreadQuestionGroups[topic];
 
+  useEffect(() => {
+    const savedZodiac = window.localStorage.getItem("universe-whisper-zodiac");
+
+    if (zodiacSigns.includes(savedZodiac as ZodiacSign)) {
+      setSelectedZodiac(savedZodiac as ZodiacSign);
+    }
+  }, []);
+
   function resetReading() {
+    setFreeReadingStatus("idle");
+    setFreeReading("");
     setReadingStatus("idle");
     setReading("");
     setReadingError("");
     setCopied(false);
+  }
+
+  function buildReadingPayload(targetCards: TarotCardFaceData[], readingMode: "free" | "premium", zodiac = selectedZodiac) {
+    return {
+      cards: targetCards.map((card) => ({
+        name: card.name,
+        position: card.orientation,
+        spreadPosition: toSpreadPosition(card.position)
+      })),
+      topic: toReadingTopic(topic),
+      readingMode,
+      question: question.trim() || undefined,
+      zodiac: zodiac || undefined
+    };
+  }
+
+  async function requestFreeReading(targetCards: TarotCardFaceData[], zodiac = selectedZodiac) {
+    if (!targetCards.length) {
+      return;
+    }
+
+    setFreeReadingStatus("loading");
+    setFreeReading("");
+
+    try {
+      const response = await fetch("/api/tarot-reading", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildReadingPayload(targetCards, "free", zodiac))
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        setFreeReadingStatus("error");
+        return;
+      }
+
+      setFreeReading(data.reading ?? "");
+      setFreeReadingStatus("done");
+    } catch {
+      setFreeReadingStatus("error");
+    }
   }
 
   async function draw() {
@@ -124,8 +171,10 @@ export function TarotDrawClient() {
       }
 
       window.setTimeout(() => {
-        setCards(data.cards ?? []);
+        const revealedCards = data.cards ?? [];
+        setCards(revealedCards);
         setStatus("revealed");
+        void requestFreeReading(revealedCards);
       }, 1500);
     } catch {
       setStatus("idle");
@@ -154,7 +203,8 @@ export function TarotDrawClient() {
           })),
           topic: toReadingTopic(topic),
           readingMode: "premium",
-          question: question.trim() || undefined
+          question: question.trim() || undefined,
+          zodiac: selectedZodiac || undefined
         })
       });
       const data = await response.json();
@@ -194,6 +244,16 @@ export function TarotDrawClient() {
     setStatus("idle");
     setCards([]);
     resetReading();
+  }
+
+  function selectZodiac(sign: ZodiacSign) {
+    setSelectedZodiac(sign);
+    window.localStorage.setItem("universe-whisper-zodiac", sign);
+    resetReading();
+
+    if (status === "revealed" && cards.length > 0) {
+      void requestFreeReading(cards, sign);
+    }
   }
 
   function unlockPremiumReading() {
@@ -249,6 +309,25 @@ export function TarotDrawClient() {
             {item}
           </button>
         ))}
+      </div>
+
+      <div className="mt-6 rounded-3xl border border-lavender/18 bg-midnight/38 p-4">
+        <h3 className="text-xl font-semibold text-moon">宇宙想更靠近你一點</h3>
+        <p className="mt-2 text-sm leading-6 text-moon/60">選擇你的星座，今晚的訊息會更貼近你。</p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {zodiacSigns.map((sign) => (
+            <button
+              key={sign}
+              type="button"
+              onClick={() => selectZodiac(sign)}
+              className={`rounded-full border px-4 py-2 text-sm transition ${
+                selectedZodiac === sign ? "border-moon bg-moon text-midnight" : "border-white/12 bg-white/8 text-moon/76 hover:bg-white/12"
+              }`}
+            >
+              {sign}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="mt-6 rounded-3xl border border-lavender/18 bg-midnight/38 p-4">
@@ -327,13 +406,10 @@ export function TarotDrawClient() {
           <div className="cosmic-reading-card rounded-[1.75rem] border border-lavender/20 bg-midnight/58 p-5 shadow-glow sm:p-6">
             <p className="text-sm tracking-[0.22em] text-lavender/70">今夜短訊</p>
             <h3 className="mt-2 text-2xl font-semibold text-moon">宇宙給你的簡短訊息</h3>
-            <div className="mt-4 space-y-3">
-              {cards.map((card, index) => (
-                <div key={`free-${card.id}-${index}`} className="rounded-2xl border border-white/10 bg-white/6 p-4">
-                  <p className="text-sm text-lavender">{card.position ? `${card.position}・` : ""}{card.name}・{card.orientationLabel}</p>
-                  <p className="mt-2 text-base leading-8 text-moon/84">{getShortMessage(card)}</p>
-                </div>
-              ))}
+            <div className="mt-4 rounded-2xl border border-white/10 bg-white/6 p-4">
+              {freeReadingStatus === "loading" ? <p className="text-base leading-8 text-moon/76">宇宙正在整理簡短訊息…</p> : null}
+              {freeReading ? <p className="whitespace-pre-wrap text-base leading-8 text-moon/84">{freeReading}</p> : null}
+              {freeReadingStatus === "error" ? <p className="text-base leading-8 text-moon/76">宇宙訊號有點微弱，請稍後再試一次。</p> : null}
             </div>
           </div>
 
