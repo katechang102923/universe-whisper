@@ -14,6 +14,13 @@ const modes = [
 ] as const;
 
 const topics = ["感情", "工作", "曖昧"] as const;
+const loveSpreadQuestions = [
+  "他有喜歡我嗎",
+  "分開後還會聯絡嗎",
+  "曖昧對象怎麼想",
+  "前任還會回來嗎",
+  "這段關係接下來會怎樣"
+] as const;
 
 function toReadingTopic(topic: (typeof topics)[number]): ReadingTopic {
   if (topic === "工作") {
@@ -43,10 +50,22 @@ function toSpreadPosition(position: TarotCardFaceData["position"]): SpreadPositi
   return undefined;
 }
 
+function getShortMessage(card: TarotCardFaceData) {
+  const firstSentence = card.cosmicMessage.split("。")[0]?.trim();
+  const message = firstSentence ? `${firstSentence}。` : card.cosmicMessage;
+
+  if (message.length <= 88) {
+    return message;
+  }
+
+  return `${message.slice(0, 86)}…`;
+}
+
 export function TarotDrawClient() {
   const [mode, setMode] = useState<(typeof modes)[number]["key"]>("single_tarot");
   const [topic, setTopic] = useState<(typeof topics)[number]>("感情");
   const [question, setQuestion] = useState("");
+  const [selectedLoveSpread, setSelectedLoveSpread] = useState<(typeof loveSpreadQuestions)[number] | "">("");
   const [cards, setCards] = useState<TarotCardFaceData[]>([]);
   const [error, setError] = useState("");
   const [status, setStatus] = useState<DrawStatus>("idle");
@@ -57,6 +76,7 @@ export function TarotDrawClient() {
 
   const cardCount = mode === "three_card" ? 3 : 1;
   const visibleBacks = useMemo(() => Array.from({ length: cardCount }), [cardCount]);
+  const canShowReadings = status === "revealed" && cards.length > 0;
 
   function resetReading() {
     setReadingStatus("idle");
@@ -118,7 +138,8 @@ export function TarotDrawClient() {
             position: card.orientation,
             spreadPosition: toSpreadPosition(card.position)
           })),
-          topic: toReadingTopic(topic),
+          topic: selectedLoveSpread ? "love" : toReadingTopic(topic),
+          readingMode: "premium",
           question: question.trim() || undefined
         })
       });
@@ -152,6 +173,25 @@ export function TarotDrawClient() {
     }
   }
 
+  function selectLoveSpread(spreadQuestion: (typeof loveSpreadQuestions)[number]) {
+    setSelectedLoveSpread(spreadQuestion);
+    setMode("three_card");
+    setTopic("感情");
+    setQuestion(spreadQuestion);
+    setStatus("idle");
+    setCards([]);
+    resetReading();
+  }
+
+  function unlockPremiumReading() {
+    if (readingStatus === "loading") {
+      return;
+    }
+
+    window.alert("付款功能即將開放，現在先為你展示完整版測試內容。");
+    void requestReading();
+  }
+
   return (
     <div className="glass-card mt-8 rounded-[1.75rem] p-4 sm:p-7">
       <div className="grid gap-3 sm:grid-cols-2">
@@ -163,6 +203,7 @@ export function TarotDrawClient() {
               setMode(item.key);
               setStatus("idle");
               setCards([]);
+              setSelectedLoveSpread("");
               resetReading();
             }}
             className={`rounded-3xl border p-4 text-left transition ${
@@ -182,6 +223,7 @@ export function TarotDrawClient() {
             type="button"
             onClick={() => {
               setTopic(item);
+              setSelectedLoveSpread("");
               resetReading();
             }}
             className={`min-h-11 rounded-full border px-3 text-sm transition ${
@@ -193,13 +235,34 @@ export function TarotDrawClient() {
         ))}
       </div>
 
+      <div className="mt-6 rounded-3xl border border-lavender/18 bg-midnight/38 p-4">
+        <p className="text-sm uppercase tracking-[0.22em] text-lavender/70">戀愛專屬牌陣</p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {loveSpreadQuestions.map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => selectLoveSpread(item)}
+              className={`rounded-2xl border px-4 py-3 text-left text-base leading-6 transition ${
+                selectedLoveSpread === item ? "border-moon bg-moon text-midnight" : "border-white/12 bg-white/8 text-moon/78 hover:bg-white/12"
+              }`}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <label className="mt-6 block text-base font-medium text-lavender" htmlFor="question">
         把想說的話交給宇宙
       </label>
       <textarea
         id="question"
         value={question}
-        onChange={(event) => setQuestion(event.target.value)}
+        onChange={(event) => {
+          setQuestion(event.target.value);
+          setSelectedLoveSpread("");
+        }}
         className="mt-2 min-h-32 w-full resize-none rounded-3xl border border-white/12 bg-midnight/58 p-4 text-base leading-7 text-moon outline-none transition placeholder:text-moon/40 focus:border-lavender"
         placeholder="可以在心裡默想，也可以輕輕寫下現在最在意的事…"
       />
@@ -243,21 +306,37 @@ export function TarotDrawClient() {
             ))}
       </div>
 
-      {status === "revealed" && cards.length ? (
-        <section className="mt-9">
-          <div className="flex justify-center">
+      {canShowReadings ? (
+        <section className="mt-9 space-y-5">
+          <div className="cosmic-reading-card rounded-[1.75rem] border border-lavender/20 bg-midnight/58 p-5 shadow-glow sm:p-6">
+            <p className="text-sm tracking-[0.22em] text-lavender/70">今夜短訊</p>
+            <h3 className="mt-2 text-2xl font-semibold text-moon">宇宙給你的簡短訊息</h3>
+            <div className="mt-4 space-y-3">
+              {cards.map((card, index) => (
+                <div key={`free-${card.id}-${index}`} className="rounded-2xl border border-white/10 bg-white/6 p-4">
+                  <p className="text-sm text-lavender">{card.position ? `${card.position}・` : ""}{card.name}・{card.orientationLabel}</p>
+                  <p className="mt-2 text-base leading-8 text-moon/84">{getShortMessage(card)}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="cosmic-reading-card rounded-[1.75rem] border border-moon/24 bg-midnight/54 p-5 text-center shadow-glow sm:p-7">
+            <p className="text-sm tracking-[0.22em] text-lavender/70">完整訊息</p>
+            <h3 className="mt-2 text-2xl font-semibold text-moon">宇宙還有一些沒說完的話</h3>
+            <p className="mx-auto mt-3 max-w-xl text-base leading-8 text-moon/72">有些答案，不是不出現，只是需要你再靠近一點。</p>
             <button
               type="button"
-              onClick={requestReading}
+              onClick={unlockPremiumReading}
               disabled={readingStatus === "loading"}
-              className="w-full rounded-full border border-moon/40 bg-moon px-6 py-4 text-base font-semibold text-midnight shadow-glow transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:min-w-[260px]"
+              className="mt-5 w-full rounded-full border border-moon/40 bg-moon px-6 py-4 text-base font-semibold text-midnight shadow-glow transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:min-w-[260px]"
             >
-              {readingStatus === "loading" ? "宇宙正在整理訊息…" : "聽聽宇宙怎麼說"}
+              {readingStatus === "loading" ? "宇宙正在整理訊息…" : "解鎖完整訊息 NT$29"}
             </button>
           </div>
 
           {readingStatus === "loading" ? (
-            <div className="cosmic-reading-card mt-5 rounded-3xl border border-white/10 bg-white/8 p-5 text-center shadow-glow">
+            <div className="cosmic-reading-card rounded-3xl border border-white/10 bg-white/8 p-5 text-center shadow-glow">
               <div className="mx-auto flex w-fit gap-2">
                 <span className="cosmic-reading-dot" />
                 <span className="cosmic-reading-dot animation-delay-150" />
@@ -267,14 +346,14 @@ export function TarotDrawClient() {
             </div>
           ) : null}
 
-          {readingError ? <p className="mt-5 rounded-2xl border border-lavender/30 bg-nebula/20 p-4 text-sm leading-6 text-moon">{readingError}</p> : null}
+          {readingError ? <p className="rounded-2xl border border-lavender/30 bg-nebula/20 p-4 text-sm leading-6 text-moon">{readingError}</p> : null}
 
           {reading ? (
-            <div className="cosmic-reading-card mt-5 rounded-[1.75rem] border border-lavender/20 bg-midnight/58 p-4 shadow-glow sm:p-6">
+            <div className="cosmic-reading-card rounded-[1.75rem] border border-lavender/20 bg-midnight/58 p-4 shadow-glow sm:p-6">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm uppercase tracking-[0.22em] text-lavender/70">深夜訊息</p>
-                  <h3 className="mt-2 text-2xl font-semibold text-moon">宇宙給你的訊息</h3>
+                  <h3 className="mt-2 text-2xl font-semibold text-moon">宇宙深夜訊息</h3>
                 </div>
                 <button
                   type="button"
