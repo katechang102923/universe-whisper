@@ -8,13 +8,13 @@ const validTopics = ["love", "career", "ambiguous", "general"] as const;
 const validPositions = ["upright", "reversed"] as const;
 const validSpreadPositions = ["past", "present", "future"] as const;
 const validReadingModes = ["free", "premium"] as const;
-const validZodiacs = ["牡羊座", "金牛座", "雙子座", "巨蟹座", "獅子座", "處女座", "天秤座", "天蠍座", "射手座", "摩羯座", "水瓶座", "雙魚座"] as const;
+const DAILY_FREE_REQUESTS = 3;
+const freeRequestRecords = new Map<string, { date: string; count: number }>();
 
 type TarotReadingTopic = (typeof validTopics)[number];
 type TarotReadingPosition = (typeof validPositions)[number];
 type TarotSpreadPosition = (typeof validSpreadPositions)[number];
 type TarotReadingMode = (typeof validReadingModes)[number];
-type ZodiacSign = (typeof validZodiacs)[number];
 
 type TarotReadingCard = {
   name: string;
@@ -38,8 +38,31 @@ function isReadingMode(value: unknown): value is TarotReadingMode {
   return typeof value === "string" && validReadingModes.includes(value as TarotReadingMode);
 }
 
-function isZodiac(value: unknown): value is ZodiacSign {
-  return typeof value === "string" && validZodiacs.includes(value as ZodiacSign);
+function getServerDateKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function getRequestIp(request: Request) {
+  const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  return forwardedFor || request.headers.get("x-real-ip") || request.headers.get("cf-connecting-ip") || "unknown";
+}
+
+function canReceiveFreeReading(request: Request) {
+  const ip = getRequestIp(request);
+  const today = getServerDateKey();
+  const currentRecord = freeRequestRecords.get(ip);
+
+  if (!currentRecord || currentRecord.date !== today) {
+    freeRequestRecords.set(ip, { date: today, count: 1 });
+    return true;
+  }
+
+  if (currentRecord.count >= DAILY_FREE_REQUESTS) {
+    return false;
+  }
+
+  freeRequestRecords.set(ip, { date: today, count: currentRecord.count + 1 });
+  return true;
 }
 
 function normalizeCards(cards: unknown): TarotReadingCard[] | null {
@@ -90,26 +113,6 @@ function getTopicGuidance(topic: TarotReadingTopic) {
   }[topic];
 }
 
-function getZodiacGuidance(zodiac?: ZodiacSign) {
-  if (!zodiac) {
-    return "提問者沒有選擇星座，請以溫暖、清楚、不空泛的陪伴語氣回應。";
-  }
-
-  if (["巨蟹座", "雙魚座", "天蠍座"].includes(zodiac)) {
-    return `${zodiac}：多一點情緒理解、安全感與被接住的語氣，但仍要給出清楚建議。`;
-  }
-
-  if (["獅子座", "牡羊座", "射手座"].includes(zodiac)) {
-    return `${zodiac}：多一點行動建議、勇氣與鼓勵，提醒提問者把主導權拿回來。`;
-  }
-
-  if (["處女座", "摩羯座", "金牛座"].includes(zodiac)) {
-    return `${zodiac}：多一點現實分析、步驟、界線與可執行的小行動。`;
-  }
-
-  return `${zodiac}：多一點思考整理、關係觀察、溝通脈絡與不急著定論的提醒。`;
-}
-
 function getSpreadLabels() {
   return {
     past: "過去：代表最近影響提問者的背景、情緒或原因",
@@ -118,7 +121,7 @@ function getSpreadLabels() {
   } satisfies Record<TarotSpreadPosition, string>;
 }
 
-function buildFreeReading(cards: TarotReadingCard[], topic: TarotReadingTopic, question: string, zodiac?: ZodiacSign) {
+function buildFreeReading(cards: TarotReadingCard[], topic: TarotReadingTopic, question: string) {
   const topicLabel = getTopicLabel(topic);
   const spreadLabels = getSpreadLabels();
   const cardLine = cards
@@ -129,14 +132,13 @@ function buildFreeReading(cards: TarotReadingCard[], topic: TarotReadingTopic, q
     })
     .join("、");
   const questionLine = question ? `你放進宇宙的問題是：「${question}」` : "你沒有把問題說出口，但牌面仍接住了此刻的心情。";
-  const zodiacLine = zodiac ? `${zodiac}的你，這次比較需要把感受和現實一起看，而不是只靠猜測撐著。` : "這次訊息會先從你此刻最在意的地方開始整理。";
 
   return `宇宙給你的簡短訊息
 
 ${questionLine}
 
 目前狀況
-這次牌面落在${topicLabel}的主題裡：${cardLine}。${zodiacLine}
+這次牌面落在${topicLabel}的主題裡：${cardLine}。這次訊息會先從你此刻最在意的地方開始整理。
 
 一個可能原因
 你可能已經感覺到某個地方不太穩，卻還在等更明確的證據。這不是你太敏感，而是心裡有一塊真的想被好好回應。
@@ -185,17 +187,16 @@ function getPremiumSections(topic: TarotReadingTopic) {
   ];
 }
 
-function buildPremiumFallback(cards: TarotReadingCard[], topic: TarotReadingTopic, question: string, zodiac?: ZodiacSign) {
+function buildPremiumFallback(cards: TarotReadingCard[], topic: TarotReadingTopic, question: string) {
   const topicLabel = getTopicLabel(topic);
   const cardNames = cards.map((card) => `${card.name}（${card.position === "upright" ? "正位" : "逆位"}）`).join("、");
   const questionLine = question ? `你問的是：「${question}」` : "你把問題留在心裡，宇宙仍然把焦點放在你此刻最在意的關係。";
-  const zodiacLine = zodiac ? `以${zodiac}的節奏來看，你現在需要的是能落地的安心感，而不是更多模糊猜測。` : "這次訊息會把感受和現實一起整理，不只停在牌義。";
 
   return `宇宙深夜訊息
 
 目前狀況
 ${questionLine}
-這組牌面 ${cardNames} 指向一個需要慢慢看清的${topicLabel}狀態。${zodiacLine}
+這組牌面 ${cardNames} 指向一個需要慢慢看清的${topicLabel}狀態。這次訊息會把感受和現實一起整理，不只停在牌義。
 
 真正卡住的地方
 你累的可能不是單一事件，而是一直在「期待、觀察、失落、再說服自己」之間來回。宇宙想提醒你，真正重要的是看見事實，而不是逼自己變得更懂事。
@@ -215,10 +216,9 @@ ${questionLine}
 「讓你安心的答案，不會只靠你一個人用力想像。」`;
 }
 
-function buildPremiumPrompt(cards: TarotReadingCard[], topic: TarotReadingTopic, question: string, zodiac?: ZodiacSign) {
+function buildPremiumPrompt(cards: TarotReadingCard[], topic: TarotReadingTopic, question: string) {
   const topicLabel = getTopicLabel(topic);
   const topicGuidance = getTopicGuidance(topic);
-  const zodiacGuidance = getZodiacGuidance(zodiac);
   const sections = getPremiumSections(topic).join("\n");
 
   const spreadLabels = getSpreadLabels();
@@ -234,14 +234,12 @@ function buildPremiumPrompt(cards: TarotReadingCard[], topic: TarotReadingTopic,
   return `請為「宇宙偷偷話」網站寫一段塔羅解讀。
 
 主題：${topicLabel}
-星座：${zodiac ?? "未選擇"}
 抽到的牌：
 ${cardText}
 ${questionText}
 
 請使用繁體中文，語氣像深夜裡溫柔的朋友陪伴。偏感情與情緒陪伴，避免恐嚇、絕對化預言、過度玄學，也不要使用醫療、法律、投資保證語氣。
 ${topicGuidance}
-${zodiacGuidance}
 三張牌必須整合成一條脈絡：
 - 過去：原因 / 背景
 - 現在：目前狀態
@@ -264,12 +262,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "請提供有效的解讀資料。" }, { status: 400 });
   }
 
-  const source = body as { cards?: unknown; topic?: unknown; question?: unknown; readingMode?: unknown; zodiac?: unknown };
+  const source = body as { cards?: unknown; topic?: unknown; question?: unknown; readingMode?: unknown };
   const cards = normalizeCards(source.cards);
   const topic = isTopic(source.topic) ? source.topic : null;
   const question = typeof source.question === "string" ? source.question.trim().slice(0, 600) : "";
   const readingMode = isReadingMode(source.readingMode) ? source.readingMode : "premium";
-  const zodiac = isZodiac(source.zodiac) ? source.zodiac : undefined;
 
   if (!cards) {
     return NextResponse.json({ error: "請提供 1 到 3 張有效牌卡。" }, { status: 400 });
@@ -280,9 +277,13 @@ export async function POST(request: Request) {
   }
 
   if (readingMode === "free") {
+    if (!canReceiveFreeReading(request)) {
+      return NextResponse.json({ error: "宇宙今晚想先休息一下，明天再來找我好嗎？" }, { status: 429 });
+    }
+
     return NextResponse.json({
       readingMode,
-      reading: buildFreeReading(cards, topic, question, zodiac)
+      reading: buildFreeReading(cards, topic, question)
     });
   }
 
@@ -291,7 +292,7 @@ export async function POST(request: Request) {
   if (!apiKey) {
     return NextResponse.json({
       readingMode,
-      reading: buildPremiumFallback(cards, topic, question, zodiac),
+      reading: buildPremiumFallback(cards, topic, question),
       preview: true
     });
   }
@@ -310,7 +311,7 @@ export async function POST(request: Request) {
         },
         {
           role: "user",
-          content: buildPremiumPrompt(cards, topic, question, zodiac)
+          content: buildPremiumPrompt(cards, topic, question)
         }
       ],
       max_output_tokens: 2600

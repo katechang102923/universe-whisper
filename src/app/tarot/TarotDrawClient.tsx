@@ -9,6 +9,9 @@ type FreeReadingStatus = "idle" | "loading" | "done" | "error";
 type ReadingTopic = "love" | "career" | "ambiguous" | "general";
 type SpreadPosition = "past" | "present" | "future";
 
+const FREE_DRAW_STORAGE_KEY = "cosmic_free_limit";
+const LINE_PENDING_ACTION_KEY = "cosmic_pending_line_action";
+const DAILY_FREE_DRAWS = 3;
 const modes = [
   { key: "single_tarot", label: "單張牌", description: "接收此刻最靠近你的訊息" },
   { key: "three_card", label: "三張牌", description: "過去、現在、未來的溫柔流動" }
@@ -16,8 +19,18 @@ const modes = [
 
 const topics = ["感情", "工作", "曖昧"] as const;
 type TarotTopicOption = (typeof topics)[number];
-const zodiacSigns = ["牡羊座", "金牛座", "雙子座", "巨蟹座", "獅子座", "處女座", "天秤座", "天蠍座", "射手座", "摩羯座", "水瓶座", "雙魚座"] as const;
-type ZodiacSign = (typeof zodiacSigns)[number];
+type FreeDrawRecord = {
+  date: string;
+  count: number;
+};
+type PendingLineAction = {
+  action: "send" | "unlock";
+  cards: TarotCardFaceData[];
+  topic: TarotTopicOption;
+  question: string;
+  freeReading: string;
+  premiumReading: string;
+};
 
 const spreadQuestionGroups = {
   感情: {
@@ -66,59 +79,104 @@ function toSpreadPosition(position: TarotCardFaceData["position"]): SpreadPositi
   return undefined;
 }
 
+function getLocalDateKey() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function readFreeDrawRecord(): FreeDrawRecord {
+  const today = getLocalDateKey();
+
+  try {
+    const rawRecord = window.localStorage.getItem(FREE_DRAW_STORAGE_KEY);
+    const parsed = rawRecord ? (JSON.parse(rawRecord) as Partial<FreeDrawRecord>) : null;
+
+    if (!parsed || parsed.date !== today || typeof parsed.count !== "number") {
+      return { date: today, count: 0 };
+    }
+
+    return { date: today, count: Math.max(0, Math.min(parsed.count, DAILY_FREE_DRAWS)) };
+  } catch {
+    return { date: today, count: 0 };
+  }
+}
+
+function writeFreeDrawRecord(record: FreeDrawRecord) {
+  window.localStorage.setItem(FREE_DRAW_STORAGE_KEY, JSON.stringify(record));
+}
+
 export function TarotDrawClient() {
   const [mode, setMode] = useState<(typeof modes)[number]["key"]>("single_tarot");
   const [topic, setTopic] = useState<TarotTopicOption>("感情");
   const [question, setQuestion] = useState("");
   const [selectedSpreadQuestion, setSelectedSpreadQuestion] = useState("");
-  const [selectedZodiac, setSelectedZodiac] = useState<ZodiacSign | "">("");
   const [cards, setCards] = useState<TarotCardFaceData[]>([]);
   const [error, setError] = useState("");
   const [status, setStatus] = useState<DrawStatus>("idle");
   const [freeReadingStatus, setFreeReadingStatus] = useState<FreeReadingStatus>("idle");
   const [freeReading, setFreeReading] = useState("");
+  const [freeReadingNotice, setFreeReadingNotice] = useState("");
+  const [todayFreeDrawCount, setTodayFreeDrawCount] = useState(0);
   const [readingStatus, setReadingStatus] = useState<ReadingStatus>("idle");
   const [reading, setReading] = useState("");
   const [readingError, setReadingError] = useState("");
+  const [lineDeliveryStatus, setLineDeliveryStatus] = useState<"idle" | "sending" | "done" | "needsLogin" | "softPause">("idle");
+  const [lineDeliveryMessage, setLineDeliveryMessage] = useState("");
   const [copied, setCopied] = useState(false);
 
   const cardCount = mode === "three_card" ? 3 : 1;
   const visibleBacks = useMemo(() => Array.from({ length: cardCount }), [cardCount]);
   const canShowReadings = status === "revealed" && cards.length > 0;
   const currentSpreadGroup = spreadQuestionGroups[topic];
+  const remainingFreeDraws = Math.max(DAILY_FREE_DRAWS - todayFreeDrawCount, 0);
 
   useEffect(() => {
-    const savedZodiac = window.localStorage.getItem("universe-whisper-zodiac");
+    const freeDrawRecord = readFreeDrawRecord();
+    writeFreeDrawRecord(freeDrawRecord);
+    setTodayFreeDrawCount(freeDrawRecord.count);
 
-    if (zodiacSigns.includes(savedZodiac as ZodiacSign)) {
-      setSelectedZodiac(savedZodiac as ZodiacSign);
+    const params = new URL(window.location.href).searchParams;
+    const lineAction = params.get("lineAction");
+
+    if (lineAction === "send" || lineAction === "unlock") {
+      void resumeLineAction(lineAction);
     }
   }, []);
 
   function resetReading() {
     setFreeReadingStatus("idle");
     setFreeReading("");
+    setFreeReadingNotice("");
     setReadingStatus("idle");
     setReading("");
     setReadingError("");
+    setLineDeliveryStatus("idle");
+    setLineDeliveryMessage("");
     setCopied(false);
   }
 
-  function buildReadingPayload(targetCards: TarotCardFaceData[], readingMode: "free" | "premium", zodiac = selectedZodiac) {
+  function buildReadingPayload(
+    targetCards: TarotCardFaceData[],
+    readingMode: "free" | "premium",
+    payloadTopic = topic,
+    payloadQuestion = question
+  ) {
     return {
       cards: targetCards.map((card) => ({
         name: card.name,
         position: card.orientation,
         spreadPosition: toSpreadPosition(card.position)
       })),
-      topic: toReadingTopic(topic),
+      topic: toReadingTopic(payloadTopic),
       readingMode,
-      question: question.trim() || undefined,
-      zodiac: zodiac || undefined
+      question: payloadQuestion.trim() || undefined
     };
   }
 
-  async function requestFreeReading(targetCards: TarotCardFaceData[], zodiac = selectedZodiac) {
+  async function requestFreeReading(targetCards: TarotCardFaceData[]) {
     if (!targetCards.length) {
       return;
     }
@@ -130,11 +188,12 @@ export function TarotDrawClient() {
       const response = await fetch("/api/tarot-reading", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildReadingPayload(targetCards, "free", zodiac))
+        body: JSON.stringify(buildReadingPayload(targetCards, "free"))
       });
       const data = await response.json();
 
       if (!response.ok) {
+        setFreeReadingNotice(data.error ?? "宇宙今晚想先休息一下，明天再來找我好嗎？");
         setFreeReadingStatus("error");
         return;
       }
@@ -148,6 +207,14 @@ export function TarotDrawClient() {
 
   async function draw() {
     if (status === "drawing") {
+      return;
+    }
+
+    const freeDrawRecord = readFreeDrawRecord();
+    setTodayFreeDrawCount(freeDrawRecord.count);
+
+    if (freeDrawRecord.count >= DAILY_FREE_DRAWS) {
+      setError("宇宙今晚想先休息一下，明天再來找我好嗎？");
       return;
     }
 
@@ -170,6 +237,10 @@ export function TarotDrawClient() {
         return;
       }
 
+      const nextFreeDrawRecord = { date: freeDrawRecord.date, count: Math.min(freeDrawRecord.count + 1, DAILY_FREE_DRAWS) };
+      writeFreeDrawRecord(nextFreeDrawRecord);
+      setTodayFreeDrawCount(nextFreeDrawRecord.count);
+
       window.setTimeout(() => {
         const revealedCards = data.cards ?? [];
         setCards(revealedCards);
@@ -182,8 +253,8 @@ export function TarotDrawClient() {
     }
   }
 
-  async function requestReading() {
-    if (readingStatus === "loading" || status !== "revealed" || cards.length === 0) {
+  async function requestReading(targetCards = cards, payloadTopic = topic, payloadQuestion = question) {
+    if (readingStatus === "loading" || targetCards.length === 0) {
       return;
     }
 
@@ -195,17 +266,7 @@ export function TarotDrawClient() {
       const response = await fetch("/api/tarot-reading", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          cards: cards.map((card) => ({
-            name: card.name,
-            position: card.orientation,
-            spreadPosition: toSpreadPosition(card.position)
-          })),
-          topic: toReadingTopic(topic),
-          readingMode: "premium",
-          question: question.trim() || undefined,
-          zodiac: selectedZodiac || undefined
-        })
+        body: JSON.stringify(buildReadingPayload(targetCards, "premium", payloadTopic, payloadQuestion))
       });
       const data = await response.json();
 
@@ -246,18 +307,129 @@ export function TarotDrawClient() {
     resetReading();
   }
 
-  function selectZodiac(sign: ZodiacSign) {
-    setSelectedZodiac(sign);
-    window.localStorage.setItem("universe-whisper-zodiac", sign);
-    resetReading();
-
-    if (status === "revealed" && cards.length > 0) {
-      void requestFreeReading(cards, sign);
-    }
+  function createPendingLineAction(action: PendingLineAction["action"]): PendingLineAction {
+    return {
+      action,
+      cards,
+      topic,
+      question,
+      freeReading,
+      premiumReading: reading
+    };
   }
 
-  function unlockPremiumReading() {
+  function savePendingLineAction(action: PendingLineAction["action"]) {
+    window.localStorage.setItem(LINE_PENDING_ACTION_KEY, JSON.stringify(createPendingLineAction(action)));
+  }
+
+  function redirectToLineLogin(action: PendingLineAction["action"]) {
+    const returnTo = `/tarot?lineAction=${action}`;
+    window.location.href = `/api/line/login/start?returnTo=${encodeURIComponent(returnTo)}`;
+  }
+
+  async function hasLineSession() {
+    const response = await fetch("/api/line/me");
+    const data = await response.json();
+    return Boolean(data.loggedIn);
+  }
+
+  function restorePendingState(pending: PendingLineAction) {
+    setTopic(pending.topic);
+    setQuestion(pending.question);
+    setCards(pending.cards);
+    setMode(pending.cards.length === 3 ? "three_card" : "single_tarot");
+    setStatus("revealed");
+    setFreeReading(pending.freeReading);
+    setFreeReadingStatus(pending.freeReading ? "done" : "idle");
+    setReading(pending.premiumReading);
+    setReadingStatus(pending.premiumReading ? "done" : "idle");
+  }
+
+  async function resumeLineAction(action: "send" | "unlock") {
+    const rawPending = window.localStorage.getItem(LINE_PENDING_ACTION_KEY);
+
+    if (!rawPending) {
+      return;
+    }
+
+    const pending = JSON.parse(rawPending) as PendingLineAction;
+
+    if (!pending.cards?.length || pending.action !== action || !topics.includes(pending.topic)) {
+      window.localStorage.removeItem(LINE_PENDING_ACTION_KEY);
+      return;
+    }
+
+    restorePendingState(pending);
+
+    if (action === "send") {
+      await sendLineMessage(pending);
+      return;
+    }
+
+    window.alert("付款功能即將開放，現在先為你展示完整版測試內容。");
+    await requestReading(pending.cards, pending.topic, pending.question);
+    window.localStorage.removeItem(LINE_PENDING_ACTION_KEY);
+  }
+
+  async function requireLineSession(action: PendingLineAction["action"]) {
+    if (await hasLineSession()) {
+      return true;
+    }
+
+    savePendingLineAction(action);
+    setLineDeliveryStatus("needsLogin");
+    setLineDeliveryMessage("先讓宇宙在 LINE 認得你，回來後我會接著把訊息送過去。");
+    redirectToLineLogin(action);
+    return false;
+  }
+
+  async function sendLineMessage(pending = createPendingLineAction("send")) {
+    if (!pending.cards.length || lineDeliveryStatus === "sending") {
+      return;
+    }
+
+    setLineDeliveryStatus("sending");
+    setLineDeliveryMessage("正在把今晚的訊息收進 LINE 裡…");
+
+    const response = await fetch("/api/line/send-tarot", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cards: pending.cards,
+        topic: pending.topic,
+        question: pending.question,
+        freeReading: pending.freeReading,
+        premiumReading: pending.premiumReading,
+        resultUrl: `${window.location.origin}/tarot`
+      })
+    });
+    const data = await response.json();
+
+    if (response.status === 401 && data.loginRequired) {
+      window.localStorage.setItem(LINE_PENDING_ACTION_KEY, JSON.stringify(pending));
+      setLineDeliveryStatus("needsLogin");
+      setLineDeliveryMessage("先讓宇宙在 LINE 認得你，回來後我會接著把訊息送過去。");
+      window.location.href = data.loginUrl;
+      return;
+    }
+
+    if (!response.ok) {
+      setLineDeliveryStatus("softPause");
+      setLineDeliveryMessage("今晚的訊息已經收好，只是 LINE 那邊暫時有點安靜，等等再試一次。");
+      return;
+    }
+
+    window.localStorage.removeItem(LINE_PENDING_ACTION_KEY);
+    setLineDeliveryStatus("done");
+    setLineDeliveryMessage(data.deliveryStatus === "sent" ? "已把今晚的宇宙訊息送到 LINE。" : "已完成測試送出流程，正式憑證接上後就會送到 LINE。");
+  }
+
+  async function unlockPremiumReading() {
     if (readingStatus === "loading") {
+      return;
+    }
+
+    if (!(await requireLineSession("unlock"))) {
       return;
     }
 
@@ -286,7 +458,7 @@ export function TarotDrawClient() {
             <span className="block text-lg font-semibold">{item.label}</span>
             <span className={`mt-1 block text-sm ${mode === item.key ? "text-midnight/70" : "text-moon/58"}`}>{item.description}</span>
           </button>
-        ))}
+        ))} 
       </div>
 
       <div className="mt-5 grid grid-cols-3 gap-2">
@@ -309,25 +481,6 @@ export function TarotDrawClient() {
             {item}
           </button>
         ))}
-      </div>
-
-      <div className="mt-6 rounded-3xl border border-lavender/18 bg-midnight/38 p-4">
-        <h3 className="text-xl font-semibold text-moon">宇宙想更靠近你一點</h3>
-        <p className="mt-2 text-sm leading-6 text-moon/60">選擇你的星座，今晚的訊息會更貼近你。</p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {zodiacSigns.map((sign) => (
-            <button
-              key={sign}
-              type="button"
-              onClick={() => selectZodiac(sign)}
-              className={`rounded-full border px-4 py-2 text-sm transition ${
-                selectedZodiac === sign ? "border-moon bg-moon text-midnight" : "border-white/12 bg-white/8 text-moon/76 hover:bg-white/12"
-              }`}
-            >
-              {sign}
-            </button>
-          ))}
-        </div>
       </div>
 
       <div className="mt-6 rounded-3xl border border-lavender/18 bg-midnight/38 p-4">
@@ -369,8 +522,11 @@ export function TarotDrawClient() {
         disabled={status === "drawing"}
         className="mt-5 w-full rounded-full bg-moon px-6 py-3 font-medium text-midnight transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
-        {status === "drawing" ? "星光正在流動..." : "開始抽牌"}
+        {status === "drawing" ? "星光正在流動..." : remainingFreeDraws > 0 ? "開始抽牌" : "明天再抽一張"}
       </button>
+      <p className="mt-3 text-sm leading-6 text-moon/58">
+        {remainingFreeDraws > 0 ? `今晚還有 ${remainingFreeDraws} 次免費抽牌的星光。` : "宇宙今晚想先休息一下，明天再來找我好嗎？"}
+      </p>
 
       {error ? <p className="mt-4 rounded-2xl border border-lavender/30 bg-nebula/20 p-4 text-sm text-moon">{error}</p> : null}
 
@@ -409,7 +565,7 @@ export function TarotDrawClient() {
             <div className="mt-4 rounded-2xl border border-white/10 bg-white/6 p-4">
               {freeReadingStatus === "loading" ? <p className="text-base leading-8 text-moon/76">宇宙正在整理簡短訊息…</p> : null}
               {freeReading ? <p className="whitespace-pre-wrap text-base leading-8 text-moon/84">{freeReading}</p> : null}
-              {freeReadingStatus === "error" ? <p className="text-base leading-8 text-moon/76">宇宙訊號有點微弱，請稍後再試一次。</p> : null}
+              {freeReadingStatus === "error" ? <p className="text-base leading-8 text-moon/76">{freeReadingNotice || "宇宙訊號有點微弱，請稍後再試一次。"}</p> : null}
             </div>
           </div>
 
@@ -425,6 +581,20 @@ export function TarotDrawClient() {
             >
               {readingStatus === "loading" ? "宇宙正在整理訊息…" : "解鎖完整訊息 NT$29"}
             </button>
+          </div>
+
+          <div className="cosmic-reading-card rounded-[1.75rem] border border-lavender/20 bg-midnight/54 p-5 text-center shadow-glow sm:p-6">
+            <h3 className="text-2xl font-semibold text-moon">把今晚的訊息留在 LINE</h3>
+            <p className="mx-auto mt-3 max-w-xl text-base leading-8 text-moon/72">把牌面和核心提醒送到 LINE，想回來慢慢看時就不怕找不到。</p>
+            <button
+              type="button"
+              onClick={() => void sendLineMessage()}
+              disabled={lineDeliveryStatus === "sending"}
+              className="mt-5 w-full rounded-full border border-lavender/40 bg-lavender px-6 py-4 text-base font-semibold text-midnight shadow-glow transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:min-w-[260px]"
+            >
+              {lineDeliveryStatus === "sending" ? "正在送往 LINE…" : "把宇宙訊息傳到 LINE"}
+            </button>
+            {lineDeliveryMessage ? <p className="mt-4 text-sm leading-6 text-moon/68">{lineDeliveryMessage}</p> : null}
           </div>
 
           {readingStatus === "loading" ? (
