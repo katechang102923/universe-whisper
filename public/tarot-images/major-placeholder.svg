@@ -1,0 +1,24 @@
+<svg width="640" height="960" viewBox="0 0 640 960" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="640" height="960" rx="42" fill="#0A1028"/>
+  <rect x="34" y="34" width="572" height="892" rx="32" fill="url(#paint0_radial)" stroke="#CBB8FF" stroke-opacity="0.35" stroke-width="2"/>
+  <circle cx="320" cy="320" r="112" fill="#F7F1DF" fill-opacity="0.95"/>
+  <circle cx="360" cy="286" r="112" fill="#17113A"/>
+  <path d="M320 500C376 438 435 438 491 500C435 562 376 562 320 500Z" stroke="#8EF0DD" stroke-opacity="0.85" stroke-width="7"/>
+  <circle cx="405" cy="500" r="22" fill="#8EF0DD" fill-opacity="0.9"/>
+  <g fill="#F7F1DF">
+    <circle cx="132" cy="162" r="5"/>
+    <circle cx="486" cy="156" r="4"/>
+    <circle cx="514" cy="712" r="5"/>
+    <circle cx="142" cy="748" r="4"/>
+    <circle cx="222" cy="626" r="3"/>
+    <circle cx="438" cy="628" r="3"/>
+  </g>
+  <text x="320" y="810" text-anchor="middle" fill="#F7F1DF" font-family="serif" font-size="44" letter-spacing="8">TAROT</text>
+  <defs>
+    <radialGradient id="paint0_radial" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(320 290) rotate(90) scale(640 420)">
+      <stop stop-color="#6D4DF2" stop-opacity="0.64"/>
+      <stop offset="0.48" stop-color="#21194D" stop-opacity="0.92"/>
+      <stop offset="1" stop-color="#070B1E"/>
+    </radialGradient>
+  </defs>
+</svg>
