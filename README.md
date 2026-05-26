@@ -16,9 +16,10 @@
 - 首頁：星空 Hero、今日宇宙訊息、抽牌 CTA、LINE 加好友按鈕、漂浮星星動畫
 - 每日運勢：愛情、工作、財運、心情假資料
 - 塔羅抽牌頁：單張牌、三張牌、感情/工作/曖昧選項、洗牌動畫、翻牌動畫
+- 付費詳細解讀預留：`/api/tarot-reading` 使用 OpenAI 官方 SDK 產生完整塔羅解讀
 - LINE Webhook：`/api/line/webhook`
 - Firebase 架構：`src/lib/firebase.ts` 預留 `users` 與 `tarot_logs` collection
-- API：`/api/tarot/draw`、`/api/ai/reading`、`/api/user/profile`
+- API：`/api/tarot/draw`、`/api/tarot-reading`、`/api/ai/reading`、`/api/user/profile`
 
 ## 安裝
 
@@ -58,7 +59,11 @@ NEXT_PUBLIC_FIREBASE_APP_ID=
 FIREBASE_PROJECT_ID=
 FIREBASE_CLIENT_EMAIL=
 FIREBASE_PRIVATE_KEY=
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-5.4-mini
 ```
+
+`OPENAI_MODEL` 預設可用較低成本模型；若 OpenAI 後續提供你想使用的模型 ID，可在 Vercel 環境變數中直接覆蓋。
 
 ## Firebase Collections
 
@@ -124,6 +129,7 @@ npm run dev
 - 每日運勢：`http://localhost:3000/daily`
 - 塔羅抽牌：`http://localhost:3000/tarot`
 - LINE Webhook health check：`http://localhost:3000/api/line/webhook`
+- 塔羅解讀 API：`http://localhost:3000/api/tarot-reading`
 
 測試 build：
 
