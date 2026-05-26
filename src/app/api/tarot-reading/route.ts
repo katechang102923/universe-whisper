@@ -6,13 +6,16 @@ export const runtime = "nodejs";
 const DEFAULT_MODEL = "gpt-5.4-mini";
 const validTopics = ["love", "career", "general"] as const;
 const validPositions = ["upright", "reversed"] as const;
+const validSpreadPositions = ["past", "present", "future"] as const;
 
 type TarotReadingTopic = (typeof validTopics)[number];
 type TarotReadingPosition = (typeof validPositions)[number];
+type TarotSpreadPosition = (typeof validSpreadPositions)[number];
 
 type TarotReadingCard = {
   name: string;
   position: TarotReadingPosition;
+  spreadPosition?: TarotSpreadPosition;
 };
 
 function isTopic(value: unknown): value is TarotReadingTopic {
@@ -21,6 +24,10 @@ function isTopic(value: unknown): value is TarotReadingTopic {
 
 function isPosition(value: unknown): value is TarotReadingPosition {
   return typeof value === "string" && validPositions.includes(value as TarotReadingPosition);
+}
+
+function isSpreadPosition(value: unknown): value is TarotSpreadPosition {
+  return typeof value === "string" && validSpreadPositions.includes(value as TarotSpreadPosition);
 }
 
 function normalizeCards(cards: unknown): TarotReadingCard[] | null {
@@ -33,7 +40,7 @@ function normalizeCards(cards: unknown): TarotReadingCard[] | null {
       return null;
     }
 
-    const source = card as { name?: unknown; position?: unknown };
+    const source = card as { name?: unknown; position?: unknown; spreadPosition?: unknown };
 
     if (typeof source.name !== "string" || !source.name.trim() || !isPosition(source.position)) {
       return null;
@@ -41,7 +48,8 @@ function normalizeCards(cards: unknown): TarotReadingCard[] | null {
 
     return {
       name: source.name.trim(),
-      position: source.position
+      position: source.position,
+      spreadPosition: isSpreadPosition(source.spreadPosition) ? source.spreadPosition : undefined
     };
   });
 
@@ -59,10 +67,21 @@ function buildPrompt(cards: TarotReadingCard[], topic: TarotReadingTopic, questi
     general: "生活與心情"
   }[topic];
 
-  const cardText = cards.map((card, index) => `${index + 1}. ${card.name}（${card.position === "upright" ? "正位" : "逆位"}）`).join("\n");
+  const spreadLabels: Record<TarotSpreadPosition, string> = {
+    past: "過去：代表最近影響提問者的背景、情緒或原因",
+    present: "現在：代表提問者目前的狀態與正在面對的事",
+    future: "未來：代表接下來可能的走向與提醒"
+  };
+  const cardText = cards
+    .map((card, index) => {
+      const orientationLabel = card.position === "upright" ? "正位" : "逆位";
+      const spreadText = card.spreadPosition ? `｜牌位：${spreadLabels[card.spreadPosition]}` : "";
+      return `${index + 1}. ${card.name}（${orientationLabel}）${spreadText}`;
+    })
+    .join("\n");
   const questionText = question ? `\n提問者寫下的心事：${question}` : "\n提問者沒有寫下問題，請以此刻的心情陪伴為主。";
 
-  return `請為「宇宙偷偷話」網站產生一段塔羅解讀。
+  return `請為「宇宙偷偷話」網站寫一段塔羅解讀。
 
 主題：${topicLabel}
 抽到的牌：
@@ -70,6 +89,7 @@ ${cardText}
 ${questionText}
 
 請使用繁體中文，語氣像深夜裡溫柔的朋友陪伴。避免恐嚇、絕對化預言、過度玄學，也不要使用醫療、法律、投資保證語氣。
+如果牌卡有牌位，請在「每張牌解析」中明確結合牌位解讀，不要只單純解釋牌義。
 
 請用以下固定段落標題輸出：
 
@@ -84,10 +104,7 @@ export async function POST(request: Request) {
   const apiKey = process.env.OPENAI_API_KEY;
 
   if (!apiKey) {
-    return NextResponse.json(
-      { error: "尚未設定 OPENAI_API_KEY，請先在 .env.local 或 Vercel Environment Variables 新增後再試。" },
-      { status: 503 }
-    );
+    return NextResponse.json({ error: "宇宙訊號有點微弱，請稍後再試一次。", code: "missing_api_key" }, { status: 503 });
   }
 
   const body = await request.json().catch(() => null);
@@ -136,11 +153,10 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({
-      reading,
-      model
+      reading
     });
   } catch (error) {
     console.error("Tarot reading failed:", error);
-    return NextResponse.json({ error: "宇宙訊號暫時不穩，請稍後再試。" }, { status: 500 });
+    return NextResponse.json({ error: "宇宙訊號有點微弱，請稍後再試一次。" }, { status: 500 });
   }
 }

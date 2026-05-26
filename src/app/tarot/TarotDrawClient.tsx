@@ -6,6 +6,7 @@ import { TarotCardBack, TarotCardFace, type TarotCardFaceData } from "@/componen
 type DrawStatus = "idle" | "drawing" | "revealed";
 type ReadingStatus = "idle" | "loading" | "done" | "error";
 type ReadingTopic = "love" | "career" | "general";
+type SpreadPosition = "past" | "present" | "future";
 
 const modes = [
   { key: "single_tarot", label: "單張牌", description: "接收此刻最靠近你的訊息" },
@@ -24,6 +25,22 @@ function toReadingTopic(topic: (typeof topics)[number]): ReadingTopic {
   }
 
   return "general";
+}
+
+function toSpreadPosition(position: TarotCardFaceData["position"]): SpreadPosition | undefined {
+  if (position === "過去") {
+    return "past";
+  }
+
+  if (position === "現在") {
+    return "present";
+  }
+
+  if (position === "未來") {
+    return "future";
+  }
+
+  return undefined;
 }
 
 export function TarotDrawClient() {
@@ -98,7 +115,8 @@ export function TarotDrawClient() {
         body: JSON.stringify({
           cards: cards.map((card) => ({
             name: card.name,
-            position: card.orientation
+            position: card.orientation,
+            spreadPosition: toSpreadPosition(card.position)
           })),
           topic: toReadingTopic(topic),
           question: question.trim() || undefined
@@ -108,7 +126,7 @@ export function TarotDrawClient() {
 
       if (!response.ok) {
         setReadingStatus("error");
-        setReadingError(data.error ?? "宇宙訊息暫時沒有成形，請稍後再試。");
+        setReadingError("宇宙訊號有點微弱，請稍後再試一次。");
         return;
       }
 
@@ -116,7 +134,7 @@ export function TarotDrawClient() {
       setReadingStatus("done");
     } catch {
       setReadingStatus("error");
-      setReadingError("宇宙訊號暫時不穩，請確認網路後再試。");
+      setReadingError("宇宙訊號有點微弱，請稍後再試一次。");
     }
   }
 
@@ -210,6 +228,11 @@ export function TarotDrawClient() {
         {status === "revealed" && cards.length
           ? cards.map((card, index) => (
               <article key={`${card.id}-${index}`} className="tarot-card-shell mx-auto w-full max-w-[420px]">
+                {card.position ? (
+                  <p className="mb-3 rounded-full border border-moon/20 bg-midnight/54 px-4 py-2 text-center text-base font-medium text-moon shadow-glow">
+                    第{index + 1}張：{card.position}
+                  </p>
+                ) : null}
                 <TarotCardFace card={card} topic={topic} />
               </article>
             ))
@@ -221,40 +244,38 @@ export function TarotDrawClient() {
       </div>
 
       {status === "revealed" && cards.length ? (
-        <section className="ai-reading-card mt-9 rounded-[1.75rem] border border-lavender/20 bg-midnight/46 p-5 shadow-glow sm:p-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm uppercase tracking-[0.24em] text-lavender/70">Deep Reading</p>
-              <h3 className="mt-2 text-2xl font-semibold text-moon">AI 解讀</h3>
-              <p className="mt-2 text-base leading-7 text-moon/68">把這次牌面整理成更完整的深夜訊息，適合慢慢讀，也適合截圖收藏。</p>
-            </div>
+        <section className="mt-9">
+          <div className="flex justify-center">
             <button
               type="button"
               onClick={requestReading}
               disabled={readingStatus === "loading"}
-              className="w-full rounded-full border border-moon/40 bg-moon px-5 py-3 font-medium text-midnight transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+              className="w-full rounded-full border border-moon/40 bg-moon px-6 py-4 text-base font-semibold text-midnight shadow-glow transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:min-w-[260px]"
             >
-              {readingStatus === "loading" ? "整理訊息中..." : reading ? "重新解讀" : "AI 解讀"}
+              {readingStatus === "loading" ? "宇宙正在整理訊息…" : "聽聽宇宙怎麼說"}
             </button>
           </div>
 
           {readingStatus === "loading" ? (
-            <div className="mt-5 rounded-3xl border border-white/10 bg-white/8 p-5 text-center">
+            <div className="cosmic-reading-card mt-5 rounded-3xl border border-white/10 bg-white/8 p-5 text-center shadow-glow">
               <div className="mx-auto flex w-fit gap-2">
-                <span className="ai-reading-dot" />
-                <span className="ai-reading-dot animation-delay-150" />
-                <span className="ai-reading-dot animation-delay-300" />
+                <span className="cosmic-reading-dot" />
+                <span className="cosmic-reading-dot animation-delay-150" />
+                <span className="cosmic-reading-dot animation-delay-300" />
               </div>
-              <p className="mt-4 text-base text-moon">宇宙正在替你整理更細緻的訊息…</p>
+              <p className="mt-4 text-base text-moon">宇宙正在整理訊息…</p>
             </div>
           ) : null}
 
           {readingError ? <p className="mt-5 rounded-2xl border border-lavender/30 bg-nebula/20 p-4 text-sm leading-6 text-moon">{readingError}</p> : null}
 
           {reading ? (
-            <div className="mt-5 rounded-3xl border border-white/10 bg-midnight/58 p-4 sm:p-5">
+            <div className="cosmic-reading-card mt-5 rounded-[1.75rem] border border-lavender/20 bg-midnight/58 p-4 shadow-glow sm:p-6">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm uppercase tracking-[0.22em] text-lavender/70">Reading Result</p>
+                <div>
+                  <p className="text-sm uppercase tracking-[0.22em] text-lavender/70">深夜訊息</p>
+                  <h3 className="mt-2 text-2xl font-semibold text-moon">宇宙給你的訊息</h3>
+                </div>
                 <button
                   type="button"
                   onClick={copyReading}

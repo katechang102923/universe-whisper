@@ -276,7 +276,7 @@ a {
   transform: rotateY(180deg) translateY(-4px);
 }
 
-.ai-reading-card {
+.cosmic-reading-card {
   position: relative;
   overflow: hidden;
   background:
@@ -286,7 +286,7 @@ a {
   backdrop-filter: blur(16px);
 }
 
-.ai-reading-card::before {
+.cosmic-reading-card::before {
   position: absolute;
   inset: 0;
   pointer-events: none;
@@ -303,12 +303,12 @@ a {
   opacity: 0.28;
 }
 
-.ai-reading-card > * {
+.cosmic-reading-card > * {
   position: relative;
   z-index: 1;
 }
 
-.ai-reading-dot {
+.cosmic-reading-dot {
   display: block;
   width: 10px;
   height: 10px;

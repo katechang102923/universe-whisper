@@ -14,6 +14,12 @@ export type TarotCardFaceData = {
   cosmicMessage: string;
 };
 
+const positionDescriptions: Record<NonNullable<TarotCardFaceData["position"]>, string> = {
+  過去: "代表最近影響你的背景、情緒或原因。",
+  現在: "代表你目前的狀態與正在面對的事。",
+  未來: "代表接下來可能的走向與提醒。"
+};
+
 export function TarotCardBack({ compact = false }: { compact?: boolean }) {
   return (
     <div className={`tarot-card-back flex aspect-[2/3] w-full ${compact ? "max-w-[280px]" : "max-w-[420px]"} flex-col items-center justify-center rounded-[28px] p-5 shadow-glow`}>
@@ -69,6 +75,7 @@ export function TarotCardFace({ card, topic }: { card: TarotCardFaceData; topic:
         <p className="mt-3 text-base leading-7 text-lavender">{card.keywords.join(" / ")}</p>
         <div className="mt-4 max-h-[220px] overflow-y-auto rounded-2xl border border-white/10 bg-midnight/42 p-4 pr-3">
           <p className="text-sm text-lavender">宇宙訊息</p>
+          {card.position ? <p className="mt-2 text-base leading-7 text-moon">{card.position}：{positionDescriptions[card.position]}</p> : null}
           <p className="mt-2 text-base leading-8 text-moon/84">{card.cosmicMessage}</p>
         </div>
       </div>
