@@ -5,7 +5,7 @@ import { TarotCardBack, TarotCardFace, type TarotCardFaceData } from "@/componen
 
 type DrawStatus = "idle" | "drawing" | "revealed";
 type ReadingStatus = "idle" | "loading" | "done" | "error";
-type ReadingTopic = "love" | "career" | "general";
+type ReadingTopic = "love" | "career" | "ambiguous" | "general";
 type SpreadPosition = "past" | "present" | "future";
 
 const modes = [
@@ -14,20 +14,33 @@ const modes = [
 ] as const;
 
 const topics = ["感情", "工作", "曖昧"] as const;
-const loveSpreadQuestions = [
-  "他有喜歡我嗎",
-  "分開後還會聯絡嗎",
-  "曖昧對象怎麼想",
-  "前任還會回來嗎",
-  "這段關係接下來會怎樣"
-] as const;
+type TarotTopicOption = (typeof topics)[number];
 
-function toReadingTopic(topic: (typeof topics)[number]): ReadingTopic {
+const spreadQuestionGroups = {
+  感情: {
+    title: "感情專屬牌陣",
+    questions: ["這段關係接下來會怎樣", "我該繼續投入嗎", "這段感情真正的問題是什麼", "我們之間還有機會嗎", "我現在最該看清什麼"]
+  },
+  工作: {
+    title: "工作專屬牌陣",
+    questions: ["我現在的工作適合我嗎", "接下來的工作運勢如何", "我該轉職嗎", "目前卡住的原因是什麼", "這個機會值得把握嗎"]
+  },
+  曖昧: {
+    title: "曖昧專屬牌陣",
+    questions: ["他有喜歡我嗎", "曖昧對象怎麼想", "他會主動靠近我嗎", "我該主動一點嗎", "這段曖昧會有結果嗎"]
+  }
+} satisfies Record<TarotTopicOption, { title: string; questions: readonly string[] }>;
+
+function toReadingTopic(topic: TarotTopicOption): ReadingTopic {
   if (topic === "工作") {
     return "career";
   }
 
-  if (topic === "感情" || topic === "曖昧") {
+  if (topic === "曖昧") {
+    return "ambiguous";
+  }
+
+  if (topic === "感情") {
     return "love";
   }
 
@@ -63,9 +76,9 @@ function getShortMessage(card: TarotCardFaceData) {
 
 export function TarotDrawClient() {
   const [mode, setMode] = useState<(typeof modes)[number]["key"]>("single_tarot");
-  const [topic, setTopic] = useState<(typeof topics)[number]>("感情");
+  const [topic, setTopic] = useState<TarotTopicOption>("感情");
   const [question, setQuestion] = useState("");
-  const [selectedLoveSpread, setSelectedLoveSpread] = useState<(typeof loveSpreadQuestions)[number] | "">("");
+  const [selectedSpreadQuestion, setSelectedSpreadQuestion] = useState("");
   const [cards, setCards] = useState<TarotCardFaceData[]>([]);
   const [error, setError] = useState("");
   const [status, setStatus] = useState<DrawStatus>("idle");
@@ -77,6 +90,7 @@ export function TarotDrawClient() {
   const cardCount = mode === "three_card" ? 3 : 1;
   const visibleBacks = useMemo(() => Array.from({ length: cardCount }), [cardCount]);
   const canShowReadings = status === "revealed" && cards.length > 0;
+  const currentSpreadGroup = spreadQuestionGroups[topic];
 
   function resetReading() {
     setReadingStatus("idle");
@@ -138,7 +152,7 @@ export function TarotDrawClient() {
             position: card.orientation,
             spreadPosition: toSpreadPosition(card.position)
           })),
-          topic: selectedLoveSpread ? "love" : toReadingTopic(topic),
+          topic: toReadingTopic(topic),
           readingMode: "premium",
           question: question.trim() || undefined
         })
@@ -173,10 +187,9 @@ export function TarotDrawClient() {
     }
   }
 
-  function selectLoveSpread(spreadQuestion: (typeof loveSpreadQuestions)[number]) {
-    setSelectedLoveSpread(spreadQuestion);
+  function selectSpreadQuestion(spreadQuestion: string) {
+    setSelectedSpreadQuestion(spreadQuestion);
     setMode("three_card");
-    setTopic("感情");
     setQuestion(spreadQuestion);
     setStatus("idle");
     setCards([]);
@@ -203,7 +216,7 @@ export function TarotDrawClient() {
               setMode(item.key);
               setStatus("idle");
               setCards([]);
-              setSelectedLoveSpread("");
+              setSelectedSpreadQuestion("");
               resetReading();
             }}
             className={`rounded-3xl border p-4 text-left transition ${
@@ -223,7 +236,10 @@ export function TarotDrawClient() {
             type="button"
             onClick={() => {
               setTopic(item);
-              setSelectedLoveSpread("");
+              setSelectedSpreadQuestion("");
+              setQuestion("");
+              setStatus("idle");
+              setCards([]);
               resetReading();
             }}
             className={`min-h-11 rounded-full border px-3 text-sm transition ${
@@ -236,15 +252,15 @@ export function TarotDrawClient() {
       </div>
 
       <div className="mt-6 rounded-3xl border border-lavender/18 bg-midnight/38 p-4">
-        <p className="text-sm uppercase tracking-[0.22em] text-lavender/70">戀愛專屬牌陣</p>
+        <p className="text-sm tracking-[0.22em] text-lavender/70">{currentSpreadGroup.title}</p>
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          {loveSpreadQuestions.map((item) => (
+          {currentSpreadGroup.questions.map((item) => (
             <button
               key={item}
               type="button"
-              onClick={() => selectLoveSpread(item)}
+              onClick={() => selectSpreadQuestion(item)}
               className={`rounded-2xl border px-4 py-3 text-left text-base leading-6 transition ${
-                selectedLoveSpread === item ? "border-moon bg-moon text-midnight" : "border-white/12 bg-white/8 text-moon/78 hover:bg-white/12"
+                selectedSpreadQuestion === item ? "border-moon bg-moon text-midnight" : "border-white/12 bg-white/8 text-moon/78 hover:bg-white/12"
               }`}
             >
               {item}
@@ -261,7 +277,7 @@ export function TarotDrawClient() {
         value={question}
         onChange={(event) => {
           setQuestion(event.target.value);
-          setSelectedLoveSpread("");
+          setSelectedSpreadQuestion("");
         }}
         className="mt-2 min-h-32 w-full resize-none rounded-3xl border border-white/12 bg-midnight/58 p-4 text-base leading-7 text-moon outline-none transition placeholder:text-moon/40 focus:border-lavender"
         placeholder="可以在心裡默想，也可以輕輕寫下現在最在意的事…"

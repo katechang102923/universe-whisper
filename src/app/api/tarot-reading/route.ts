@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 
 const DEFAULT_MODEL = "gpt-5.4-mini";
-const validTopics = ["love", "career", "general"] as const;
+const validTopics = ["love", "career", "ambiguous", "general"] as const;
 const validPositions = ["upright", "reversed"] as const;
 const validSpreadPositions = ["past", "present", "future"] as const;
 const validReadingModes = ["free", "premium"] as const;
@@ -70,7 +70,17 @@ function getTopicLabel(topic: TarotReadingTopic) {
   return {
     love: "感情",
     career: "工作",
+    ambiguous: "曖昧",
     general: "生活與心情"
+  }[topic];
+}
+
+function getTopicGuidance(topic: TarotReadingTopic) {
+  return {
+    love: "請偏向感情關係、情緒需求、關係中的真實問題與是否值得繼續投入。",
+    career: "請偏向工作狀態、職涯選擇、機會判斷、卡住原因與接下來可採取的行動。",
+    ambiguous: "請偏向曖昧關係、試探與拉扯、對方心態、訊息冷熱、是否該主動，以及如何保護自己的安全感。",
+    general: "請偏向生活狀態、心情整理、目前課題與溫柔提醒。"
   }[topic];
 }
 
@@ -107,12 +117,17 @@ function buildPremiumFallback(cards: TarotReadingCard[], topic: TarotReadingTopi
   const topicLabel = getTopicLabel(topic);
   const cardNames = cards.map((card) => `${card.name}（${card.position === "upright" ? "正位" : "逆位"}）`).join("、");
   const questionLine = question ? `你問的是：「${question}」` : "你把問題留在心裡，宇宙仍然把焦點放在你此刻最在意的關係。";
+  const ambiguousLine =
+    topic === "ambiguous"
+      ? "這次訊息特別落在曖昧裡的試探、忽冷忽熱與主動界線：你可以觀察對方是否願意穩定靠近，而不是只在氣氛剛好的時候丟出一點甜。"
+      : "";
 
   return `宇宙深夜訊息
 
 更長更細的整體解讀
 ${questionLine}
 這組牌面 ${cardNames} 指向一個溫柔但需要誠實面對的狀態：你很在意答案，但真正困住你的，可能不是對方一句話，而是你一直在猜測裡消耗自己。${topicLabel}的主題裡，牌面提醒你把注意力放回「對方是否用行動讓你安心」。
+${ambiguousLine}
 
 感情專向分析
 你現在需要的不是用力證明自己值得被愛，而是看見這段關係有沒有讓你變得更穩定。若互動忽冷忽熱，先不要急著把所有責任攬到自己身上。
@@ -137,11 +152,8 @@ ${questionLine}
 }
 
 function buildPremiumPrompt(cards: TarotReadingCard[], topic: TarotReadingTopic, question: string) {
-  const topicLabel = {
-    love: "感情",
-    career: "工作",
-    general: "生活與心情"
-  }[topic];
+  const topicLabel = getTopicLabel(topic);
+  const topicGuidance = getTopicGuidance(topic);
 
   const spreadLabels = getSpreadLabels();
   const cardText = cards
@@ -161,6 +173,7 @@ ${cardText}
 ${questionText}
 
 請使用繁體中文，語氣像深夜裡溫柔的朋友陪伴。偏感情與情緒陪伴，避免恐嚇、絕對化預言、過度玄學，也不要使用醫療、法律、投資保證語氣。
+${topicGuidance}
 如果牌卡有牌位，請在「每張牌解析」中明確結合牌位解讀，不要只單純解釋牌義。
 
 請用以下固定段落標題輸出：
