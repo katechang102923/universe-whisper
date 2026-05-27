@@ -1,4 +1,4 @@
-import { tarotCards, type TarotCard } from "@/data/tarotCards";
+import { tarotCards, type TarotCard, type TarotTopicKey } from "@/data/tarotCards";
 
 export type TarotOrientation = "upright" | "reversed";
 export type TarotTopic = "愛情" | "工作" | "生活";
@@ -12,21 +12,25 @@ export type DrawnTarotCard = TarotCard & {
 
 const positions: DrawnTarotCard["position"][] = ["過去", "現在", "未來"];
 
-function getTopicMessage(card: TarotCard, topic: TarotTopic) {
+function getTopicKey(topic: TarotTopic): TarotTopicKey {
   if (topic === "工作") {
-    return card.career;
+    return "work";
   }
 
   if (topic === "生活") {
-    return card.advice;
+    return "life";
   }
 
-  return card.love;
+  return "love";
+}
+
+function getTopicMessage(card: TarotCard, topic: TarotTopic, orientation: TarotOrientation) {
+  return card.meanings[getTopicKey(topic)][orientation];
 }
 
 function createCosmicMessage(card: TarotCard, orientation: TarotOrientation, topic: TarotTopic) {
   const baseReading = orientation === "upright" ? card.uprightMeaning : card.reversedMeaning;
-  return `${baseReading} ${getTopicMessage(card, topic)}`;
+  return `${baseReading} ${getTopicMessage(card, topic, orientation)}`;
 }
 
 export function drawCards(count = 1, topic: TarotTopic = "愛情") {

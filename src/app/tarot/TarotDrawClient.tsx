@@ -55,6 +55,12 @@ function toReadingTopic(topic: TarotTopicOption): ReadingTopic {
   return "general";
 }
 
+function toMeaningTopic(topic: TarotTopicOption) {
+  if (topic === "工作") return "work";
+  if (topic === "生活") return "life";
+  return "love";
+}
+
 function toSpreadPosition(position: TarotCardFaceData["position"]): SpreadPosition | undefined {
   if (position === "過去") return "past";
   if (position === "現在") return "present";
@@ -139,11 +145,23 @@ export function TarotDrawClient() {
     payloadTopic = topic,
     payloadQuestion = question
   ) {
+    const meaningTopic = toMeaningTopic(payloadTopic);
+
     return {
       cards: targetCards.map((card) => ({
         name: card.name,
+        nameEn: card.nameEn,
+        nameZh: card.nameZh ?? card.name,
+        suit: card.suit,
         position: card.orientation,
-        spreadPosition: toSpreadPosition(card.position)
+        spreadPosition: toSpreadPosition(card.position),
+        keywords:
+          card.orientation === "reversed"
+            ? card.reversedKeywords ?? card.keywords
+            : card.uprightKeywords ?? card.keywords,
+        baseMeaning: card.orientation === "reversed" ? card.reversedMeaning : card.uprightMeaning,
+        topicMeaning: card.meanings?.[meaningTopic]?.[card.orientation],
+        meaning: card.cosmicMessage
       })),
       topic: toReadingTopic(payloadTopic),
       readingMode,

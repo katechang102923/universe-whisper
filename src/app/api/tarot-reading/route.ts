@@ -18,8 +18,15 @@ type TarotReadingMode = (typeof validReadingModes)[number];
 
 type TarotReadingCard = {
   name: string;
+  nameEn?: string;
+  nameZh?: string;
+  suit?: string;
   position: TarotReadingPosition;
   spreadPosition?: TarotSpreadPosition;
+  keywords?: string[];
+  baseMeaning?: string;
+  topicMeaning?: string;
+  meaning?: string;
 };
 
 function isTopic(value: unknown): value is TarotReadingTopic {
@@ -58,7 +65,18 @@ function normalizeCards(cards: unknown): TarotReadingCard[] | null {
       return null;
     }
 
-    const source = card as { name?: unknown; position?: unknown; spreadPosition?: unknown };
+    const source = card as {
+      name?: unknown;
+      nameEn?: unknown;
+      nameZh?: unknown;
+      suit?: unknown;
+      position?: unknown;
+      spreadPosition?: unknown;
+      keywords?: unknown;
+      baseMeaning?: unknown;
+      topicMeaning?: unknown;
+      meaning?: unknown;
+    };
 
     if (typeof source.name !== "string" || !source.name.trim() || !isPosition(source.position)) {
       return null;
@@ -66,8 +84,17 @@ function normalizeCards(cards: unknown): TarotReadingCard[] | null {
 
     return {
       name: source.name.trim(),
+      nameEn: typeof source.nameEn === "string" ? source.nameEn.trim() : undefined,
+      nameZh: typeof source.nameZh === "string" ? source.nameZh.trim() : undefined,
+      suit: typeof source.suit === "string" ? source.suit.trim() : undefined,
       position: source.position,
-      spreadPosition: isSpreadPosition(source.spreadPosition) ? source.spreadPosition : undefined
+      spreadPosition: isSpreadPosition(source.spreadPosition) ? source.spreadPosition : undefined,
+      keywords: Array.isArray(source.keywords)
+        ? source.keywords.filter((keyword): keyword is string => typeof keyword === "string" && keyword.trim().length > 0)
+        : undefined,
+      baseMeaning: typeof source.baseMeaning === "string" ? source.baseMeaning.trim() : undefined,
+      topicMeaning: typeof source.topicMeaning === "string" ? source.topicMeaning.trim() : undefined,
+      meaning: typeof source.meaning === "string" ? source.meaning.trim() : undefined
     };
   });
 
@@ -102,6 +129,19 @@ function getSpreadLabels() {
     present: "現在：代表提問者目前的狀態與正在面對的事",
     future: "未來：代表接下來可能的走向與提醒"
   } satisfies Record<TarotSpreadPosition, string>;
+}
+
+function formatCardForPrompt(card: TarotReadingCard, index: number, spreadLabels: Record<TarotSpreadPosition, string>) {
+  const orientationLabel = card.position === "upright" ? "正位" : "逆位";
+  const spreadText = card.spreadPosition ? `｜牌位：${spreadLabels[card.spreadPosition]}` : "";
+  const suitText = card.suit ? `｜牌組：${card.suit}` : "";
+  const englishText = card.nameEn ? `｜英文：${card.nameEn}` : "";
+  const keywordsText = card.keywords?.length ? `｜關鍵字：${card.keywords.join("、")}` : "";
+  const baseMeaningText = card.baseMeaning ? `\n   牌面核心：${card.baseMeaning}` : "";
+  const topicMeaningText = card.topicMeaning ? `\n   主題牌義：${card.topicMeaning}` : "";
+  const messageText = card.meaning ? `\n   已抽牌訊息：${card.meaning}` : "";
+
+  return `${index + 1}. ${card.name}（${orientationLabel}）${spreadText}${suitText}${englishText}${keywordsText}${baseMeaningText}${topicMeaningText}${messageText}`;
 }
 
 // ── 免費版（短版，300-600 字）────────────────────────────────────────────
@@ -189,11 +229,7 @@ function buildAdPrompt(cards: TarotReadingCard[], topic: TarotReadingTopic, ques
   const topicGuidance = getTopicGuidance(topic);
   const spreadLabels = getSpreadLabels();
   const cardText = cards
-    .map((card, index) => {
-      const orientationLabel = card.position === "upright" ? "正位" : "逆位";
-      const spreadText = card.spreadPosition ? `｜牌位：${spreadLabels[card.spreadPosition]}` : "";
-      return `${index + 1}. ${card.name}（${orientationLabel}）${spreadText}`;
-    })
+    .map((card, index) => formatCardForPrompt(card, index, spreadLabels))
     .join("\n");
   const questionText = question ? `\n提問者寫下的心事：${question}` : "\n提問者沒有寫下問題，請以此刻的感受陪伴為主。";
 
@@ -206,6 +242,8 @@ ${questionText}
 
 請使用繁體中文，語氣像深夜裡溫柔的朋友陪伴。偏感情與情緒陪伴，不恐嚇、不絕對預言、不使用醫療或投資保證語氣。
 ${topicGuidance}
+
+請把每張牌的牌組、正逆位、關鍵字與牌義真正融入解讀；不要只列牌名。若是三張牌，請把過去、現在、未來串成一條「現在狀態 → 宇宙提醒 → 行動建議」的脈絡。
 
 請用以下固定段落標題輸出，每段約 100-180 字，有具體感、情緒共鳴、不空泛：
 
@@ -313,11 +351,7 @@ function buildPremiumPrompt(cards: TarotReadingCard[], topic: TarotReadingTopic,
 
   const spreadLabels = getSpreadLabels();
   const cardText = cards
-    .map((card, index) => {
-      const orientationLabel = card.position === "upright" ? "正位" : "逆位";
-      const spreadText = card.spreadPosition ? `｜牌位：${spreadLabels[card.spreadPosition]}` : "";
-      return `${index + 1}. ${card.name}（${orientationLabel}）${spreadText}`;
-    })
+    .map((card, index) => formatCardForPrompt(card, index, spreadLabels))
     .join("\n");
   const questionText = question ? `\n提問者寫下的心事：${question}` : "\n提問者沒有寫下問題，請以此刻的感受陪伴為主。";
 
@@ -332,6 +366,8 @@ ${questionText}
 ${topicGuidance}
 
 「對方真正沒說出口的話」（或工作主題的「你一直沒對自己說出口的事」）這個段落是核心亮點，請寫得具體、有畫面感、能讓提問者感覺被深深看見，而不是泛泛的安慰。
+
+請把每張牌的牌組、正逆位、關鍵字與牌義真正融入解讀；不要只列牌名，也不要把小阿爾克那寫得像大阿爾克那。每一張牌都要服務整體故事線。
 
 三張牌必須整合成一條脈絡：
 - 過去：原因 / 背景

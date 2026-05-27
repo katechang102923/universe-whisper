@@ -2,12 +2,21 @@
 
 import Image from "next/image";
 import { useState } from "react";
+import type { TarotCardTopicMeaning, TarotSuit, TarotTopicKey } from "@/data/tarotCards";
 
 export type TarotCardFaceData = {
   id: string;
+  suit?: TarotSuit;
+  nameEn?: string;
+  nameZh?: string;
   name: string;
   image: string;
   keywords: string[];
+  uprightKeywords?: string[];
+  reversedKeywords?: string[];
+  uprightMeaning?: string;
+  reversedMeaning?: string;
+  meanings?: Partial<Record<TarotTopicKey, TarotCardTopicMeaning>>;
   orientation: "upright" | "reversed";
   orientationLabel: "正位" | "逆位";
   position?: "過去" | "現在" | "未來";
