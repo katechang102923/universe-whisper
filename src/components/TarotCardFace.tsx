@@ -100,6 +100,7 @@ export function TarotCardBack({ compact = false }: { compact?: boolean }) {
 export function TarotCardFace({ card, topic }: { card: TarotCardFaceData; topic: string }) {
   const [imageFailed, setImageFailed] = useState(false);
   const isUpright = card.orientation !== "reversed";
+  const isReversed = card.orientation === "reversed";
 
   if (imageFailed || !card.image) {
     return <TarotCardBack />;
@@ -116,7 +117,7 @@ export function TarotCardFace({ card, topic }: { card: TarotCardFaceData; topic:
             height={1440}
             unoptimized
             priority={false}
-            className="h-full w-full object-contain"
+            className={`h-full w-full object-contain transition-transform duration-500 ${isReversed ? "rotate-180" : ""}`}
             sizes="(max-width: 768px) 86vw, 420px"
             onError={() => setImageFailed(true)}
           />

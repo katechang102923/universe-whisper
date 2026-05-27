@@ -68,15 +68,16 @@ export default function Home() {
           {/* ── Right: cat illustration + today's cosmic message ─── */}
           <div className="flex flex-col items-center gap-4">
             {/* Hero cat photo */}
-            <div className="cat-float relative mx-auto w-full max-w-[260px] sm:max-w-[340px]">
+            <div className="cat-float relative mx-auto w-[min(76vw,280px)] sm:w-[360px] lg:w-[430px] xl:w-[460px]">
+              <div className="pointer-events-none absolute inset-[-8%] rounded-full bg-[radial-gradient(circle,rgba(216,189,112,0.22),rgba(109,77,242,0.18)_38%,transparent_68%)] blur-2xl" />
               <Image
                 src="/images/hero/main-cosmic-cat.webp"
                 alt="宇宙占卜貓"
-                width={340}
-                height={440}
+                width={460}
+                height={307}
                 priority
                 style={{ width: "100%", height: "auto" }}
-                className="h-auto w-full object-contain drop-shadow-[0_8px_48px_rgba(109,77,242,0.42)]"
+                className="relative h-auto w-full object-contain drop-shadow-[0_10px_52px_rgba(109,77,242,0.54)] [filter:drop-shadow(0_0_22px_rgba(216,189,112,0.24))]"
               />
             </div>
             {/* Today's cosmic message card */}
