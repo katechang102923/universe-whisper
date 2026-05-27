@@ -432,8 +432,15 @@ export async function prefillAllZodiacs(): Promise<
   Array<{ zodiac: ZodiacSign; success: boolean; fromCache: boolean }>
 > {
   const date = getTaipeiDate();
-  const db = getAdminDb();
   const results: Array<{ zodiac: ZodiacSign; success: boolean; fromCache: boolean }> = [];
+  let db: FirebaseFirestore.Firestore;
+
+  try {
+    db = getAdminDb();
+  } catch (err) {
+    console.error("[dailyFortune] prefill cannot initialize Firebase Admin:", err);
+    return ZODIAC_SIGNS.map((zodiac) => ({ zodiac, success: false, fromCache: false }));
+  }
 
   for (const zodiac of ZODIAC_SIGNS) {
     const slug = ZODIAC_SLUGS[zodiac];

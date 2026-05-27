@@ -26,9 +26,15 @@ export async function GET(request: Request) {
   try {
     const data = await getDailyFortune(zodiac);
     return NextResponse.json(data);
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Daily fortune failed.";
+    console.error("[daily-fortune] failed:", message);
     return NextResponse.json(
-      { error: "宇宙訊號有點微弱，請稍後再試。" },
+      {
+        error: message.startsWith("Missing Firebase Admin") || message.startsWith("Firebase Admin initialization failed")
+          ? message
+          : "宇宙訊號有點微弱，請稍後再試。",
+      },
       { status: 500 }
     );
   }

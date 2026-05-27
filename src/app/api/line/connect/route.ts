@@ -1,6 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
-import { getAdminDb } from "@/lib/firebaseAdmin";
+import { getAdminDb, getFirebaseAdminEnvStatus } from "@/lib/firebaseAdmin";
 import { getSiteUrl, LINE_RESULTS_COLLECTION, pushResultToLine } from "@/lib/lineResults";
 
 type VerifiedLineProfile = {
@@ -104,9 +104,7 @@ export async function POST(request: Request) {
     hasLineChannelId: Boolean(process.env.LINE_CHANNEL_ID || process.env.LINE_LOGIN_CHANNEL_ID),
     hasLineChannelSecret: Boolean(process.env.LINE_CHANNEL_SECRET),
     hasLineChannelAccessToken: Boolean(process.env.LINE_CHANNEL_ACCESS_TOKEN),
-    hasFirebaseProjectId: Boolean(process.env.FIREBASE_PROJECT_ID),
-    hasFirebaseClientEmail: Boolean(process.env.FIREBASE_CLIENT_EMAIL),
-    hasFirebasePrivateKey: Boolean(process.env.FIREBASE_PRIVATE_KEY),
+    ...getFirebaseAdminEnvStatus(),
   };
   console.info("[line/connect] Request", {
     resultId,

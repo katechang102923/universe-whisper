@@ -85,7 +85,13 @@ export async function checkAndIncrementLimit(
   }
 
   const today = getTaipeiDate();
-  const db = getAdminDb();
+  let db: ReturnType<typeof getAdminDb>;
+  try {
+    db = getAdminDb();
+  } catch (error) {
+    console.error("[rate-limit] Firebase Admin unavailable, allowing request:", error);
+    return { allowed: true };
+  }
   const docRef = db.collection("rate_limits").doc(today);
 
   let isAllowed = false;

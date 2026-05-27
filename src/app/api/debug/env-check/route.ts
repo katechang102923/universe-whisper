@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getFirebaseAdminEnvStatus } from "@/lib/firebaseAdmin";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -16,8 +17,6 @@ export async function GET(request: Request) {
     hasLineChannelAccessToken: Boolean(process.env.LINE_CHANNEL_ACCESS_TOKEN),
     hasLineLiffId: Boolean(process.env.LINE_LIFF_ID),
     hasNextPublicLineLiffId: Boolean(process.env.NEXT_PUBLIC_LINE_LIFF_ID),
-    hasFirebaseProjectId: Boolean(process.env.FIREBASE_PROJECT_ID),
-    hasFirebaseClientEmail: Boolean(process.env.FIREBASE_CLIENT_EMAIL),
-    hasFirebasePrivateKey: Boolean(process.env.FIREBASE_PRIVATE_KEY),
+    ...getFirebaseAdminEnvStatus(),
   });
 }

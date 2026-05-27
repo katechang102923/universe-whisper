@@ -7,7 +7,7 @@ import {
   type LineResultCard,
   type LineResultType,
 } from "@/lib/lineResults";
-import { getAdminDb } from "@/lib/firebaseAdmin";
+import { getAdminDb, getFirebaseAdminEnvStatus } from "@/lib/firebaseAdmin";
 
 const validTypes = ["tarot", "daily", "whisper"] as const;
 
@@ -36,11 +36,7 @@ function normalizeCards(cards: unknown): LineResultCard[] {
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
-  const envStatus = {
-    hasFirebaseProjectId: Boolean(process.env.FIREBASE_PROJECT_ID),
-    hasFirebaseClientEmail: Boolean(process.env.FIREBASE_CLIENT_EMAIL),
-    hasFirebasePrivateKey: Boolean(process.env.FIREBASE_PRIVATE_KEY),
-  };
+  const envStatus = getFirebaseAdminEnvStatus();
 
   if (!body || !isResultType(body.type)) {
     return NextResponse.json({ ok: false, error: "缺少有效的結果類型。" }, { status: 400 });
@@ -95,9 +91,12 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ok: false,
-        error: envStatus.hasFirebaseProjectId && envStatus.hasFirebaseClientEmail && envStatus.hasFirebasePrivateKey
-          ? "宇宙訊息暫時存不起來，請稍後再試。"
-          : "Firebase 伺服器環境變數尚未設定完整。",
+        error: errorMessage.startsWith("Missing Firebase Admin")
+          ? errorMessage
+          : errorMessage.startsWith("Firebase Admin initialization failed")
+            ? errorMessage
+            : "宇宙訊息暫時存不起來，請稍後再試。",
+        envStatus,
       },
       { status: 500 },
     );
