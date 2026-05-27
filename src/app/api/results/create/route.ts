@@ -21,16 +21,17 @@ function normalizeCards(cards: unknown): LineResultCard[] {
   return cards.slice(0, 10).map((card) => {
     if (!card || typeof card !== "object") return {};
     const source = card as Record<string, unknown>;
+    const normalized: LineResultCard = {};
 
-    return {
-      name: typeof source.name === "string" ? source.name : undefined,
-      nameEn: typeof source.nameEn === "string" ? source.nameEn : undefined,
-      nameZh: typeof source.nameZh === "string" ? source.nameZh : undefined,
-      suit: typeof source.suit === "string" ? source.suit : undefined,
-      orientation: typeof source.orientation === "string" ? source.orientation : undefined,
-      orientationLabel: typeof source.orientationLabel === "string" ? source.orientationLabel : undefined,
-      position: typeof source.position === "string" ? source.position : undefined,
-    };
+    if (typeof source.name === "string") normalized.name = source.name;
+    if (typeof source.nameEn === "string") normalized.nameEn = source.nameEn;
+    if (typeof source.nameZh === "string") normalized.nameZh = source.nameZh;
+    if (typeof source.suit === "string") normalized.suit = source.suit;
+    if (typeof source.orientation === "string") normalized.orientation = source.orientation;
+    if (typeof source.orientationLabel === "string") normalized.orientationLabel = source.orientationLabel;
+    if (typeof source.position === "string") normalized.position = source.position;
+
+    return normalized;
   });
 }
 
@@ -52,10 +53,12 @@ export async function POST(request: Request) {
   const resultId = crypto.randomUUID();
   const siteUrl = getSiteUrl(request);
   const resultUrl = `${siteUrl}/tarot?result=${encodeURIComponent(resultId)}`;
+  const normalizedCards = normalizeCards(body.cards);
   console.info("[results/create] Request", {
     resultId,
     type: body.type,
     cardCount: Array.isArray(body.cards) ? body.cards.length : 0,
+    normalizedCardCount: normalizedCards.length,
     shortTextLength: shortText.length,
     fullTextLength: fullText.length,
     envStatus,
@@ -70,7 +73,7 @@ export async function POST(request: Request) {
         resultId,
         type: body.type,
         question: typeof body.question === "string" ? body.question.trim().slice(0, 1000) : "",
-        cards: normalizeCards(body.cards),
+        cards: normalizedCards,
         shortText,
         fullText,
         resultUrl,

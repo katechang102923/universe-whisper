@@ -152,8 +152,16 @@ export async function POST(request: Request) {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "LINE connect failed.";
     console.error("[line/connect] Failed:", { resultId, errorMessage, envStatus });
+    console.error("[line/connect] Failed raw error:", error);
     return NextResponse.json(
-      { ok: false, pushStatus: "failed", error: errorMessage.includes("LINE push failed") ? "LINE 推送失敗，請確認你已加入宇宙偷偷話 LINE 好友後再試一次。" : "宇宙訊號有點微弱，請稍後再試一次。" },
+      {
+        ok: false,
+        pushStatus: "failed",
+        error: errorMessage,
+        userMessage: errorMessage.includes("LINE push failed")
+          ? "LINE 推送失敗，請確認你已加入宇宙偷偷話 LINE 好友後再試一次。"
+          : errorMessage,
+      },
       { status: 500 },
     );
   }

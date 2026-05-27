@@ -426,6 +426,12 @@ export function TarotDrawClient() {
   async function connectLineWithResult() {
     if (!cards.length || lineDeliveryStatus === "sending") return;
 
+    if (freeReadingStatus === "error" && !freeReading) {
+      setLineDeliveryStatus("softPause");
+      setLineDeliveryMessage(freeReadingNotice || "今晚免費抽牌已經休息了，明天再來找宇宙說說話。");
+      return;
+    }
+
     try {
       console.info("[tarot-line] LINE CTA clicked", { cardCount: cards.length, topic, hasFreeReading: Boolean(freeReading), hasAdReading: Boolean(adReading) });
       setLineDeliveryStatus("sending");
