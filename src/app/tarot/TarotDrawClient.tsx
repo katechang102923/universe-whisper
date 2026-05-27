@@ -12,10 +12,10 @@ type AdReadingStatus = "idle" | "watching" | "loading" | "done" | "error";
 type ReadingTopic = "love" | "career" | "ambiguous" | "general";
 type SpreadPosition = "past" | "present" | "future";
 
-const FREE_DRAW_STORAGE_KEY = "cosmic_free_limit";
 const LINE_PENDING_ACTION_KEY = "cosmic_pending_line_action";
-const DAILY_FREE_DRAWS = 3;
 const AD_COUNTDOWN_SECONDS = 15;
+/** 每個瀏覽器的匿名識別碼，用於伺服器端限流 */
+const ANON_ID_STORAGE_KEY = "cosmic_anon_id";
 
 const modes = [
   { key: "single_tarot", label: "單張牌", description: "接收此刻最靠近你的訊息" },
@@ -24,7 +24,6 @@ const modes = [
 
 const topics = ["感情", "工作", "曖昧"] as const;
 type TarotTopicOption = (typeof topics)[number];
-type FreeDrawRecord = { date: string; count: number };
 type PendingLineAction = {
   action: "send";
   cards: TarotCardFaceData[];
@@ -63,30 +62,17 @@ function toSpreadPosition(position: TarotCardFaceData["position"]): SpreadPositi
   return undefined;
 }
 
-function getLocalDateKey() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function readFreeDrawRecord(): FreeDrawRecord {
-  const today = getLocalDateKey();
+/** 取得（或初次建立）該瀏覽器的匿名識別碼，存入 localStorage 長期保存 */
+function getOrCreateAnonId(): string {
   try {
-    const rawRecord = window.localStorage.getItem(FREE_DRAW_STORAGE_KEY);
-    const parsed = rawRecord ? (JSON.parse(rawRecord) as Partial<FreeDrawRecord>) : null;
-    if (!parsed || parsed.date !== today || typeof parsed.count !== "number") {
-      return { date: today, count: 0 };
-    }
-    return { date: today, count: Math.max(0, Math.min(parsed.count, DAILY_FREE_DRAWS)) };
+    const existing = window.localStorage.getItem(ANON_ID_STORAGE_KEY);
+    if (existing && existing.length > 0) return existing;
+    const newId = crypto.randomUUID();
+    window.localStorage.setItem(ANON_ID_STORAGE_KEY, newId);
+    return newId;
   } catch {
-    return { date: today, count: 0 };
+    return "anonymous";
   }
-}
-
-function writeFreeDrawRecord(record: FreeDrawRecord) {
-  window.localStorage.setItem(FREE_DRAW_STORAGE_KEY, JSON.stringify(record));
 }
 
 export function TarotDrawClient() {
@@ -102,7 +88,6 @@ export function TarotDrawClient() {
   const [freeReadingStatus, setFreeReadingStatus] = useState<FreeReadingStatus>("idle");
   const [freeReading, setFreeReading] = useState("");
   const [freeReadingNotice, setFreeReadingNotice] = useState("");
-  const [todayFreeDrawCount, setTodayFreeDrawCount] = useState(0);
 
   // 廣告解鎖版
   const [adReadingStatus, setAdReadingStatus] = useState<AdReadingStatus>("idle");
@@ -119,14 +104,8 @@ export function TarotDrawClient() {
   const visibleBacks = useMemo(() => Array.from({ length: cardCount }), [cardCount]);
   const canShowReadings = status === "revealed" && cards.length > 0;
   const currentSpreadGroup = spreadQuestionGroups[topic];
-  const remainingFreeDraws = Math.max(DAILY_FREE_DRAWS - todayFreeDrawCount, 0);
 
   useEffect(() => {
-    const freeDrawRecord = readFreeDrawRecord();
-    writeFreeDrawRecord(freeDrawRecord);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setTodayFreeDrawCount(freeDrawRecord.count);
-
     const params = new URL(window.location.href).searchParams;
     if (params.get("lineAction") === "send") {
       void resumeLineSend();
@@ -168,7 +147,9 @@ export function TarotDrawClient() {
       })),
       topic: toReadingTopic(payloadTopic),
       readingMode,
-      question: payloadQuestion.trim() || undefined
+      question: payloadQuestion.trim() || undefined,
+      // 匿名識別碼，供伺服器端限流使用
+      anonymousId: getOrCreateAnonId()
     };
   }
 
@@ -185,8 +166,15 @@ export function TarotDrawClient() {
       });
       const data = await response.json();
 
+      if (response.status === 429) {
+        setFreeReadingNotice(
+          data.error ?? "今天的免費宇宙訊息已用完，加入 LINE 可獲得每日 3 次免費訊息。"
+        );
+        setFreeReadingStatus("error");
+        return;
+      }
       if (!response.ok) {
-        setFreeReadingNotice(data.error ?? "宇宙今晚想先休息一下，明天再來找我好嗎？");
+        setFreeReadingNotice(data.error ?? "宇宙訊號有點微弱，請稍後再試一次。");
         setFreeReadingStatus("error");
         return;
       }
@@ -200,14 +188,6 @@ export function TarotDrawClient() {
 
   async function draw() {
     if (status === "drawing") return;
-
-    const freeDrawRecord = readFreeDrawRecord();
-    setTodayFreeDrawCount(freeDrawRecord.count);
-
-    if (freeDrawRecord.count >= DAILY_FREE_DRAWS) {
-      setError("宇宙今晚想先休息一下，明天再來找我好嗎？");
-      return;
-    }
 
     setStatus("drawing");
     setError("");
@@ -227,10 +207,6 @@ export function TarotDrawClient() {
         setError(data.error ?? "宇宙訊號有點微弱，請稍後再試。");
         return;
       }
-
-      const nextFreeDrawRecord = { date: freeDrawRecord.date, count: Math.min(freeDrawRecord.count + 1, DAILY_FREE_DRAWS) };
-      writeFreeDrawRecord(nextFreeDrawRecord);
-      setTodayFreeDrawCount(nextFreeDrawRecord.count);
 
       window.setTimeout(() => {
         const revealedCards = data.cards ?? [];
@@ -480,10 +456,10 @@ export function TarotDrawClient() {
         disabled={status === "drawing"}
         className="mt-5 w-full rounded-full bg-moon px-6 py-3 font-medium text-midnight transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
-        {status === "drawing" ? "星光正在流動..." : remainingFreeDraws > 0 ? "開始抽牌" : "明天再抽一張"}
+        {status === "drawing" ? "星光正在流動..." : "開始抽牌"}
       </button>
       <p className="mt-3 text-sm leading-6 text-moon/58">
-        {remainingFreeDraws > 0 ? `今晚還有 ${remainingFreeDraws} 次免費抽牌的星光。` : "宇宙今晚想先休息一下，明天再來找我好嗎？"}
+        每日免費抽牌，加入 LINE 可獲得每日 3 次完整解讀額度。
       </p>
 
       {error ? <p className="mt-4 rounded-2xl border border-lavender/30 bg-nebula/20 p-4 text-sm text-moon">{error}</p> : null}

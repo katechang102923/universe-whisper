@@ -1,5 +1,7 @@
 import OpenAI from "openai";
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { checkAndIncrementLimit, type RateLimitFeature } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
 
@@ -8,8 +10,6 @@ const validTopics = ["love", "career", "ambiguous", "general"] as const;
 const validPositions = ["upright", "reversed"] as const;
 const validSpreadPositions = ["past", "present", "future"] as const;
 const validReadingModes = ["free", "ad", "premium"] as const;
-const DAILY_FREE_REQUESTS = 3;
-const freeRequestRecords = new Map<string, { date: string; count: number }>();
 
 type TarotReadingTopic = (typeof validTopics)[number];
 type TarotReadingPosition = (typeof validPositions)[number];
@@ -38,31 +38,14 @@ function isReadingMode(value: unknown): value is TarotReadingMode {
   return typeof value === "string" && validReadingModes.includes(value as TarotReadingMode);
 }
 
-function getServerDateKey() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function getRequestIp(request: Request) {
+function getRequestIp(request: Request): string {
   const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return forwardedFor || request.headers.get("x-real-ip") || request.headers.get("cf-connecting-ip") || "unknown";
-}
-
-function canReceiveFreeReading(request: Request) {
-  const ip = getRequestIp(request);
-  const today = getServerDateKey();
-  const currentRecord = freeRequestRecords.get(ip);
-
-  if (!currentRecord || currentRecord.date !== today) {
-    freeRequestRecords.set(ip, { date: today, count: 1 });
-    return true;
-  }
-
-  if (currentRecord.count >= DAILY_FREE_REQUESTS) {
-    return false;
-  }
-
-  freeRequestRecords.set(ip, { date: today, count: currentRecord.count + 1 });
-  return true;
+  return (
+    forwardedFor ||
+    request.headers.get("x-real-ip") ||
+    request.headers.get("cf-connecting-ip") ||
+    "unknown"
+  );
 }
 
 function normalizeCards(cards: unknown): TarotReadingCard[] | null {
@@ -370,11 +353,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "請提供有效的解讀資料。" }, { status: 400 });
   }
 
-  const source = body as { cards?: unknown; topic?: unknown; question?: unknown; readingMode?: unknown };
+  const source = body as {
+    cards?: unknown;
+    topic?: unknown;
+    question?: unknown;
+    readingMode?: unknown;
+    anonymousId?: unknown;
+  };
   const cards = normalizeCards(source.cards);
   const topic = isTopic(source.topic) ? source.topic : null;
   const question = typeof source.question === "string" ? source.question.trim().slice(0, 600) : "";
   const readingMode = isReadingMode(source.readingMode) ? source.readingMode : "premium";
+  const anonymousId =
+    typeof source.anonymousId === "string" ? source.anonymousId.slice(0, 128) : null;
 
   if (!cards) {
     return NextResponse.json({ error: "請提供 1 到 3 張有效牌卡。" }, { status: 400 });
@@ -384,15 +375,31 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "請提供有效的解讀主題。" }, { status: 400 });
   }
 
-  // 免費版（有每日次數限制）
+  // ── 免費版（Firestore 限流，AI API 呼叫前檢查）────────────────────────────
   if (readingMode === "free") {
-    if (!canReceiveFreeReading(request)) {
-      return NextResponse.json({ error: "宇宙今晚想先休息一下，明天再來找我好嗎？" }, { status: 429 });
+    const cookieStore = await cookies();
+    const lineUserId = cookieStore.get("line_user_id")?.value ?? null;
+    const ip = getRequestIp(request);
+    const feature: RateLimitFeature = cards.length === 1 ? "single_tarot" : "three_card";
+
+    try {
+      const limitResult = await checkAndIncrementLimit({
+        ip,
+        anonymousId,
+        lineUserId,
+        feature,
+      });
+      if (!limitResult.allowed) {
+        return NextResponse.json({ error: limitResult.message }, { status: 429 });
+      }
+    } catch (err) {
+      // Firestore 不可用時 fail-open（不阻擋請求，記錄 log）
+      console.error("[rate-limit] checkAndIncrementLimit failed:", err);
     }
 
     return NextResponse.json({
       readingMode,
-      reading: buildFreeReading(cards, topic, question)
+      reading: buildFreeReading(cards, topic, question),
     });
   }
 
