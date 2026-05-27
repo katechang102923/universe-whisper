@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { generateDailyFortune, type DailyFortuneData } from "@/lib/dailyFortuneGenerator";
+import { generateDailyFortune } from "@/lib/dailyFortuneGenerator";
 
 // ── 型別與常數 ────────────────────────────────────────────────────────────
 
@@ -55,27 +55,23 @@ function Stars({ count }: { count: number }) {
 
 export function DailyFortuneClient() {
   const [selectedZodiac, setSelectedZodiac] = useState<ZodiacSign>("巨蟹座");
-  const [fortune, setFortune] = useState<DailyFortuneData | null>(null);
 
   useEffect(() => {
     const saved = window.localStorage.getItem("universe-whisper-daily-zodiac");
     if (saved && zodiacSigns.includes(saved as ZodiacSign)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedZodiac(saved as ZodiacSign);
     }
   }, []);
 
-  useEffect(() => {
-    setFortune(generateDailyFortune(selectedZodiac));
-  }, [selectedZodiac]);
-
+  // Derive fortune synchronously – no separate state needed.
+  const fortune = useMemo(() => generateDailyFortune(selectedZodiac), [selectedZodiac]);
   const greeting = useMemo(() => zodiacGreetings[selectedZodiac], [selectedZodiac]);
 
   function selectZodiac(sign: ZodiacSign) {
     setSelectedZodiac(sign);
     window.localStorage.setItem("universe-whisper-daily-zodiac", sign);
   }
-
-  if (!fortune) return null;
 
   return (
     <>

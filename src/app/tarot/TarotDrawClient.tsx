@@ -124,6 +124,7 @@ export function TarotDrawClient() {
   useEffect(() => {
     const freeDrawRecord = readFreeDrawRecord();
     writeFreeDrawRecord(freeDrawRecord);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTodayFreeDrawCount(freeDrawRecord.count);
 
     const params = new URL(window.location.href).searchParams;
