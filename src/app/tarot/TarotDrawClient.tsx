@@ -3,16 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TarotCardBack, TarotCardFace, type TarotCardFaceData } from "@/components/TarotCardFace";
 
-// TODO: replace with official LINE OA add friend URL if changed
-const LINE_ADD_FRIEND_URL = process.env.NEXT_PUBLIC_LINE_ADD_FRIEND_URL ?? "https://line.me/R/ti/p/@453gfmok";
-
 type DrawStatus = "idle" | "drawing" | "revealed";
 type FreeReadingStatus = "idle" | "loading" | "done" | "error";
 type AdReadingStatus = "idle" | "watching" | "loading" | "done" | "error";
 type ReadingTopic = "love" | "career" | "ambiguous" | "general";
 type SpreadPosition = "past" | "present" | "future";
 
-const LINE_PENDING_ACTION_KEY = "cosmic_pending_line_action";
 const AD_COUNTDOWN_SECONDS = 15;
 /** 每個瀏覽器的匿名識別碼，用於伺服器端限流 */
 const ANON_ID_STORAGE_KEY = "cosmic_anon_id";
@@ -24,14 +20,6 @@ const modes = [
 
 const topics = ["愛情", "工作", "生活"] as const;
 type TarotTopicOption = (typeof topics)[number];
-type PendingLineAction = {
-  action: "send";
-  cards: TarotCardFaceData[];
-  topic: TarotTopicOption;
-  question: string;
-  freeReading: string;
-  adReading: string;
-};
 
 const spreadQuestionGroups = {
   愛情: {
@@ -183,8 +171,9 @@ export function TarotDrawClient() {
   const adTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // LINE
-  const [lineDeliveryStatus, setLineDeliveryStatus] = useState<"idle" | "sending" | "done" | "needsLogin" | "softPause">("idle");
+  const [lineDeliveryStatus, setLineDeliveryStatus] = useState<"idle" | "sending" | "done" | "softPause">("idle");
   const [lineDeliveryMessage, setLineDeliveryMessage] = useState("");
+  const [lineResultId, setLineResultId] = useState("");
 
   const cardCount = mode === "three_card" ? 3 : 1;
   const visibleBacks = useMemo(() => Array.from({ length: cardCount }), [cardCount]);
@@ -192,15 +181,9 @@ export function TarotDrawClient() {
   const currentSpreadGroup = spreadQuestionGroups[topic];
 
   useEffect(() => {
-    const params = new URL(window.location.href).searchParams;
-    if (params.get("lineAction") === "send") {
-      void resumeLineSend();
-    }
-
     return () => {
       if (adTimerRef.current) clearInterval(adTimerRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function resetReading() {
@@ -217,6 +200,7 @@ export function TarotDrawClient() {
     setAdCopied(false);
     setLineDeliveryStatus("idle");
     setLineDeliveryMessage("");
+    setLineResultId("");
   }
 
   function buildReadingPayload(
@@ -373,84 +357,75 @@ export function TarotDrawClient() {
 
   // ── LINE ──────────────────────────────────────────────────────────────────
 
-  function createPendingLineSend(): PendingLineAction {
-    return { action: "send", cards, topic, question, freeReading, adReading };
+  function getFallbackShortText(targetCards = cards) {
+    return (
+      freeReading ||
+      targetCards
+        .map((card) => `${card.position ? `${card.position}｜` : ""}${card.name}：${card.cosmicMessage}`)
+        .join("\n\n")
+    );
   }
 
-  async function hasLineSession() {
-    const response = await fetch("/api/line/me");
-    const data = await response.json();
-    return Boolean(data.loggedIn);
-  }
+  async function ensureFullReadingForLine() {
+    if (adReading.trim()) return adReading.trim();
 
-  async function resumeLineSend() {
-    const rawPending = window.localStorage.getItem(LINE_PENDING_ACTION_KEY);
-    if (!rawPending) return;
+    setLineDeliveryMessage("宇宙正在整理完整版訊息，等等就送去 LINE...");
 
-    const pending = JSON.parse(rawPending) as PendingLineAction;
-    if (!pending.cards?.length || pending.action !== "send" || !topics.includes(pending.topic)) {
-      window.localStorage.removeItem(LINE_PENDING_ACTION_KEY);
-      return;
+    const response = await fetch("/api/tarot-reading", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildReadingPayload(cards, "premium")),
+    });
+    const data = (await response.json().catch(() => ({}))) as { reading?: string; error?: string };
+
+    if (!response.ok || !data.reading) {
+      throw new Error(data.error || "完整訊息暫時沒有成形。");
     }
 
-    setTopic(pending.topic);
-    setQuestion(pending.question);
-    setCards(pending.cards);
-    setMode(pending.cards.length === 3 ? "three_card" : "single_tarot");
-    setStatus("revealed");
-    setFreeReading(pending.freeReading);
-    setFreeReadingStatus(pending.freeReading ? "done" : "idle");
-    setAdReading(pending.adReading);
-    setAdReadingStatus(pending.adReading ? "done" : "idle");
-
-    await sendLineMessage(pending);
+    setAdReading(data.reading);
+    return data.reading;
   }
 
-  async function sendLineMessage(pending = createPendingLineSend()) {
-    if (!pending.cards.length || lineDeliveryStatus === "sending") return;
+  async function createLineResult(fullText: string) {
+    if (lineResultId) return lineResultId;
 
-    if (!(await hasLineSession())) {
-      window.localStorage.setItem(LINE_PENDING_ACTION_KEY, JSON.stringify(pending));
-      setLineDeliveryStatus("needsLogin");
-      setLineDeliveryMessage("先讓宇宙在 LINE 認得你，回來後我會接著把訊息送過去。");
-      window.location.href = `/api/line/login/start?returnTo=${encodeURIComponent("/tarot?lineAction=send")}`;
-      return;
-    }
-
-    setLineDeliveryStatus("sending");
-    setLineDeliveryMessage("正在把今晚的訊息收進 LINE 裡…");
-
-    const response = await fetch("/api/line/send-tarot", {
+    const response = await fetch("/api/results/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        cards: pending.cards,
-        topic: pending.topic,
-        question: pending.question,
-        freeReading: pending.freeReading,
-        premiumReading: pending.adReading,
-        resultUrl: `${window.location.origin}/tarot`
-      })
+        type: "tarot",
+        question,
+        cards,
+        shortText: getFallbackShortText(),
+        fullText,
+      }),
     });
-    const data = await response.json();
+    const data = (await response.json().catch(() => ({}))) as { ok?: boolean; resultId?: string; error?: string };
 
-    if (response.status === 401 && data.loginRequired) {
-      window.localStorage.setItem(LINE_PENDING_ACTION_KEY, JSON.stringify(pending));
-      setLineDeliveryStatus("needsLogin");
-      setLineDeliveryMessage("先讓宇宙在 LINE 認得你，回來後我會接著把訊息送過去。");
-      window.location.href = data.loginUrl;
-      return;
+    if (!response.ok || !data.ok || !data.resultId) {
+      throw new Error(data.error || "宇宙訊息暫時存不起來。");
     }
 
-    if (!response.ok) {
+    setLineResultId(data.resultId);
+    return data.resultId;
+  }
+
+  async function connectLineWithResult() {
+    if (!cards.length || lineDeliveryStatus === "sending") return;
+
+    try {
+      setLineDeliveryStatus("sending");
+      setLineDeliveryMessage("正在把今晚的訊息收好，準備送往 LINE...");
+
+      const fullText = await ensureFullReadingForLine();
+      const resultId = await createLineResult(fullText);
+
+      window.location.href = `/line/connect?resultId=${encodeURIComponent(resultId)}`;
+    } catch (error) {
+      console.error("[tarot] Failed to prepare LINE result:", error);
       setLineDeliveryStatus("softPause");
-      setLineDeliveryMessage("今晚的訊息已經收好，只是 LINE 那邊暫時有點安靜，等等再試一次。");
-      return;
+      setLineDeliveryMessage("今晚的訊息已經在路上，只是宇宙訊號有點微弱，等等再試一次。");
     }
-
-    window.localStorage.removeItem(LINE_PENDING_ACTION_KEY);
-    setLineDeliveryStatus("done");
-    setLineDeliveryMessage(data.deliveryStatus === "sent" ? "已把今晚的宇宙訊息送到 LINE。" : "已完成測試送出流程，正式憑證接上後就會送到 LINE。");
   }
 
   function selectSpreadQuestion(spreadQuestion: string) {
@@ -612,74 +587,7 @@ export function TarotDrawClient() {
             </div>
           </div>
 
-          {/* ── 2. 廣告解鎖版 ───────────────────────────────────────── */}
-          {adReadingStatus === "idle" ? (
-            <div className="cosmic-reading-card rounded-[1.75rem] border border-moon/24 bg-midnight/54 p-5 shadow-glow sm:p-7">
-              <p className="text-sm tracking-[0.22em] text-moon/60">完整訊息・星光解鎖</p>
-              <h3 className="mt-2 text-2xl font-semibold text-moon">宇宙還有更多想對你說</h3>
-              <ul className="mx-auto mt-4 max-w-xs space-y-2 text-left text-sm leading-7 text-moon/64">
-                <li>✦ 情緒分析 — 你此刻真正的感受</li>
-                <li>✦ 關係分析 — 這段{topic}裡正在發生什麼</li>
-                <li>✦ 七日走向 — 接下來 7 天的能量提醒</li>
-                <li>✦ 深夜訊息 — 一句只對你說的話</li>
-              </ul>
-              <button
-                type="button"
-                onClick={watchAdAndUnlock}
-                className="mt-6 w-full rounded-full border border-moon/40 bg-moon px-6 py-4 text-base font-semibold text-midnight shadow-glow transition hover:bg-white sm:w-auto sm:min-w-[268px]"
-              >
-                觀看星光 15 秒，解鎖完整版
-              </button>
-              <p className="mt-3 text-xs text-moon/44">免費解鎖，無需付費</p>
-            </div>
-          ) : null}
-
-          {adReadingStatus === "watching" ? (
-            <div className="cosmic-reading-card rounded-[1.75rem] border border-moon/30 bg-midnight/58 p-8 text-center shadow-glow">
-              <div className="mx-auto moon-glow h-20 w-20 rounded-full animate-pulse" />
-              <p className="mt-5 text-lg font-medium text-moon">星光流動中…</p>
-              <p className="mt-3 tabular-nums text-6xl font-bold text-moon">{adCountdown}</p>
-              <p className="mt-3 text-sm text-moon/58">秒後解鎖完整訊息</p>
-            </div>
-          ) : null}
-
-          {adReadingStatus === "loading" ? (
-            <div className="cosmic-reading-card rounded-3xl border border-white/10 bg-white/8 p-5 text-center shadow-glow">
-              <div className="mx-auto flex w-fit gap-2">
-                <span className="cosmic-reading-dot" />
-                <span className="cosmic-reading-dot animation-delay-150" />
-                <span className="cosmic-reading-dot animation-delay-300" />
-              </div>
-              <p className="mt-4 text-base text-moon">宇宙正在整理完整訊息…</p>
-            </div>
-          ) : null}
-
-          {adReadingStatus === "error" ? (
-            <p className="rounded-2xl border border-lavender/30 bg-nebula/20 p-4 text-sm leading-6 text-moon">宇宙訊號有點微弱，請稍後再試一次。</p>
-          ) : null}
-
-          {adReadingStatus === "done" && adReading ? (
-            <div className="cosmic-reading-card rounded-[1.75rem] border border-moon/24 bg-midnight/58 p-4 shadow-glow sm:p-6">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-sm tracking-[0.22em] text-moon/60">完整訊息・已解鎖</p>
-                  <h3 className="mt-2 text-2xl font-semibold text-moon">宇宙完整訊息</h3>
-                </div>
-                <button
-                  type="button"
-                  onClick={copyAdReading}
-                  className="rounded-full border border-white/14 px-4 py-2 text-sm text-moon transition hover:border-moon/50 hover:bg-white/10"
-                >
-                  {adCopied ? "已複製" : "複製內容"}
-                </button>
-              </div>
-              <div className="mt-4 max-h-[620px] overflow-y-auto rounded-2xl bg-white/6 p-3 sm:p-4">
-                <ReadingContent text={adReading} />
-              </div>
-            </div>
-          ) : null}
-
-          {/* ── 3. LINE CTA：加入 LINE 看完整結果 ────────────────────── */}
+          {/* ── 2. LINE CTA：加入 LINE 看完整結果 ────────────────────── */}
           <div
             className="cosmic-reading-card rounded-[1.75rem] border p-5 shadow-glow sm:p-7"
             style={{
@@ -703,15 +611,15 @@ export function TarotDrawClient() {
               <li>✦ 每日宇宙提醒推播</li>
             </ul>
 
-            <a
-              href={LINE_ADD_FRIEND_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-6 block w-full rounded-full px-6 py-4 text-center text-base font-semibold text-white transition hover:opacity-90 active:scale-95 sm:inline-block sm:w-auto sm:min-w-[268px]"
+            <button
+              type="button"
+              onClick={() => void connectLineWithResult()}
+              disabled={lineDeliveryStatus === "sending"}
+              className="mt-6 block w-full rounded-full px-6 py-4 text-center text-base font-semibold text-white transition hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-70 sm:inline-block sm:w-auto sm:min-w-[268px]"
               style={{ background: "#06C755", boxShadow: "0 0 32px rgba(6,199,85,0.28)" }}
             >
-              加入 LINE 看完整結果
-            </a>
+              {lineDeliveryStatus === "sending" ? "正在準備 LINE 訊息…" : "加入 LINE 看完整結果"}
+            </button>
           </div>
 
           {/* ── LINE 傳送 ─────────────────────────────────────────────── */}
@@ -720,7 +628,7 @@ export function TarotDrawClient() {
             <p className="mx-auto mt-3 max-w-xl text-base leading-8 text-moon/72">把牌面和核心提醒送到 LINE，想回來慢慢看時就不怕找不到。</p>
             <button
               type="button"
-              onClick={() => void sendLineMessage()}
+              onClick={() => void connectLineWithResult()}
               disabled={lineDeliveryStatus === "sending"}
               className="mt-5 w-full rounded-full border border-lavender/40 bg-lavender px-6 py-4 text-base font-semibold text-midnight shadow-glow transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:min-w-[260px]"
             >
