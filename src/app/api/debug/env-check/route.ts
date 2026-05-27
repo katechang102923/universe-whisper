@@ -12,9 +12,10 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.json({
-    hasLineChannelId: Boolean(process.env.LINE_CHANNEL_ID || process.env.LINE_LOGIN_CHANNEL_ID),
-    hasLineChannelSecret: Boolean(process.env.LINE_CHANNEL_SECRET),
+    hasLineLoginChannelId: Boolean(process.env.LINE_LOGIN_CHANNEL_ID),
+    hasLineLoginChannelSecret: Boolean(process.env.LINE_LOGIN_CHANNEL_SECRET),
     hasLineChannelAccessToken: Boolean(process.env.LINE_CHANNEL_ACCESS_TOKEN),
+    hasLineChannelSecret: Boolean(process.env.LINE_CHANNEL_SECRET),
     hasLineLiffId: Boolean(process.env.LINE_LIFF_ID),
     hasNextPublicLineLiffId: Boolean(process.env.NEXT_PUBLIC_LINE_LIFF_ID),
     ...getFirebaseAdminEnvStatus(),

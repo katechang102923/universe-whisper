@@ -9,15 +9,26 @@ type VerifiedLineProfile = {
   pictureUrl?: string;
 };
 
-async function verifyIdToken(idToken: string): Promise<VerifiedLineProfile> {
-  const channelId = process.env.LINE_CHANNEL_ID || process.env.LINE_LOGIN_CHANNEL_ID;
-
-  if (!channelId) {
-    console.error("[line/connect] Missing LINE_CHANNEL_ID.");
-    throw new Error("LINE_CHANNEL_ID is not configured.");
+function maskClientId(value: string) {
+  if (value.length <= 6) {
+    return `${value.slice(0, 2)}***`;
   }
 
-  console.info("[line/connect] Verifying ID token", { hasLineChannelId: Boolean(process.env.LINE_CHANNEL_ID), hasFallbackLoginChannelId: Boolean(process.env.LINE_LOGIN_CHANNEL_ID) });
+  return `${value.slice(0, 4)}***${value.slice(-4)}`;
+}
+
+async function verifyIdToken(idToken: string): Promise<VerifiedLineProfile> {
+  const channelId = process.env.LINE_LOGIN_CHANNEL_ID;
+
+  if (!channelId) {
+    console.error("[line/connect] Missing LINE_LOGIN_CHANNEL_ID.");
+    throw new Error("LINE_LOGIN_CHANNEL_ID is not configured.");
+  }
+
+  console.info("[line/connect] Verifying ID token", {
+    verifyClientId: maskClientId(channelId),
+    hasLineLoginChannelId: Boolean(process.env.LINE_LOGIN_CHANNEL_ID),
+  });
   const response = await fetch("https://api.line.me/oauth2/v2.1/verify", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -101,8 +112,8 @@ export async function POST(request: Request) {
   const idToken = typeof body?.idToken === "string" ? body.idToken.trim() : "";
   const accessToken = typeof body?.accessToken === "string" ? body.accessToken.trim() : "";
   const envStatus = {
-    hasLineChannelId: Boolean(process.env.LINE_CHANNEL_ID || process.env.LINE_LOGIN_CHANNEL_ID),
-    hasLineChannelSecret: Boolean(process.env.LINE_CHANNEL_SECRET),
+    hasLineLoginChannelId: Boolean(process.env.LINE_LOGIN_CHANNEL_ID),
+    hasLineLoginChannelSecret: Boolean(process.env.LINE_LOGIN_CHANNEL_SECRET),
     hasLineChannelAccessToken: Boolean(process.env.LINE_CHANNEL_ACCESS_TOKEN),
     ...getFirebaseAdminEnvStatus(),
   };
