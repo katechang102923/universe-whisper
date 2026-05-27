@@ -116,7 +116,7 @@ export function TarotCardFace({ card, topic }: { card: TarotCardFaceData; topic:
             height={1440}
             unoptimized
             priority={false}
-            className="h-full w-full object-cover"
+            className="h-full w-full object-contain"
             sizes="(max-width: 768px) 86vw, 420px"
             onError={() => setImageFailed(true)}
           />
@@ -139,7 +139,7 @@ export function TarotCardFace({ card, topic }: { card: TarotCardFaceData; topic:
           </span>
         </div>
         <p className="mt-3 text-base leading-7 text-lavender">{card.keywords.join(" / ")}</p>
-        <div className="mt-4 max-h-[220px] overflow-y-auto rounded-2xl border border-white/10 bg-midnight/42 p-4 pr-3">
+        <div className="mt-4 rounded-2xl border border-white/10 bg-midnight/42 p-4 pr-3">
           <p className="text-sm text-lavender">宇宙訊息</p>
           {card.position ? <p className="mt-2 text-base leading-7 text-moon">{card.position}：{positionDescriptions[card.position]}</p> : null}
           <p className="mt-2 text-base leading-8 text-moon/84">{card.cosmicMessage}</p>

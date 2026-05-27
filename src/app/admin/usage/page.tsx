@@ -10,6 +10,7 @@ import {
   UNAUTH_DAILY_LIMIT,
   type DailyUsageDoc,
 } from "@/lib/rateLimit";
+import { ZODIAC_SIGNS, type FortuneStatsDoc } from "@/lib/dailyFortune";
 
 export const dynamic = "force-dynamic"; // 每次請求都取得最新資料
 
@@ -108,12 +109,17 @@ export default async function AdminUsagePage() {
   // ── 取得今日使用資料 ─────────────────────────────────────────────────────
   const today = getTaipeiDate();
   let usageData: Partial<DailyUsageDoc> = {};
+  let fortuneStats: Partial<FortuneStatsDoc> = {};
   let fetchError = false;
 
   try {
     const db = getAdminDb();
-    const snap = await db.collection("rate_limits").doc(today).get();
-    usageData = (snap.data() as Partial<DailyUsageDoc>) ?? {};
+    const [usageSnap, fortuneSnap] = await Promise.all([
+      db.collection("rate_limits").doc(today).get(),
+      db.collection("fortune_stats").doc(today).get(),
+    ]);
+    usageData = (usageSnap.data() as Partial<DailyUsageDoc>) ?? {};
+    fortuneStats = (fortuneSnap.data() as Partial<FortuneStatsDoc>) ?? {};
   } catch {
     fetchError = true;
   }
@@ -143,6 +149,13 @@ export default async function AdminUsagePage() {
     totalRequests + totalBlocked > 0
       ? Math.round((totalBlocked / (totalRequests + totalBlocked)) * 100)
       : 0;
+
+  // ── 今日運勢快取統計 ──────────────────────────────────────────────────────
+  const fortuneAiGenerations = fortuneStats.ai_generations ?? 0;
+  const fortuneCacheHits = fortuneStats.cache_hits ?? 0;
+  const fortuneGeneratedZodiacs = fortuneStats.generated_zodiacs ?? [];
+  const fortuneSaved = fortuneCacheHits; // cache hit = 一次節省的 AI 呼叫
+  const fortuneCoverage = fortuneGeneratedZodiacs.length;
 
   return (
     <AppShell>
@@ -284,8 +297,74 @@ export default async function AdminUsagePage() {
           />
         </div>
 
+        {/* 今日運勢快取統計 */}
+        <div className="mt-10">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.32em] text-lavender/80">daily fortune</p>
+              <h2 className="mt-1 text-xl font-semibold text-moon">今日運勢快取統計</h2>
+            </div>
+            <form action="/api/daily-fortune/prefill" method="POST">
+              <button
+                type="submit"
+                className="rounded-full border border-lavender/30 bg-lavender/12 px-5 py-2.5 text-sm text-moon transition hover:bg-lavender/22"
+              >
+                ✦ 立即預生成 12 星座
+              </button>
+            </form>
+          </div>
+
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard
+              label="AI 實際生成次數"
+              value={fortuneAiGenerations}
+              sub="今日呼叫 AI API"
+            />
+            <StatCard
+              label="Cache Hit 次數"
+              value={fortuneCacheHits}
+              sub="直接讀取快取，未呼叫 AI"
+            />
+            <StatCard
+              label="節省 AI 呼叫"
+              value={fortuneSaved}
+              sub="Cache 命中＝節省 1 次 API"
+            />
+            <StatCard
+              label="星座快取覆蓋"
+              value={`${fortuneCoverage} / ${ZODIAC_SIGNS.length}`}
+              sub="今日已生成星座數"
+            />
+          </div>
+
+          {/* 已生成星座列表 */}
+          <div className="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-midnight/50">
+            <div className="border-b border-white/8 px-5 py-4">
+              <p className="text-sm font-semibold text-moon">今日星座快取狀態</p>
+              <p className="mt-0.5 text-xs text-moon/44">綠色＝已有快取（含 AI 或 seeded），灰色＝尚未生成</p>
+            </div>
+            <div className="flex flex-wrap gap-2 p-5">
+              {ZODIAC_SIGNS.map((sign) => {
+                const hasCache = fortuneGeneratedZodiacs.includes(sign);
+                return (
+                  <span
+                    key={sign}
+                    className={`rounded-full px-3 py-1 text-xs font-medium ${
+                      hasCache
+                        ? "bg-aurora/18 text-aurora"
+                        : "bg-white/6 text-moon/36"
+                    }`}
+                  >
+                    {sign}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
         <p className="mt-8 text-center text-xs text-moon/30">
-          資料來源：Firestore › rate_limits › {today}
+          資料來源：Firestore › rate_limits › {today} · fortune_stats › {today}
         </p>
       </section>
     </AppShell>

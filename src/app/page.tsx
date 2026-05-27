@@ -1,6 +1,6 @@
+import Image from "next/image";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
-import { CatFortuneIllustration } from "@/components/CatFortuneIllustration";
 import { FeatureCard } from "@/components/FeatureCard";
 import { LineCtaBanner } from "@/components/LineCtaBanner";
 
@@ -67,7 +67,17 @@ export default function Home() {
 
           {/* ── Right: cat illustration + today's cosmic message ─── */}
           <div className="flex flex-col items-center gap-4">
-            <CatFortuneIllustration />
+            {/* Hero cat photo */}
+            <div className="cat-float relative mx-auto w-full max-w-[260px] sm:max-w-[340px]">
+              <Image
+                src="/images/hero/main-cosmic-cat.webp"
+                alt="宇宙占卜貓"
+                width={340}
+                height={440}
+                priority
+                className="h-auto w-full object-contain drop-shadow-[0_8px_48px_rgba(109,77,242,0.42)]"
+              />
+            </div>
             {/* Today's cosmic message card */}
             <div className="w-full max-w-[340px] rounded-2xl border border-white/10 bg-midnight/48 p-4 backdrop-blur-sm">
               <p className="text-xs text-lavender/70">

@@ -78,7 +78,6 @@ a {
 .tarot-card-back,
 .tarot-image-card {
   position: relative;
-  overflow: hidden;
   border: 1px solid rgba(216, 189, 112, 0.42);
   background:
     radial-gradient(circle at 50% 18%, rgba(247, 241, 223, 0.16), transparent 22%),
@@ -89,6 +88,11 @@ a {
     inset 0 0 0 8px rgba(216, 189, 112, 0.08),
     0 20px 70px rgba(0, 0, 0, 0.32),
     0 0 42px rgba(203, 184, 255, 0.18);
+}
+
+/* card back clips to its rounded corners; image card must NOT clip so bottom text stays visible */
+.tarot-card-back {
+  overflow: hidden;
 }
 
 .tarot-card-back::before,
