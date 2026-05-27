@@ -48,6 +48,37 @@ function loadLiffSdk() {
   });
 }
 
+function extractResultId(searchParams: URLSearchParams) {
+  const directResultId = searchParams.get("resultId");
+  if (directResultId) {
+    return { resultId: directResultId, source: "resultId" };
+  }
+
+  const liffState = searchParams.get("liff.state");
+  if (!liffState) {
+    return { resultId: "", source: "missing" };
+  }
+
+  try {
+    const decodedState = decodeURIComponent(liffState);
+    const normalizedState = decodedState.startsWith("?") ? decodedState.slice(1) : decodedState;
+    const stateParams = new URLSearchParams(normalizedState);
+    return { resultId: stateParams.get("resultId") ?? "", source: "liff.state" };
+  } catch (error) {
+    console.error("[line-connect-client] Failed to parse liff.state", { liffState, error });
+    return { resultId: "", source: "liff.state-parse-error" };
+  }
+}
+
+function summarizeParams(searchParams: URLSearchParams) {
+  return {
+    resultId: searchParams.get("resultId"),
+    liffState: searchParams.get("liff.state"),
+    hasCode: Boolean(searchParams.get("code")),
+    hasState: Boolean(searchParams.get("state")),
+  };
+}
+
 export function LineConnectClient() {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<ConnectStatus>("booting");
@@ -57,13 +88,21 @@ export function LineConnectClient() {
     let cancelled = false;
 
     async function connectLine() {
-      const resultId = searchParams.get("resultId");
+      const params = new URLSearchParams(searchParams.toString());
+      const { resultId, source } = extractResultId(params);
+      const receivedParams = summarizeParams(params);
       const liffId = process.env.NEXT_PUBLIC_LINE_LIFF_ID;
-      console.info("[line-connect-client] Boot", { resultId, hasLiffId: Boolean(liffId), currentPath: window.location.pathname });
+      console.info("[line-connect-client] Boot", {
+        resultId,
+        resultIdSource: source,
+        hasLiffId: Boolean(liffId),
+        currentPath: window.location.pathname,
+        receivedParams,
+      });
 
       if (!resultId) {
         setStatus("error");
-        setMessage("找不到這次的宇宙訊息，請回塔羅頁重新抽牌。");
+        setMessage(`找不到這次的宇宙訊息。收到的參數：${JSON.stringify(receivedParams)}`);
         return;
       }
 
