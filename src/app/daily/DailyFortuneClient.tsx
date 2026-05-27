@@ -33,6 +33,7 @@ type DailyFortune = {
   love: FortuneAspect;
   work: FortuneAspect;
   life: FortuneAspect;
+  mood: FortuneAspect;
   action: string;
 };
 
@@ -81,7 +82,7 @@ const zodiacImages: Record<ZodiacSign, string> = {
   雙魚座: "/images/zodiac/pisces-cat.webp",
 };
 
-const dailyFortunes: Record<ZodiacSign, DailyFortune> = {
+const dailyFortunes: Record<ZodiacSign, Omit<DailyFortune, "mood">> = {
   牡羊座: {
     overall: "今天的你適合把想做的事先往前推一步，但不用急著證明自己。真正重要的是，把力氣用在值得的地方。",
     luckyColor: "晨光金",
@@ -336,10 +337,74 @@ const dailyFortunes: Record<ZodiacSign, DailyFortune> = {
   },
 };
 
+const moodFortunes: Record<ZodiacSign, FortuneAspect> = {
+  牡羊座: {
+    stars: 4,
+    text: "今天內在像剛點亮的火，想快點把事情推開。先別急著衝出去，給自己三次深呼吸，情緒會更有方向。",
+    reminder: "有力量，也要讓心跟上腳步。",
+  },
+  金牛座: {
+    stars: 4,
+    text: "今天你的內在需要安定與確定感。與其反覆檢查外界反應，不如先照顧身體，讓自己回到穩穩的節奏。",
+    reminder: "慢下來，不代表停在原地。",
+  },
+  雙子座: {
+    stars: 3,
+    text: "今天腦中訊息跑得很快，情緒也容易被不同想法牽著走。把念頭寫下來，會比一直在心裡轉更清楚。",
+    reminder: "先整理腦袋，再決定感受。",
+  },
+  巨蟹座: {
+    stars: 5,
+    text: "今天你比較容易吸收別人的情緒。請記得你可以溫柔，但不用把每個人的低潮都放進自己心裡。",
+    reminder: "把界線放柔，但不要拿掉。",
+  },
+  獅子座: {
+    stars: 3,
+    text: "今天你可能想保持明亮，卻也有一點不想被看見的疲累。允許自己普通一點，光不會因此消失。",
+    reminder: "不用一直表現很好，也值得被愛。",
+  },
+  處女座: {
+    stars: 4,
+    text: "今天你容易在細節裡打轉，覺得哪裡還不夠好。先把標準放低一點，你會發現自己已經做得不少。",
+    reminder: "整理可以，但不要苛責自己。",
+  },
+  天秤座: {
+    stars: 4,
+    text: "今天你的內在在找平衡，可能一邊想配合，一邊又覺得委屈。先聽見自己的偏好，再去談和諧。",
+    reminder: "真正的平衡也包含你的感受。",
+  },
+  天蠍座: {
+    stars: 3,
+    text: "今天內在感受很深，容易把一個訊號想得很遠。先別急著下結論，讓情緒沉一沉，真相會更清楚。",
+    reminder: "深刻很好，但別用猜測傷自己。",
+  },
+  射手座: {
+    stars: 5,
+    text: "今天你需要一點空氣感。若覺得煩悶，換個環境或走一小段路，會比逼自己想通更有效。",
+    reminder: "讓身體移動，心也會鬆開。",
+  },
+  摩羯座: {
+    stars: 4,
+    text: "今天你可能習慣把累收起來，像沒事一樣繼續做。請分清楚堅強與硬撐，今晚可以少扛一點。",
+    reminder: "休息不是失控，是重新站穩。",
+  },
+  水瓶座: {
+    stars: 3,
+    text: "今天你的情緒可能隔著一層理性才被看見。別急著分析所有原因，先承認自己其實也需要被理解。",
+    reminder: "想清楚之前，也可以先感受。",
+  },
+  雙魚座: {
+    stars: 5,
+    text: "今天內在像潮水，容易被一句話或一段回憶牽動。把感受放慢，不用急著替所有情緒命名。",
+    reminder: "溫柔接住自己，比解釋更重要。",
+  },
+};
+
 const aspectConfig = [
   { key: "love" as const, label: "愛情", gradient: "from-pink-300/20 to-lavender/16" },
   { key: "work" as const, label: "工作", gradient: "from-aurora/18 to-nebula/16" },
   { key: "life" as const, label: "生活", gradient: "from-moon/18 to-lavender/14" },
+  { key: "mood" as const, label: "心情", gradient: "from-lavender/22 to-[#d8bd70]/12" },
 ];
 
 function Stars({ count }: { count: number }) {
@@ -375,7 +440,8 @@ function isDailyFortune(value: unknown): value is DailyFortune {
     typeof fortune.action === "string" &&
     isFortuneAspect(fortune.love) &&
     isFortuneAspect(fortune.work) &&
-    isFortuneAspect(fortune.life)
+    isFortuneAspect(fortune.life) &&
+    isFortuneAspect(fortune.mood)
   );
 }
 
@@ -433,7 +499,11 @@ export function DailyFortuneClient() {
     window.localStorage.setItem("universe-whisper-daily-zodiac", sign);
   }
 
-  const fortune = remoteFortunes[selectedZodiac] ?? dailyFortunes[selectedZodiac];
+  const fallbackFortune: DailyFortune = {
+    ...dailyFortunes[selectedZodiac],
+    mood: moodFortunes[selectedZodiac],
+  };
+  const fortune = remoteFortunes[selectedZodiac] ?? fallbackFortune;
   const isLoading = loadingZodiac === selectedZodiac;
 
   return (
@@ -499,7 +569,7 @@ export function DailyFortuneClient() {
         <div className="relative z-10 p-5 sm:p-7">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-xs uppercase tracking-[0.28em] text-lavender/70">today cosmic note</p>
+              <p className="text-xs uppercase tracking-[0.28em] text-lavender/70">整體</p>
               <h2 className="mt-2 text-2xl font-semibold text-moon">{selectedZodiac}今日訊息</h2>
               {isLoading && (
                 <p className="mt-2 text-sm text-[#d8bd70]/78">正在取回今天的星光訊息…</p>
@@ -524,14 +594,10 @@ export function DailyFortuneClient() {
             </div>
           </div>
 
-          <div className="mt-5 rounded-2xl border border-[#d8bd70]/18 bg-[#d8bd70]/8 p-4">
-            <p className="text-xs uppercase tracking-[0.22em] text-[#d8bd70]/78">今日小行動</p>
-            <p className="mt-2 text-sm leading-7 text-moon/84 sm:text-base">{fortune.action}</p>
-          </div>
         </div>
       </section>
 
-      <section className="mt-4 grid gap-4 md:grid-cols-3">
+      <section className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {aspectConfig.map((aspect) => {
           const data = fortune[aspect.key];
 
@@ -567,6 +633,24 @@ export function DailyFortuneClient() {
             </article>
           );
         })}
+
+        <article className="relative overflow-hidden rounded-[1.5rem] border border-[#d8bd70]/20 bg-[#d8bd70]/8 shadow-glow transition duration-300 hover:-translate-y-1 hover:border-[#d8bd70]/42">
+          <div className="pointer-events-none absolute inset-y-3 right-[-18px] w-36 opacity-[0.09] blur-[1.25px] sm:w-44">
+            <Image
+              src={zodiacImages[selectedZodiac]}
+              alt=""
+              fill
+              sizes="180px"
+              className="object-contain"
+              aria-hidden="true"
+            />
+          </div>
+          <div className="relative z-10 h-1 bg-gradient-to-r from-[#d8bd70]/50 via-moon/40 to-lavender/28" />
+          <div className="relative z-10 p-5">
+            <h3 className="text-lg font-semibold text-moon">今日小行動</h3>
+            <p className="mt-4 text-sm leading-7 text-moon/84 sm:text-base">{fortune.action}</p>
+          </div>
+        </article>
       </section>
     </>
   );

@@ -113,11 +113,16 @@ JSON 結構：
     "text": "<45-75字，生活狀態與今日照顧提醒>",
     "reminder": "<20-36字，一句具體提醒>"
   },
+  "mood": {
+    "stars": <2到5的整數>,
+    "text": "<45-75字，今天內在狀態、情緒流動與自我照顧提醒>",
+    "reminder": "<20-36字，一句具體提醒>"
+  },
   "action": "<20-42字，今天可以做的一個小行動>"
 }
 
 要求：
-- 分類只能是 love / work / life，請不要產生 wealth 或 mood
+- 分類只能是 love / work / life / mood，請不要產生金錢相關獨立分類
 - 對不同星座寫出不同語氣與重點
 - 語氣像深夜朋友陪伴，溫柔、有現況分析、有小建議
 - 不要恐嚇、不要絕對預言、不要太玄學
@@ -154,13 +159,14 @@ function validateFortuneData(raw: unknown): DailyFortuneData | null {
   const love = validateAspect(obj.love);
   const work = validateAspect(obj.work);
   const life = validateAspect(obj.life);
+  const mood = validateAspect(obj.mood);
   const action = typeof obj.action === "string" ? obj.action.trim() : "";
 
-  if (!overall || !luckyColor || !luckyNumber || !love || !work || !life || !action) {
+  if (!overall || !luckyColor || !luckyNumber || !love || !work || !life || !mood || !action) {
     return null;
   }
 
-  return { overall, luckyColor, luckyNumber, love, work, life, action };
+  return { overall, luckyColor, luckyNumber, love, work, life, mood, action };
 }
 
 function toClientFortune(data: Partial<DailyFortuneCacheDoc>): DailyFortuneData | null {

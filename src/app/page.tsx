@@ -104,7 +104,7 @@ export default function Home() {
           <FeatureCard
             gradient="from-lavender/40 to-nebula/24"
             title="今日運勢"
-            description="查看你的星座今日愛情、工作與生活提醒，讓宇宙幫你整理今天。"
+            description="查看你的星座今日愛情、工作、生活與心情提醒，讓宇宙幫你整理今天。"
             href="/daily"
             icon={
               <svg
