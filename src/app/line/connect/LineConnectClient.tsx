@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 declare global {
@@ -19,12 +19,14 @@ declare global {
 
 type ConnectStatus = "booting" | "login" | "sending" | "done" | "error";
 
+const SENT_RESULT_STORAGE_PREFIX = "line-connect-sent:";
+
 const statusText: Record<ConnectStatus, string> = {
   booting: "正在連接宇宙訊息...",
   login: "正在登入 LINE...",
-  sending: "正在把訊息送到你的 LINE...",
-  done: "已成功送出，請回 LINE 查看",
-  error: "傳送失敗，請稍後再試",
+  sending: "正在把訊息送到 LINE...",
+  done: "已傳送到 LINE",
+  error: "連接失敗",
 };
 
 function loadLiffSdk() {
@@ -65,109 +67,222 @@ function extractResultId(searchParams: URLSearchParams) {
     const stateParams = new URLSearchParams(normalizedState);
     return { resultId: stateParams.get("resultId") ?? "", source: "liff.state" };
   } catch (error) {
-    console.error("[line-connect-client] Failed to parse liff.state", { liffState, error });
+    console.error("[line-connect-client] connectFailed parseLiffState", { liffState, error });
     return { resultId: "", source: "liff.state-parse-error" };
   }
 }
 
+function getCurrentSearchParams() {
+  return new URLSearchParams(window.location.search);
+}
+
 function summarizeParams(searchParams: URLSearchParams) {
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+
   return {
     resultId: searchParams.get("resultId"),
     liffState: searchParams.get("liff.state"),
     hasCode: Boolean(searchParams.get("code")),
     hasState: Boolean(searchParams.get("state")),
+    hasIdTokenParam: Boolean(searchParams.get("id_token")),
+    hasHashIdToken: Boolean(hashParams.get("id_token")),
   };
+}
+
+function getCleanRedirectUri(resultId: string) {
+  const url = new URL(window.location.href);
+  url.search = new URLSearchParams({ resultId }).toString();
+  url.hash = "";
+  return url.toString();
+}
+
+function wasResultSent(resultId: string) {
+  try {
+    return window.sessionStorage.getItem(`${SENT_RESULT_STORAGE_PREFIX}${resultId}`) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markResultSent(resultId: string) {
+  try {
+    window.sessionStorage.setItem(`${SENT_RESULT_STORAGE_PREFIX}${resultId}`, "1");
+  } catch {
+    // sessionStorage can be unavailable in some in-app browser modes.
+  }
 }
 
 export function LineConnectClient() {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<ConnectStatus>("booting");
   const [message, setMessage] = useState("");
+  const postingRef = useRef(false);
+  const completedRef = useRef(false);
+  const closeOrRedirectTimerRef = useRef<number | null>(null);
+
+  function finishAfterSuccess(resultId: string) {
+    if (closeOrRedirectTimerRef.current) return;
+
+    closeOrRedirectTimerRef.current = window.setTimeout(() => {
+      if (window.liff?.isInClient()) {
+        console.info("[line-connect-client] connectSuccess closeWindow", { resultId });
+        window.liff.closeWindow();
+        return;
+      }
+
+      const redirectUrl = `/tarot?lineSent=1&resultId=${encodeURIComponent(resultId)}`;
+      console.info("[line-connect-client] connectSuccess redirect", { resultId, redirectUrl });
+      window.location.replace(redirectUrl);
+    }, 1200);
+  }
 
   useEffect(() => {
     let cancelled = false;
 
-    async function connectLine() {
-      const params = new URLSearchParams(searchParams.toString());
+    async function connectLine(trigger: string) {
+      const params = getCurrentSearchParams();
       const { resultId, source } = extractResultId(params);
       const receivedParams = summarizeParams(params);
       const liffId = process.env.NEXT_PUBLIC_LINE_LIFF_ID;
-      console.info("[line-connect-client] Boot", {
+      console.info("[line-connect-client] gotParams", {
+        trigger,
         resultId,
         resultIdSource: source,
         hasLiffId: Boolean(liffId),
         currentPath: window.location.pathname,
+        currentSearch: window.location.search,
         receivedParams,
       });
 
       if (!resultId) {
         setStatus("error");
-        setMessage(`找不到這次的宇宙訊息。收到的參數：${JSON.stringify(receivedParams)}`);
+        setMessage(`缺少結果代碼，收到的參數：${JSON.stringify(receivedParams)}`);
         return;
       }
 
       if (!liffId) {
-        console.error("[line/connect] Missing NEXT_PUBLIC_LINE_LIFF_ID.");
+        console.error("[line-connect-client] connectFailed missingLiffId");
         setStatus("error");
-        setMessage("LINE 連接尚未設定完成，請稍後再試。");
+        setMessage("LINE LIFF 尚未設定，請稍後再試。");
+        return;
+      }
+
+      if (completedRef.current || wasResultSent(resultId)) {
+        completedRef.current = true;
+        setStatus("done");
+        setMessage("已傳送到 LINE。");
+        finishAfterSuccess(resultId);
         return;
       }
 
       try {
         setStatus("booting");
         await loadLiffSdk();
-        console.info("[line-connect-client] LIFF SDK loaded", { hasLiff: Boolean(window.liff) });
+        console.info("[line-connect-client] gotParams liffSdkLoaded", { hasLiff: Boolean(window.liff) });
 
         if (!window.liff) throw new Error("LIFF SDK is unavailable.");
 
         await window.liff.init({ liffId });
-        console.info("[line-connect-client] LIFF init success", { resultId, isLoggedIn: window.liff.isLoggedIn() });
+        const paramsAfterInit = getCurrentSearchParams();
+        const { resultId: resultIdAfterInit } = extractResultId(paramsAfterInit);
+        const activeResultId = resultIdAfterInit || resultId;
+        console.info("[line-connect-client] gotParams afterLiffInit", {
+          resultId: activeResultId,
+          isLoggedIn: window.liff.isLoggedIn(),
+          isInClient: window.liff.isInClient(),
+          receivedParams: summarizeParams(paramsAfterInit),
+        });
 
         if (cancelled) return;
 
         if (!window.liff.isLoggedIn()) {
           setStatus("login");
-          console.info("[line-connect-client] Calling liff.login", { redirectUri: window.location.href });
-          window.liff.login({ redirectUri: window.location.href });
+          const redirectUri = getCleanRedirectUri(activeResultId);
+          console.info("[line-connect-client] gotParams callingLogin", { redirectUri });
+          window.liff.login({ redirectUri });
+          return;
+        }
+
+        if (postingRef.current) {
+          console.info("[line-connect-client] postingConnect skippedDuplicate", { resultId: activeResultId });
           return;
         }
 
         const idToken = window.liff.getIDToken();
         const accessToken = window.liff.getAccessToken();
-        console.info("[line-connect-client] LIFF tokens", { hasIdToken: Boolean(idToken), hasAccessToken: Boolean(accessToken) });
+        console.info("[line-connect-client] gotParams tokens", {
+          resultId: activeResultId,
+          hasIdToken: Boolean(idToken),
+          hasAccessToken: Boolean(accessToken),
+        });
 
         if (!idToken && !accessToken) {
           throw new Error("LIFF token is unavailable.");
         }
 
         setStatus("sending");
+        postingRef.current = true;
+        console.info("[line-connect-client] postingConnect", {
+          resultId: activeResultId,
+          hasIdToken: Boolean(idToken),
+          hasAccessToken: Boolean(accessToken),
+        });
 
         const response = await fetch("/api/line/connect", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ resultId, idToken, accessToken }),
+          body: JSON.stringify({ resultId: activeResultId, idToken, accessToken }),
         });
-        const data = (await response.json().catch(() => ({}))) as { error?: string };
-        console.info("[line-connect-client] /api/line/connect response", { status: response.status, ok: response.ok });
+        const data = (await response.json().catch(() => ({}))) as { error?: string; pushStatus?: string };
 
         if (!response.ok) {
+          console.error("[line-connect-client] connectFailed", {
+            resultId: activeResultId,
+            status: response.status,
+            error: data.error,
+          });
           throw new Error(data.error || "LINE connect failed.");
         }
 
+        completedRef.current = true;
+        markResultSent(activeResultId);
+        console.info("[line-connect-client] connectSuccess", { resultId: activeResultId, pushStatus: data.pushStatus });
         setStatus("done");
-        setMessage("今晚的完整版訊息已經送到你的 LINE。");
+        setMessage("已傳送到 LINE。");
+        finishAfterSuccess(activeResultId);
       } catch (error) {
-        console.error("[line/connect] Client flow failed:", error);
+        console.error("[line-connect-client] connectFailed", { error });
         setStatus("error");
         const errorMessage = error instanceof Error ? error.message : "LINE 連接失敗。";
-        setMessage(`宇宙訊號有點微弱：${errorMessage}`);
+        setMessage(`送出前卡住了：${errorMessage}`);
+      } finally {
+        postingRef.current = false;
       }
     }
 
-    void connectLine();
+    void connectLine("effect");
+
+    function handlePageShow() {
+      void connectLine("pageshow");
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        void connectLine("visible");
+      }
+    }
+
+    window.addEventListener("pageshow", handlePageShow);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       cancelled = true;
+      window.removeEventListener("pageshow", handlePageShow);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (closeOrRedirectTimerRef.current) {
+        window.clearTimeout(closeOrRedirectTimerRef.current);
+        closeOrRedirectTimerRef.current = null;
+      }
     };
   }, [searchParams]);
 
@@ -185,8 +300,8 @@ export function LineConnectClient() {
           <p className="mx-auto mt-4 max-w-sm text-base leading-8 text-moon/72">
             {message ||
               (status === "done"
-                ? "可以回 LINE 慢慢看，宇宙已經替你把訊息收好。"
-                : "請不要關閉這個頁面，星光正在幫你把訊息送過去。")}
+                ? "訊息已送到 LINE。"
+                : "請稍等一下，正在替你把宇宙訊息送往 LINE。")}
           </p>
 
           <div className="mt-7 flex justify-center gap-2">

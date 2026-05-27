@@ -82,6 +82,23 @@ async function verifyAccessToken(accessToken: string): Promise<VerifiedLineProfi
   };
 }
 
+async function verifyLineProfile(idToken: string, accessToken: string): Promise<VerifiedLineProfile> {
+  if (idToken) {
+    try {
+      return await verifyIdToken(idToken);
+    } catch (error) {
+      if (!accessToken) {
+        throw error;
+      }
+
+      const errorMessage = error instanceof Error ? error.message : "ID token verification failed.";
+      console.warn("[line/connect] ID token verify failed; falling back to access token", { errorMessage });
+    }
+  }
+
+  return verifyAccessToken(accessToken);
+}
+
 async function saveLineUser(profile: VerifiedLineProfile) {
   await getAdminDb()
     .collection("users")
@@ -138,7 +155,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "找不到這次的宇宙訊息。" }, { status: 404 });
     }
 
-    const profile = idToken ? await verifyIdToken(idToken) : await verifyAccessToken(accessToken);
+    const profile = await verifyLineProfile(idToken, accessToken);
     console.info("[line/connect] LINE profile verified", { resultId, hasUserId: Boolean(profile.userId), displayName: profile.displayName });
 
     await saveLineUser(profile);
