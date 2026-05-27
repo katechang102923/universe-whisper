@@ -81,6 +81,86 @@ function getOrCreateAnonId(): string {
   }
 }
 
+const headingFallbacks: Record<string, string> = {
+  宇宙給你的簡短訊息: "✨ 宇宙訊息",
+  宇宙完整訊息: "✨ 宇宙訊息",
+  情緒分析: "🌙 情緒狀態",
+  關係分析: "💞 關係提醒",
+  七日走向: "🕯️ 七日走向",
+  深夜訊息: "🐾 深夜悄悄話",
+  "宇宙深夜訊息 Plus": "✨ 宇宙訊息",
+  目前狀況: "🌙 目前狀態",
+  一個可能原因: "💞 宇宙提醒",
+  接下來建議: "🕯️ 接下來可以做的事",
+  溫暖收尾: "☁️ 溫暖收尾",
+  "這段關係目前真實的樣子": "💞 關係提醒",
+  這段曖昧目前的真實狀態: "💞 曖昧訊息",
+  工作目前真實的處境: "💼 工作訊息",
+  過去: "🌒 過去",
+  現在: "🌕 現在",
+  未來: "🌘 未來",
+  "過去 / 現在 / 未來整合解讀": "🕯️ 牌陣流動",
+  "接下來 7 天完整走向": "🕯️ 七日走向",
+  "接下來 7 天能量完整走向": "🕯️ 七日走向",
+  "接下來 7 天互動完整走向": "🕯️ 七日走向",
+  你最需要聽見的一件事: "🐾 深夜悄悄話",
+  今晚陪你的話: "☁️ 溫暖收尾"
+};
+
+function isReadingHeading(line: string) {
+  if (headingFallbacks[line]) return true;
+  return /^(✨|🌙|💞|🕯️|🐾|☁️|💼|🌒|🌕|🌘)\s/.test(line);
+}
+
+function parseReadingSections(text: string) {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const sections: { title: string; body: string[] }[] = [];
+  let current: { title: string; body: string[] } | null = null;
+
+  for (const line of lines) {
+    if (isReadingHeading(line)) {
+      current = { title: headingFallbacks[line] ?? line, body: [] };
+      sections.push(current);
+      continue;
+    }
+
+    if (!current) {
+      current = { title: "✨ 宇宙訊息", body: [] };
+      sections.push(current);
+    }
+
+    current.body.push(line);
+  }
+
+  return sections.length ? sections : [{ title: "✨ 宇宙訊息", body: [text] }];
+}
+
+function ReadingContent({ text, compact = false }: { text: string; compact?: boolean }) {
+  const sections = parseReadingSections(text);
+
+  return (
+    <div className={compact ? "space-y-3" : "space-y-4"}>
+      {sections.map((section, index) => (
+        <article
+          key={`${section.title}-${index}`}
+          className="rounded-2xl border border-white/10 bg-white/[0.055] p-4 shadow-[0_18px_54px_rgba(8,10,35,0.22)] sm:p-5"
+        >
+          <h4 className="text-base font-semibold tracking-wide text-moon sm:text-lg">{section.title}</h4>
+          <div className="mt-3 space-y-3 text-left text-[0.98rem] leading-8 text-moon/82 sm:text-base sm:leading-8">
+            {section.body.map((paragraph, paragraphIndex) => (
+              <p key={`${section.title}-${paragraphIndex}`}>{paragraph}</p>
+            ))}
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 export function TarotDrawClient() {
   const [mode, setMode] = useState<(typeof modes)[number]["key"]>("single_tarot");
   const [topic, setTopic] = useState<TarotTopicOption>("愛情");
@@ -527,7 +607,7 @@ export function TarotDrawClient() {
             <h3 className="mt-2 text-2xl font-semibold text-moon">宇宙給你的簡短訊息</h3>
             <div className="mt-4 rounded-2xl border border-white/10 bg-white/6 p-4">
               {freeReadingStatus === "loading" ? <p className="text-base leading-8 text-moon/76">宇宙正在整理簡短訊息…</p> : null}
-              {freeReading ? <p className="whitespace-pre-wrap text-base leading-8 text-moon/84">{freeReading}</p> : null}
+              {freeReading ? <ReadingContent text={freeReading} compact /> : null}
               {freeReadingStatus === "error" ? <p className="text-base leading-8 text-moon/76">{freeReadingNotice || "宇宙訊號有點微弱，請稍後再試一次。"}</p> : null}
             </div>
           </div>
@@ -593,8 +673,8 @@ export function TarotDrawClient() {
                   {adCopied ? "已複製" : "複製內容"}
                 </button>
               </div>
-              <div className="mt-4 max-h-[480px] overflow-y-auto whitespace-pre-wrap rounded-2xl bg-white/6 p-4 text-base leading-8 text-moon/86 sm:text-lg sm:leading-9">
-                {adReading}
+              <div className="mt-4 max-h-[620px] overflow-y-auto rounded-2xl bg-white/6 p-3 sm:p-4">
+                <ReadingContent text={adReading} />
               </div>
             </div>
           ) : null}
