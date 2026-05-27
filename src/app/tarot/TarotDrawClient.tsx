@@ -115,7 +115,7 @@ function isReadingHeading(line: string) {
 function parseReadingSections(text: string) {
   const lines = text
     .split(/\r?\n/)
-    .map((line) => line.trim())
+    .map((line) => line.trim().replace(/\*\*/g, ""))
     .filter(Boolean);
 
   const sections: { title: string; body: string[] }[] = [];
