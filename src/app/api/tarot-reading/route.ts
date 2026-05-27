@@ -583,6 +583,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ readingMode, reading });
   } catch (error) {
     console.error("Premium tarot reading failed:", error);
-    return NextResponse.json({ error: "宇宙訊號有點微弱，請稍後再試一次。" }, { status: 500 });
+    return NextResponse.json({
+      readingMode,
+      reading: buildPremiumFallback(cards, topic, question),
+      preview: true,
+      fallbackReason: "premium_generation_failed",
+    });
   }
 }

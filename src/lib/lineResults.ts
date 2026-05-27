@@ -82,6 +82,7 @@ export async function pushLineTextMessage(lineUserId: string, message: string) {
     throw new Error("LINE_CHANNEL_ACCESS_TOKEN is not configured.");
   }
 
+  console.info("[line/push] Sending push message", { hasAccessToken: Boolean(accessToken), lineUserId, messageLength: message.length });
   const response = await fetch("https://api.line.me/v2/bot/message/push", {
     method: "POST",
     headers: {
@@ -96,14 +97,18 @@ export async function pushLineTextMessage(lineUserId: string, message: string) {
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => "");
+    console.error("[line/push] LINE API error", { status: response.status, message: errorText });
     throw new Error(`LINE push failed: ${response.status} ${errorText}`);
   }
+
+  console.info("[line/push] LINE API success", { status: response.status });
 }
 
 export async function pushResultToLine(resultId: string, lineUserId: string, siteUrl: string, displayName?: string | null) {
   const db = getAdminDb();
   const ref = db.collection(LINE_RESULTS_COLLECTION).doc(resultId);
   const snap = await ref.get();
+  console.info("[line/push-result] Result lookup", { resultId, exists: snap.exists, lineUserId });
 
   if (!snap.exists) {
     throw new Error("Result not found.");
@@ -129,6 +134,7 @@ export async function pushResultToLine(resultId: string, lineUserId: string, sit
     return { ok: true as const, message };
   } catch (error) {
     const pushError = error instanceof Error ? error.message : "LINE push failed.";
+    console.error("[line/push-result] Push failed", { resultId, lineUserId, pushError });
     await ref.set(
       {
         lineUserId,

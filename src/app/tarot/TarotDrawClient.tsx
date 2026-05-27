@@ -370,6 +370,11 @@ export function TarotDrawClient() {
     if (adReading.trim()) return adReading.trim();
 
     setLineDeliveryMessage("宇宙正在整理完整版訊息，等等就送去 LINE...");
+    console.info("[tarot-line] Requesting premium reading for LINE", {
+      cardCount: cards.length,
+      topic,
+      hasQuestion: Boolean(question.trim()),
+    });
 
     const response = await fetch("/api/tarot-reading", {
       method: "POST",
@@ -377,6 +382,7 @@ export function TarotDrawClient() {
       body: JSON.stringify(buildReadingPayload(cards, "premium")),
     });
     const data = (await response.json().catch(() => ({}))) as { reading?: string; error?: string };
+    console.info("[tarot-line] Premium reading response", { status: response.status, hasReading: Boolean(data.reading) });
 
     if (!response.ok || !data.reading) {
       throw new Error(data.error || "完整訊息暫時沒有成形。");
@@ -388,6 +394,12 @@ export function TarotDrawClient() {
 
   async function createLineResult(fullText: string) {
     if (lineResultId) return lineResultId;
+
+    console.info("[tarot-line] Creating line result", {
+      cardCount: cards.length,
+      shortTextLength: getFallbackShortText().length,
+      fullTextLength: fullText.length,
+    });
 
     const response = await fetch("/api/results/create", {
       method: "POST",
@@ -401,6 +413,7 @@ export function TarotDrawClient() {
       }),
     });
     const data = (await response.json().catch(() => ({}))) as { ok?: boolean; resultId?: string; error?: string };
+    console.info("[tarot-line] Create result response", { status: response.status, ok: data.ok, resultId: data.resultId });
 
     if (!response.ok || !data.ok || !data.resultId) {
       throw new Error(data.error || "宇宙訊息暫時存不起來。");
@@ -414,6 +427,7 @@ export function TarotDrawClient() {
     if (!cards.length || lineDeliveryStatus === "sending") return;
 
     try {
+      console.info("[tarot-line] LINE CTA clicked", { cardCount: cards.length, topic, hasFreeReading: Boolean(freeReading), hasAdReading: Boolean(adReading) });
       setLineDeliveryStatus("sending");
       setLineDeliveryMessage("正在把今晚的訊息收好，準備送往 LINE...");
 
@@ -424,7 +438,8 @@ export function TarotDrawClient() {
     } catch (error) {
       console.error("[tarot] Failed to prepare LINE result:", error);
       setLineDeliveryStatus("softPause");
-      setLineDeliveryMessage("今晚的訊息已經在路上，只是宇宙訊號有點微弱，等等再試一次。");
+      const message = error instanceof Error ? error.message : "宇宙訊號有點微弱，請稍後再試一次。";
+      setLineDeliveryMessage(`送出前卡住了：${message}`);
     }
   }
 
@@ -620,6 +635,11 @@ export function TarotDrawClient() {
             >
               {lineDeliveryStatus === "sending" ? "正在準備 LINE 訊息…" : "加入 LINE 看完整結果"}
             </button>
+            {lineDeliveryMessage ? (
+              <p className="mt-4 rounded-2xl border border-white/10 bg-white/8 p-3 text-sm leading-6 text-moon/74">
+                {lineDeliveryMessage}
+              </p>
+            ) : null}
           </div>
 
           {/* ── LINE 傳送 ─────────────────────────────────────────────── */}

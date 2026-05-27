@@ -36,6 +36,11 @@ function normalizeCards(cards: unknown): LineResultCard[] {
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  const envStatus = {
+    hasFirebaseProjectId: Boolean(process.env.FIREBASE_PROJECT_ID),
+    hasFirebaseClientEmail: Boolean(process.env.FIREBASE_CLIENT_EMAIL),
+    hasFirebasePrivateKey: Boolean(process.env.FIREBASE_PRIVATE_KEY),
+  };
 
   if (!body || !isResultType(body.type)) {
     return NextResponse.json({ ok: false, error: "缺少有效的結果類型。" }, { status: 400 });
@@ -51,6 +56,14 @@ export async function POST(request: Request) {
   const resultId = crypto.randomUUID();
   const siteUrl = getSiteUrl(request);
   const resultUrl = `${siteUrl}/tarot?result=${encodeURIComponent(resultId)}`;
+  console.info("[results/create] Request", {
+    resultId,
+    type: body.type,
+    cardCount: Array.isArray(body.cards) ? body.cards.length : 0,
+    shortTextLength: shortText.length,
+    fullTextLength: fullText.length,
+    envStatus,
+  });
 
   try {
     await getAdminDb()
@@ -74,9 +87,19 @@ export async function POST(request: Request) {
         updatedAt: FieldValue.serverTimestamp(),
       });
 
+    console.info("[results/create] Firestore write success", { resultId });
     return NextResponse.json({ ok: true, resultId, resultUrl });
   } catch (error) {
-    console.error("[results/create] Failed to save result:", error);
-    return NextResponse.json({ ok: false, error: "宇宙訊息暫時存不起來，請稍後再試。" }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Unknown Firestore error.";
+    console.error("[results/create] Failed to save result:", { resultId, errorMessage, envStatus });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: envStatus.hasFirebaseProjectId && envStatus.hasFirebaseClientEmail && envStatus.hasFirebasePrivateKey
+          ? "宇宙訊息暫時存不起來，請稍後再試。"
+          : "Firebase 伺服器環境變數尚未設定完整。",
+      },
+      { status: 500 },
+    );
   }
 }

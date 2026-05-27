@@ -59,6 +59,7 @@ export function LineConnectClient() {
     async function connectLine() {
       const resultId = searchParams.get("resultId");
       const liffId = process.env.NEXT_PUBLIC_LINE_LIFF_ID;
+      console.info("[line-connect-client] Boot", { resultId, hasLiffId: Boolean(liffId), currentPath: window.location.pathname });
 
       if (!resultId) {
         setStatus("error");
@@ -76,21 +77,25 @@ export function LineConnectClient() {
       try {
         setStatus("booting");
         await loadLiffSdk();
+        console.info("[line-connect-client] LIFF SDK loaded", { hasLiff: Boolean(window.liff) });
 
         if (!window.liff) throw new Error("LIFF SDK is unavailable.");
 
         await window.liff.init({ liffId });
+        console.info("[line-connect-client] LIFF init success", { resultId, isLoggedIn: window.liff.isLoggedIn() });
 
         if (cancelled) return;
 
         if (!window.liff.isLoggedIn()) {
           setStatus("login");
+          console.info("[line-connect-client] Calling liff.login", { redirectUri: window.location.href });
           window.liff.login({ redirectUri: window.location.href });
           return;
         }
 
         const idToken = window.liff.getIDToken();
         const accessToken = window.liff.getAccessToken();
+        console.info("[line-connect-client] LIFF tokens", { hasIdToken: Boolean(idToken), hasAccessToken: Boolean(accessToken) });
 
         if (!idToken && !accessToken) {
           throw new Error("LIFF token is unavailable.");
@@ -104,6 +109,7 @@ export function LineConnectClient() {
           body: JSON.stringify({ resultId, idToken, accessToken }),
         });
         const data = (await response.json().catch(() => ({}))) as { error?: string };
+        console.info("[line-connect-client] /api/line/connect response", { status: response.status, ok: response.ok });
 
         if (!response.ok) {
           throw new Error(data.error || "LINE connect failed.");
@@ -114,7 +120,8 @@ export function LineConnectClient() {
       } catch (error) {
         console.error("[line/connect] Client flow failed:", error);
         setStatus("error");
-        setMessage("宇宙訊號有點微弱，請回網站稍後再試一次。");
+        const errorMessage = error instanceof Error ? error.message : "LINE 連接失敗。";
+        setMessage(`宇宙訊號有點微弱：${errorMessage}`);
       }
     }
 
