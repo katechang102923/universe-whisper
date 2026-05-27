@@ -426,12 +426,6 @@ export function TarotDrawClient() {
   async function connectLineWithResult() {
     if (!cards.length || lineDeliveryStatus === "sending") return;
 
-    if (freeReadingStatus === "error" && !freeReading) {
-      setLineDeliveryStatus("softPause");
-      setLineDeliveryMessage(freeReadingNotice || "今晚免費抽牌已經休息了，明天再來找宇宙說說話。");
-      return;
-    }
-
     try {
       console.info("[tarot-line] LINE CTA clicked", { cardCount: cards.length, topic, hasFreeReading: Boolean(freeReading), hasAdReading: Boolean(adReading) });
       setLineDeliveryStatus("sending");
@@ -447,6 +441,10 @@ export function TarotDrawClient() {
       const message = error instanceof Error ? error.message : "宇宙訊號有點微弱，請稍後再試一次。";
       setLineDeliveryMessage(`送出前卡住了：${message}`);
     }
+  }
+
+  function handleLineLogin() {
+    void connectLineWithResult();
   }
 
   function selectSpreadQuestion(spreadQuestion: string) {
@@ -634,9 +632,9 @@ export function TarotDrawClient() {
 
             <button
               type="button"
-              onClick={() => void connectLineWithResult()}
+              onClick={handleLineLogin}
               disabled={lineDeliveryStatus === "sending"}
-              className="mt-6 block w-full rounded-full px-6 py-4 text-center text-base font-semibold text-white transition hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-70 sm:inline-block sm:w-auto sm:min-w-[268px]"
+              className="pointer-events-auto relative z-10 mt-6 block w-full touch-manipulation rounded-full px-6 py-4 text-center text-base font-semibold text-white transition hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-70 sm:inline-block sm:w-auto sm:min-w-[268px]"
               style={{ background: "#06C755", boxShadow: "0 0 32px rgba(6,199,85,0.28)" }}
             >
               {lineDeliveryStatus === "sending" ? "正在準備 LINE 訊息…" : "加入 LINE 看完整結果"}
@@ -654,9 +652,9 @@ export function TarotDrawClient() {
             <p className="mx-auto mt-3 max-w-xl text-base leading-8 text-moon/72">把牌面和核心提醒送到 LINE，想回來慢慢看時就不怕找不到。</p>
             <button
               type="button"
-              onClick={() => void connectLineWithResult()}
+              onClick={handleLineLogin}
               disabled={lineDeliveryStatus === "sending"}
-              className="mt-5 w-full rounded-full border border-lavender/40 bg-lavender px-6 py-4 text-base font-semibold text-midnight shadow-glow transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:min-w-[260px]"
+              className="pointer-events-auto relative z-10 mt-5 w-full touch-manipulation rounded-full border border-lavender/40 bg-lavender px-6 py-4 text-base font-semibold text-midnight shadow-glow transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:min-w-[260px]"
             >
               {lineDeliveryStatus === "sending" ? "正在送往 LINE…" : "把宇宙訊息傳到 LINE"}
             </button>
@@ -668,3 +666,4 @@ export function TarotDrawClient() {
     </div>
   );
 }
+
