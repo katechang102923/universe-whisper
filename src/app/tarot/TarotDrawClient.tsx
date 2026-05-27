@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TarotCardBack, TarotCardFace, type TarotCardFaceData } from "@/components/TarotCardFace";
 
+// TODO: replace with official LINE OA add friend URL if changed
+const LINE_ADD_FRIEND_URL = process.env.NEXT_PUBLIC_LINE_ADD_FRIEND_URL ?? "https://line.me/R/ti/p/@453gfmok";
+
 type DrawStatus = "idle" | "drawing" | "revealed";
 type FreeReadingStatus = "idle" | "loading" | "done" | "error";
 type AdReadingStatus = "idle" | "watching" | "loading" | "done" | "error";
@@ -454,9 +457,10 @@ export function TarotDrawClient() {
       </div>
 
       {/* 自訂問題 */}
-      <label className="mt-6 block text-base font-medium text-lavender" htmlFor="question">
-        把想說的話交給宇宙
-      </label>
+      <div className="mt-6">
+        <p className="text-base font-medium text-moon">在心裡默想一個問題，或輸入你想問宇宙的事。</p>
+        <p className="mt-1 text-sm text-moon/52">不輸入也可以直接抽牌，宇宙一樣聽得見。</p>
+      </div>
       <textarea
         id="question"
         value={question}
@@ -464,10 +468,9 @@ export function TarotDrawClient() {
           setQuestion(event.target.value);
           setSelectedSpreadQuestion("");
         }}
-        className="mt-2 min-h-32 w-full resize-none rounded-3xl border border-white/12 bg-midnight/58 p-4 text-base leading-7 text-moon outline-none transition placeholder:text-moon/40 focus:border-lavender"
-        placeholder="可以在心裡默想，也可以輕輕寫下現在最在意的事…"
+        className="mt-3 min-h-32 w-full resize-none rounded-3xl border border-white/12 bg-midnight/58 p-4 text-base leading-7 text-moon outline-none transition placeholder:text-moon/40 focus:border-lavender"
+        placeholder="例如：他現在怎麼想？我該不該換工作？今天要注意什麼？"
       />
-      <p className="mt-2 text-sm leading-6 text-moon/56">不一定要說出口，宇宙也會聽見。</p>
 
       {/* 抽牌按鈕 */}
       <button
@@ -595,54 +598,39 @@ export function TarotDrawClient() {
             </div>
           ) : null}
 
-          {/* ── 3. Premium 版：宇宙深夜訊息 Plus ──────────────────────── */}
+          {/* ── 3. LINE CTA：加入 LINE 看完整結果 ────────────────────── */}
           <div
             className="cosmic-reading-card rounded-[1.75rem] border p-5 shadow-glow sm:p-7"
             style={{
-              borderColor: "rgba(142, 240, 221, 0.22)",
-              background: "linear-gradient(135deg, rgba(10,16,40,0.82) 0%, rgba(20,28,58,0.88) 100%)",
-              boxShadow: "0 0 48px rgba(142, 240, 221, 0.10)"
+              borderColor: "rgba(6, 199, 85, 0.22)",
+              background: "linear-gradient(135deg, rgba(10,16,40,0.82) 0%, rgba(10,28,20,0.88) 100%)",
+              boxShadow: "0 0 48px rgba(6, 199, 85, 0.10)"
             }}
           >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm tracking-[0.22em]" style={{ color: "rgba(142, 240, 221, 0.72)" }}>
-                  宇宙深夜訊息 Plus ✨
-                </p>
-                <h3 className="mt-2 text-2xl font-semibold text-moon">更深的訊息，等你來拿</h3>
-              </div>
-              <span
-                className="shrink-0 rounded-full px-3 py-1 text-xs font-medium"
-                style={{ background: "rgba(142, 240, 221, 0.12)", color: "rgba(142, 240, 221, 0.80)", border: "1px solid rgba(142, 240, 221, 0.20)" }}
-              >
-                即將開放
-              </span>
-            </div>
+            <p className="text-sm tracking-[0.22em]" style={{ color: "rgba(6, 199, 85, 0.80)" }}>
+              完整解讀 · LINE 限定
+            </p>
+            <h3 className="mt-2 text-2xl font-semibold text-moon">想看完整解讀？</h3>
+            <p className="mt-3 max-w-xl text-base leading-8 text-moon/70">
+              加入 LINE，宇宙把完整版訊息直接送進你的對話框。
+            </p>
 
-            <ul className="mt-5 space-y-2 text-sm leading-7" style={{ color: "rgba(247, 241, 223, 0.60)" }}>
+            <ul className="mt-4 space-y-2 text-sm leading-7 text-moon/60">
               <li>✦ 對方真正沒說出口的話</li>
-              <li>✦ 更細的內心分析 — 你自己還沒面對的那一部分</li>
-              <li>✦ 更完整的未來走向 — 7 天逐日能量解析</li>
-              <li>✦ 更濃厚深夜陪伴感 — 像一封只寫給你的信</li>
+              <li>✦ 更細的內心分析</li>
+              <li>✦ 完整七日走向</li>
+              <li>✦ 每日宇宙提醒推播</li>
             </ul>
 
-            <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row">
-              <button
-                type="button"
-                disabled
-                className="w-full cursor-not-allowed rounded-full px-6 py-4 text-base font-semibold sm:w-auto sm:min-w-[268px]"
-                style={{
-                  background: "rgba(142, 240, 221, 0.08)",
-                  border: "1px solid rgba(142, 240, 221, 0.22)",
-                  color: "rgba(142, 240, 221, 0.44)"
-                }}
-              >
-                LINE Pay 解鎖 — 即將開放
-              </button>
-            </div>
-            <p className="mt-3 text-xs" style={{ color: "rgba(247, 241, 223, 0.36)" }}>
-              正在接上 LINE Pay，敬請期待
-            </p>
+            <a
+              href={LINE_ADD_FRIEND_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-6 block w-full rounded-full px-6 py-4 text-center text-base font-semibold text-white transition hover:opacity-90 active:scale-95 sm:inline-block sm:w-auto sm:min-w-[268px]"
+              style={{ background: "#06C755", boxShadow: "0 0 32px rgba(6,199,85,0.28)" }}
+            >
+              加入 LINE 看完整結果
+            </a>
           </div>
 
           {/* ── LINE 傳送 ─────────────────────────────────────────────── */}

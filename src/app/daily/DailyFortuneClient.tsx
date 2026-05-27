@@ -3,8 +3,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { generateDailyFortune, type DailyFortuneData } from "@/lib/dailyFortuneGenerator";
 
-const zodiacSigns = ["牡羊座", "金牛座", "雙子座", "巨蟹座", "獅子座", "處女座", "天秤座", "天蠍座", "射手座", "摩羯座", "水瓶座", "雙魚座"] as const;
+// ── 型別與常數 ────────────────────────────────────────────────────────────
+
+const zodiacSigns = [
+  "牡羊座", "金牛座", "雙子座", "巨蟹座", "獅子座", "處女座",
+  "天秤座", "天蠍座", "射手座", "摩羯座", "水瓶座", "雙魚座"
+] as const;
 type ZodiacSign = (typeof zodiacSigns)[number];
+
+const zodiacSymbols: Record<ZodiacSign, string> = {
+  牡羊座: "♈", 金牛座: "♉", 雙子座: "♊", 巨蟹座: "♋",
+  獅子座: "♌", 處女座: "♍", 天秤座: "♎", 天蠍座: "♏",
+  射手座: "♐", 摩羯座: "♑", 水瓶座: "♒", 雙魚座: "♓"
+};
 
 const zodiacGreetings: Record<ZodiacSign, string> = {
   牡羊座: "熱情的你，今天記得把速度和呼吸對齊。",
@@ -22,31 +33,39 @@ const zodiacGreetings: Record<ZodiacSign, string> = {
 };
 
 const aspectConfig = [
-  { key: "love" as const, title: "愛情", color: "from-pink-300/22 to-lavender/18" },
-  { key: "work" as const, title: "工作", color: "from-aurora/20 to-nebula/18" },
-  { key: "wealth" as const, title: "財運", color: "from-yellow-100/18 to-aurora/14" },
-  { key: "mood" as const, title: "心情", color: "from-lavender/22 to-moon/12" }
+  { key: "love" as const, label: "愛情運", gradient: "from-pink-300/20 to-lavender/16" },
+  { key: "work" as const, label: "工作運", gradient: "from-aurora/18 to-nebula/16" },
+  { key: "wealth" as const, label: "財運",  gradient: "from-yellow-200/16 to-aurora/12" },
+  { key: "mood" as const,  label: "心情",   gradient: "from-lavender/20 to-moon/10" }
 ];
+
+// ── 星星元件 ──────────────────────────────────────────────────────────────
+
+function Stars({ count }: { count: number }) {
+  const n = Math.min(5, Math.max(1, Math.round(count)));
+  return (
+    <span className="tracking-widest" aria-label={`${n} 顆星`}>
+      <span className="text-amber-300">{"★".repeat(n)}</span>
+      <span className="text-moon/25">{"☆".repeat(5 - n)}</span>
+    </span>
+  );
+}
+
+// ── 主要元件 ──────────────────────────────────────────────────────────────
 
 export function DailyFortuneClient() {
   const [selectedZodiac, setSelectedZodiac] = useState<ZodiacSign>("巨蟹座");
   const [fortune, setFortune] = useState<DailyFortuneData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const savedZodiac = window.localStorage.getItem("universe-whisper-daily-zodiac");
-
-    if (zodiacSigns.includes(savedZodiac as ZodiacSign)) {
-      setSelectedZodiac(savedZodiac as ZodiacSign);
-    } else {
-      setSelectedZodiac("巨蟹座");
+    const saved = window.localStorage.getItem("universe-whisper-daily-zodiac");
+    if (saved && zodiacSigns.includes(saved as ZodiacSign)) {
+      setSelectedZodiac(saved as ZodiacSign);
     }
   }, []);
 
   useEffect(() => {
-    setIsLoading(true);
     setFortune(generateDailyFortune(selectedZodiac));
-    setIsLoading(false);
   }, [selectedZodiac]);
 
   const greeting = useMemo(() => zodiacGreetings[selectedZodiac], [selectedZodiac]);
@@ -60,52 +79,98 @@ export function DailyFortuneClient() {
 
   return (
     <>
+      {/* ── 星座選擇器 ──────────────────────────────────────────────── */}
       <div className="mt-8 rounded-[1.75rem] border border-lavender/18 bg-midnight/38 p-4 shadow-glow sm:p-6">
-        <h2 className="text-2xl font-semibold text-moon">選擇你的星座</h2>
-        <p className="mt-2 text-base leading-7 text-moon/68">讓今天的訊息更靠近你一點。</p>
-        <div className="mt-4 flex flex-wrap gap-2">
+        <h2 className="text-xl font-semibold text-moon sm:text-2xl">選擇你的星座</h2>
+        <p className="mt-1 text-sm leading-7 text-moon/60">今日宇宙提醒，依你的星座量身整理。</p>
+
+        <div className="mt-4 grid grid-cols-4 gap-2 sm:grid-cols-6">
           {zodiacSigns.map((sign) => (
             <button
               key={sign}
               type="button"
               onClick={() => selectZodiac(sign)}
-              className={`rounded-full border px-4 py-2 text-sm transition ${
-                selectedZodiac === sign ? "border-moon bg-moon text-midnight" : "border-white/12 bg-white/8 text-moon/76 hover:bg-white/12"
+              className={`flex flex-col items-center gap-0.5 rounded-2xl border py-3 text-center transition ${
+                selectedZodiac === sign
+                  ? "border-moon bg-moon text-midnight"
+                  : "border-white/12 bg-white/6 text-moon/72 hover:bg-white/12"
               }`}
             >
-              {sign}
+              <span className="text-lg leading-none">{zodiacSymbols[sign]}</span>
+              <span className="mt-1 text-xs leading-none">{sign.replace("座", "")}</span>
             </button>
           ))}
         </div>
-        <p className="mt-4 rounded-2xl border border-white/10 bg-white/6 p-4 text-base leading-8 text-moon/78">{greeting}</p>
+
+        {/* 星座個性語 */}
+        <p className="mt-4 rounded-2xl border border-white/10 bg-white/6 p-4 text-sm leading-7 text-moon/80 sm:text-base">
+          <span className="mr-2 text-base">{zodiacSymbols[selectedZodiac]}</span>
+          {greeting}
+        </p>
       </div>
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-2">
+      {/* ── 整體運 + 幸運資訊 ──────────────────────────────────────── */}
+      <div className="mt-6 overflow-hidden rounded-[1.75rem] border border-lavender/20 bg-midnight/50 shadow-glow">
+        <div className="h-1 bg-gradient-to-r from-nebula/60 via-lavender/80 to-aurora/60" />
+        <div className="p-5 sm:p-7">
+          {/* 頂部：整體運 + 幸運資訊 */}
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.28em] text-lavender/70">今日宇宙提醒</p>
+              <div className="mt-2 flex items-center gap-3">
+                <span className="text-sm text-moon/60">整體運</span>
+                <Stars count={fortune.overall.stars} />
+              </div>
+            </div>
+            <div className="flex gap-4 sm:gap-6">
+              <div className="rounded-xl border border-white/10 bg-white/6 px-3 py-2 text-center">
+                <p className="text-xs text-moon/50">幸運色</p>
+                <p className="mt-0.5 text-sm font-medium text-lavender">{fortune.luckyColor}</p>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-white/6 px-3 py-2 text-center">
+                <p className="text-xs text-moon/50">幸運數字</p>
+                <p className="mt-0.5 text-lg font-semibold text-moon">{fortune.luckyNumber}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* 整體運文字 */}
+          <div className="mt-4 space-y-2 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm leading-7 text-moon/78 sm:text-base">
+            <p>{fortune.overall.current}</p>
+            <p className="border-t border-white/8 pt-2 text-lavender/80">{fortune.overall.tip}</p>
+          </div>
+
+          {/* 今日提醒 */}
+          <div className="mt-4 rounded-2xl border border-lavender/18 bg-lavender/8 p-4">
+            <p className="text-xs uppercase tracking-[0.22em] text-lavender/70">今日小行動</p>
+            <p className="mt-2 text-sm leading-7 text-moon/82 sm:text-base">{fortune.overall.action}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── 四項運勢卡 ──────────────────────────────────────────────── */}
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
         {aspectConfig.map((aspect) => {
           const data = fortune[aspect.key];
           return (
-            <article key={aspect.key} className="glass-card overflow-hidden rounded-[1.5rem] p-5">
-              <div className={`-mx-5 -mt-5 h-24 bg-gradient-to-br ${aspect.color}`} />
-              <div className="-mt-10 flex items-end justify-between gap-3">
-                <div className="rounded-2xl border border-white/10 bg-midnight/70 px-4 py-3 backdrop-blur">
-                  <p className="text-sm text-lavender">{aspect.title}</p>
-                  <h2 className="mt-1 text-2xl font-semibold text-moon">{selectedZodiac}{aspect.title}</h2>
+            <article key={aspect.key} className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-midnight/50 shadow-glow">
+              {/* 頂部漸層色條 */}
+              <div className={`h-1 bg-gradient-to-r ${aspect.gradient}`} />
+
+              <div className="p-5">
+                {/* 標題 + 星星 */}
+                <div className="flex items-center justify-between">
+                  <h2 className="text-base font-semibold text-moon">{aspect.label}</h2>
+                  <Stars count={data.stars} />
                 </div>
-                <div className="rounded-full bg-moon px-4 py-2 text-xl font-semibold text-midnight">{data.score}</div>
-              </div>
-              <div className="mt-5 space-y-4 leading-8 text-moon/78">
-                <p>
-                  <span className="text-lavender">目前：</span>
-                  {data.current}
-                </p>
-                <p>
-                  <span className="text-lavender">提醒：</span>
-                  {data.tip}
-                </p>
-                <p>
-                  <span className="text-lavender">行動：</span>
-                  {data.action}
-                </p>
+
+                {/* 內容 */}
+                <div className="mt-4 space-y-3 text-sm leading-7 text-moon/74 sm:text-base">
+                  <p>{data.current}</p>
+                  <p className="border-t border-white/8 pt-2" style={{ color: "rgba(203,184,255,0.80)" }}>
+                    {data.tip}
+                  </p>
+                </div>
               </div>
             </article>
           );
