@@ -22,7 +22,7 @@ const modes = [
   { key: "three_card", label: "三張牌", description: "過去、現在、未來的溫柔流動" }
 ] as const;
 
-const topics = ["感情", "工作", "曖昧"] as const;
+const topics = ["愛情", "工作", "生活"] as const;
 type TarotTopicOption = (typeof topics)[number];
 type PendingLineAction = {
   action: "send";
@@ -34,24 +34,24 @@ type PendingLineAction = {
 };
 
 const spreadQuestionGroups = {
-  感情: {
-    title: "感情專屬牌陣",
-    questions: ["這段關係接下來會怎樣", "我該繼續投入嗎", "這段感情真正的問題是什麼", "我們之間還有機會嗎", "我現在最該看清什麼"]
+  愛情: {
+    title: "愛情專屬牌陣",
+    questions: ["這段關係接下來會怎樣", "他有喜歡我嗎", "我們之間還有機會嗎", "前任還會回來嗎", "這段關係最該看清什麼"]
   },
   工作: {
     title: "工作專屬牌陣",
-    questions: ["我現在的工作適合我嗎", "接下來的工作運勢如何", "我該轉職嗎", "目前卡住的原因是什麼", "這個機會值得把握嗎"]
+    questions: ["我現在的工作適合我嗎", "接下來的職涯方向如何", "我該轉職嗎", "合作或金錢壓力該怎麼看", "這個機會值得把握嗎"]
   },
-  曖昧: {
-    title: "曖昧專屬牌陣",
-    questions: ["他有喜歡我嗎", "曖昧對象怎麼想", "他會主動靠近我嗎", "我該主動一點嗎", "這段曖昧會有結果嗎"]
+  生活: {
+    title: "生活專屬牌陣",
+    questions: ["我現在的感受想提醒我什麼", "這個選擇該往哪裡走", "家庭或人際關係該怎麼面對", "我最近最需要照顧的是什麼", "我該怎麼找回自己的狀態"]
   }
 } satisfies Record<TarotTopicOption, { title: string; questions: readonly string[] }>;
 
 function toReadingTopic(topic: TarotTopicOption): ReadingTopic {
   if (topic === "工作") return "career";
-  if (topic === "曖昧") return "ambiguous";
-  if (topic === "感情") return "love";
+  if (topic === "生活") return "general";
+  if (topic === "愛情") return "love";
   return "general";
 }
 
@@ -77,7 +77,7 @@ function getOrCreateAnonId(): string {
 
 export function TarotDrawClient() {
   const [mode, setMode] = useState<(typeof modes)[number]["key"]>("single_tarot");
-  const [topic, setTopic] = useState<TarotTopicOption>("感情");
+  const [topic, setTopic] = useState<TarotTopicOption>("愛情");
   const [question, setQuestion] = useState("");
   const [selectedSpreadQuestion, setSelectedSpreadQuestion] = useState("");
   const [cards, setCards] = useState<TarotCardFaceData[]>([]);
@@ -375,10 +375,14 @@ export function TarotDrawClient() {
             key={item.key}
             type="button"
             onClick={() => {
+              const nextMode = item.key;
               setMode(item.key);
               setStatus("idle");
               setCards([]);
-              setSelectedSpreadQuestion("");
+              if (nextMode === "single_tarot") {
+                setQuestion((current) => current === selectedSpreadQuestion ? "" : current);
+                setSelectedSpreadQuestion("");
+              }
               resetReading();
             }}
             className={`rounded-3xl border p-4 text-left transition ${
@@ -415,23 +419,25 @@ export function TarotDrawClient() {
       </div>
 
       {/* 牌陣問題 */}
-      <div className="mt-6 rounded-3xl border border-lavender/18 bg-midnight/38 p-4">
-        <p className="text-sm tracking-[0.22em] text-lavender/70">{currentSpreadGroup.title}</p>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          {currentSpreadGroup.questions.map((item) => (
-            <button
-              key={item}
-              type="button"
-              onClick={() => selectSpreadQuestion(item)}
-              className={`rounded-2xl border px-4 py-3 text-left text-base leading-6 transition ${
-                selectedSpreadQuestion === item ? "border-moon bg-moon text-midnight" : "border-white/12 bg-white/8 text-moon/78 hover:bg-white/12"
-              }`}
-            >
-              {item}
-            </button>
-          ))}
+      {mode === "three_card" ? (
+        <div className="mt-6 rounded-3xl border border-lavender/18 bg-midnight/38 p-4">
+          <p className="text-sm tracking-[0.22em] text-lavender/70">{currentSpreadGroup.title}</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {currentSpreadGroup.questions.map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => selectSpreadQuestion(item)}
+                className={`rounded-2xl border px-4 py-3 text-left text-base leading-6 transition ${
+                  selectedSpreadQuestion === item ? "border-moon bg-moon text-midnight" : "border-white/12 bg-white/8 text-moon/78 hover:bg-white/12"
+                }`}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : null}
 
       {/* 自訂問題 */}
       <div className="mt-6">

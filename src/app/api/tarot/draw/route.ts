@@ -6,7 +6,7 @@ const modeToCardCount = {
   three_card: 3
 } as const;
 
-const topics = ["感情", "工作", "曖昧"] as const;
+const topics = ["愛情", "工作", "生活"] as const;
 
 type TarotMode = keyof typeof modeToCardCount;
 
@@ -17,7 +17,7 @@ function isTarotTopic(topic: unknown): topic is TarotTopic {
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const mode = (body.mode ?? "single_tarot") as TarotMode;
-  const topic = isTarotTopic(body.topic) ? body.topic : "感情";
+  const topic = isTarotTopic(body.topic) ? body.topic : "愛情";
 
   if (!modeToCardCount[mode]) {
     return NextResponse.json({ error: "不支援的抽牌模式。" }, { status: 400 });

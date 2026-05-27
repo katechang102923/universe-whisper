@@ -12,7 +12,7 @@ export default function DailyPage() {
           <h1 className="mt-3 text-4xl font-semibold text-moon sm:text-5xl">每日運勢</h1>
           <div className="mt-1.5 h-px w-24 bg-gradient-to-r from-lavender/60 to-transparent" />
           <p className="mt-4 max-w-2xl leading-8 text-moon/72">
-            選擇你的星座，讓宇宙輕聲告訴你今天的愛情、工作、財運與心情。
+            選擇你的星座，讓宇宙輕聲告訴你今天的愛情、工作與生活。
           </p>
 
           {/* Decorative star accents */}

@@ -1,4 +1,3 @@
-// ── 種子亂數（同一天同星座永遠相同）───────────────────────────────────────
 function seededRandom(seed: number): number {
   const x = Math.sin(seed) * 10000;
   return x - Math.floor(x);
@@ -9,242 +8,294 @@ function pick<T>(items: T[], seed: number): T {
 }
 
 function stars(seed: number): number {
-  // 2–5 顆星（避免出現 1 顆讓人沮喪）
   return 2 + Math.floor(seededRandom(seed) * 4);
 }
 
-// ── 型別定義 ──────────────────────────────────────────────────────────────
-
 export interface FortuneAspect {
   stars: number;
-  current: string;
-  tip: string;
-  action: string;
+  text: string;
+  reminder: string;
 }
 
 export interface DailyFortuneData {
-  overall: FortuneAspect;
-  love: FortuneAspect;
-  work: FortuneAspect;
-  wealth: FortuneAspect;
-  mood: FortuneAspect;
+  overall: string;
   luckyColor: string;
   luckyNumber: number;
+  love: FortuneAspect;
+  work: FortuneAspect;
+  life: FortuneAspect;
+  action: string;
 }
-
-// ── 星座個性 ───────────────────────────────────────────────────────────────
-
-type ZodiacPersonality = {
-  name: string;
-  traits: string[];
-  toneModifier: (text: string) => string;
-};
-
-const zodiacPersonalities: Record<string, ZodiacPersonality> = {
-  牡羊座: { name: "牡羊座", traits: ["熱情", "勇敢", "急進", "衝動"], toneModifier: (t) => t.replace(/不需要/g, "可以").replace(/慢慢/g, "一步步") },
-  金牛座: { name: "金牛座", traits: ["穩定", "實際", "執著", "保守"], toneModifier: (t) => t.replace(/快速/g, "穩穩地").replace(/改變/g, "調整") },
-  雙子座: { name: "雙子座", traits: ["靈活", "好奇", "多變", "善表達"], toneModifier: (t) => t.replace(/深入/g, "多角度").replace(/單一/g, "多元") },
-  巨蟹座: { name: "巨蟹座", traits: ["敏感", "感性", "顧家", "情緒化"], toneModifier: (t) => t.replace(/理性/g, "感受").replace(/表達/g, "傾訴") },
-  獅子座: { name: "獅子座", traits: ["自信", "大方", "領導", "驕傲"], toneModifier: (t) => t.replace(/放下/g, "展現").replace(/謙虛/g, "大膽") },
-  處女座: { name: "處女座", traits: ["細心", "完美", "分析", "挑剔"], toneModifier: (t) => t.replace(/模糊/g, "清楚地").replace(/感覺/g, "觀察") },
-  天秤座: { name: "天秤座", traits: ["平衡", "優雅", "猶豫", "和諧"], toneModifier: (t) => t.replace(/選擇/g, "權衡").replace(/快速/g, "深思") },
-  天蠍座: { name: "天蠍座", traits: ["敏銳", "神祕", "執著", "深度"], toneModifier: (t) => t.replace(/表面/g, "深層").replace(/輕鬆/g, "探究") },
-  射手座: { name: "射手座", traits: ["樂觀", "自由", "冒險", "理想"], toneModifier: (t) => t.replace(/限制/g, "探索").replace(/停留/g, "前進") },
-  摩羯座: { name: "摩羯座", traits: ["務實", "持久", "嚴肅", "負責"], toneModifier: (t) => t.replace(/放鬆/g, "穩健").replace(/感覺/g, "計畫") },
-  水瓶座: { name: "水瓶座", traits: ["理性", "創新", "獨立", "遠距"], toneModifier: (t) => t.replace(/感性/g, "理性").replace(/傳統/g, "新穎") },
-  雙魚座: { name: "雙魚座", traits: ["夢幻", "同情", "逃避", "藝術"], toneModifier: (t) => t.replace(/現實/g, "夢想").replace(/理性/g, "直覺") }
-};
-
-// ── 幸運資訊資料池 ────────────────────────────────────────────────────────
 
 const luckyColors = [
-  "月光白", "薰衣草紫", "午夜藍", "霧粉銀", "微光青",
-  "蜜糖金", "靛藍", "珊瑚橘", "玫瑰粉", "翡翠綠"
+  "月光白",
+  "薰衣草紫",
+  "午夜藍",
+  "霧粉銀",
+  "微光青",
+  "蜜糖金",
+  "靛藍",
+  "珊瑚橘",
+  "玫瑰粉",
+  "翡翠綠",
 ];
 
-// ── 整體運 ────────────────────────────────────────────────────────────────
+const overallPool = [
+  "今天適合把心放慢一點。你不需要急著找到所有答案，先讓自己回到比較穩的位置，事情會慢慢變清楚。",
+  "今天的訊息偏向整理與釐清。那些讓你反覆想起的事，不一定要立刻解決，但值得被好好看見。",
+  "今天你的能量正在重新校準。先照顧好最基本的睡眠、飲食與節奏，心裡的雜訊會少一些。",
+  "今天適合用溫柔但實際的方式前進。不要一次推太多，只要完成一件真正重要的小事就很好。",
+  "今天宇宙提醒你，把注意力收回自己身上。當你不再追著外界反應跑，答案會更容易浮現。",
+];
 
-function generateOverall(_zodiacSign: string, daySeeds: { s1: number; s2: number; s3: number }): FortuneAspect {
-  const currents = [
-    "今天整體能量平穩，適合把一件重要的事往前推一步。",
-    "宇宙今天給你的訊號是：先安靜，再行動。",
-    "今天的能量比昨天更流動，有一件事會慢慢變得清楚。",
-    "今天整體偏重內在整理，先讓心情安定下來。",
-    "宇宙今天站在你身邊，你比以為的更有力量。"
-  ];
-  const tips = [
-    "不必急著解決所有事，一次一件，一步一步。",
-    "先把自己照顧好，才有餘裕去照顧其他的。",
-    "今天的直覺比平時更可靠，試著相信它。",
-    "放慢節奏，反而讓宇宙更容易接近你。",
-    "你已經做了很多，今天允許自己暫停一下。"
-  ];
-  const actions = [
-    "用三句話描述今天的心情，不用邏輯，只要誠實。",
-    "在今天最忙的時刻，給自己一分鐘的靜止。",
-    "做完一件拖很久的小事，讓今天有個小小的成就感。",
-    "對一個人說一句真心的感謝，不管有沒有說出口。",
-    "把今天最大的擔心，暫時放進想像的盒子裡。"
-  ];
+const actionPool = [
+  "今天先做一件能讓生活變輕的小事。",
+  "把最在意的念頭寫下來，再圈出真正能處理的一項。",
+  "留一段不被打擾的時間，讓心慢慢回到自己身邊。",
+  "把一個過度用力的地方放鬆一點，事情不會因此失控。",
+  "睡前對自己說一句：我已經在路上了。",
+];
 
+const zodiacLoveOverrides: Record<string, { text: string; reminder: string }> = {
+  牡羊座: {
+    text: "愛情裡你今天容易想立刻知道答案，但真正能推進關係的，是先讓對方感覺到你的真誠而不是壓力。",
+    reminder: "主動可以，但不要用速度逼對方表態。",
+  },
+  金牛座: {
+    text: "愛情裡你今天更需要穩定感。慢熱不是退縮，而是在確認這段靠近是否真的安全，不用急著逼出答案。",
+    reminder: "先看對方是否持續靠近，再決定投入多少。",
+  },
+  雙子座: {
+    text: "愛情裡適合用對話打開空氣。你不必把話題繞得太遠，真實的小問題反而能換來更清楚的互動。",
+    reminder: "少一點試探，多一點輕鬆確認。",
+  },
+  巨蟹座: {
+    text: "愛情裡你今天很在意被接住的感覺。別把所有委屈都藏起來，溫柔說出需求會比安靜等待更有用。",
+    reminder: "把在意說短一點、真一點。",
+  },
+  獅子座: {
+    text: "愛情裡你想被重視，也希望自己的付出被看見。今天適合大方表達喜歡，但記得也讓對方有靠近的空間。",
+    reminder: "光芒不用收起來，只要別照得太急。",
+  },
+  處女座: {
+    text: "愛情裡你可能會檢查很多細節，但關係不是一張待修正的表格。今天先看整體相處是否讓你安心。",
+    reminder: "少分析一點，多感受相處後的心。",
+  },
+  天秤座: {
+    text: "愛情裡你今天容易顧慮彼此平衡。別為了維持好氣氛就忽略自己，真正舒服的關係容得下你的選擇。",
+    reminder: "先承認自己的想要，再談配合。",
+  },
+  天蠍座: {
+    text: "愛情裡你可能感覺到對方沒說完的部分。先不要用猜測刺傷自己，今天更適合觀察行動是否一致。",
+    reminder: "把安全感先交回自己手裡。",
+  },
+  射手座: {
+    text: "愛情裡你需要一點空氣與真誠並存。若你感覺被期待壓住，直接說明節奏會比突然拉開距離更溫柔。",
+    reminder: "自由不是消失，而是清楚說明。",
+  },
+  摩羯座: {
+    text: "愛情裡別讓工作壓力替你說話。你可以有界線，也可以示弱；不要把冷靜包裝成逃避。",
+    reminder: "先分開壓力與感受，再回應對方。",
+  },
+  水瓶座: {
+    text: "愛情裡你今天適合分享一個真實想法。不是所有親密都會限制你，有些靠近反而能讓你更像自己。",
+    reminder: "不要只回應事情，也回應感受。",
+  },
+  雙魚座: {
+    text: "愛情裡你的感受很細，今天不要只等對方猜中。給出一點清楚提示，關係才有機會溫柔靠近。",
+    reminder: "溫柔可以很清楚，不必委屈自己。",
+  },
+};
+
+const zodiacWorkOverrides: Record<string, { text: string; reminder: string }> = {
+  牡羊座: {
+    text: "工作上今天適合主動開局，但別把所有事都攬到自己身上。先確認目標，再用你的行動力推進。",
+    reminder: "衝得快之前，先確認方向正確。",
+  },
+  金牛座: {
+    text: "工作上今天適合穩定收斂。你會在細節與耐心裡累積成果，不需要被別人的急迫帶亂節奏。",
+    reminder: "把待辦拆小，先完成最實在的一步。",
+  },
+  雙子座: {
+    text: "工作上今天訊息很多，適合溝通、整理資料與串連人脈。小心同時開太多視窗，讓專注被稀釋。",
+    reminder: "先列三件必做，其餘晚點回應。",
+  },
+  巨蟹座: {
+    text: "工作上你可能會接收到別人的壓力。今天要把協助與承擔分清楚，別把團隊情緒全背到自己身上。",
+    reminder: "答應前先確認時間與能量。",
+  },
+  獅子座: {
+    text: "工作上今天適合讓成果被看見。提出想法、爭取資源都可以，但記得把合作夥伴也放進光裡。",
+    reminder: "說出方案，也留下討論空間。",
+  },
+  處女座: {
+    text: "工作上今天適合修流程、補資料、抓漏洞。你的細心很有用，但別為了完美拖住已經能前進的事。",
+    reminder: "先交出版本，再慢慢修正。",
+  },
+  天秤座: {
+    text: "工作上今天容易需要協調不同立場。你能看見大家的需求，但也要清楚說出自己的可行範圍。",
+    reminder: "先寫下能接受與不能接受的條件。",
+  },
+  天蠍座: {
+    text: "工作上今天適合看見隱藏問題。你的判斷很敏銳，但表達時先拿出事實，會比直接戳破更有效。",
+    reminder: "先掌握證據，再提出判斷。",
+  },
+  射手座: {
+    text: "工作上今天適合研究新方向或外部機會。靈感很多，但先不要急著定案，讓資訊多沉澱一下。",
+    reminder: "花一點時間查一個想學的新技能。",
+  },
+  摩羯座: {
+    text: "工作上今天容易把責任感拉到滿格。你可以可靠，但不用替每個人的急事負責，先守住自己的主線。",
+    reminder: "分清楚哪件事真的今天非做不可。",
+  },
+  水瓶座: {
+    text: "工作上今天適合提出新觀點。你的想法有突破性，但要用具體例子讓別人跟得上你的節奏。",
+    reminder: "把抽象概念翻成一個可執行步驟。",
+  },
+  雙魚座: {
+    text: "工作上今天先處理明確任務會更順。情緒容易影響判斷，完成一件小事能把你慢慢拉回穩定。",
+    reminder: "先做最不需要糾結的那一件。",
+  },
+};
+
+const zodiacLifeOverrides: Record<string, { text: string; reminder: string }> = {
+  牡羊座: {
+    text: "生活上今天需要替身體降速。你可以繼續往前，但也要讓自己有停下來喝水、呼吸、重新整理的空隙。",
+    reminder: "晚上留一段不安排任務的時間。",
+  },
+  金牛座: {
+    text: "生活上今天適合用熟悉的儀式安定自己。好好吃飯、整理一角、點一盞燈，都能讓內在更踏實。",
+    reminder: "為自己準備一個舒服的夜晚。",
+  },
+  雙子座: {
+    text: "生活上今天需要減少雜訊。你可以保留好奇，但別讓過多訊息占滿整個夜晚。",
+    reminder: "睡前少滑一點，多聽一點自己。",
+  },
+  巨蟹座: {
+    text: "生活上今天適合回到讓你安心的地方。家、熱飲、安靜角落，都能幫你把敏感慢慢放回原位。",
+    reminder: "整理一個小空間，也是在照顧自己。",
+  },
+  獅子座: {
+    text: "生活上今天請允許自己不用一直撐場面。普通、疲累、需要陪伴，都不會讓你的光變少。",
+    reminder: "做一件只為自己開心的小事。",
+  },
+  處女座: {
+    text: "生活上今天需要留白。不是每個細節都要被安排好，空出一點時間，反而能讓你更快恢復清醒。",
+    reminder: "刪掉一個不必要的安排。",
+  },
+  天秤座: {
+    text: "生活上今天適合加入一點美感。換個桌面、整理衣角、聽一首喜歡的歌，都會讓你重新感到平衡。",
+    reminder: "替日常加一個漂亮的小細節。",
+  },
+  天蠍座: {
+    text: "生活上今天需要讓內在有出口。不要把所有感受都壓著，寫下來或洗個熱水澡都會有幫助。",
+    reminder: "不要在感受最滿的時候做決定。",
+  },
+  射手座: {
+    text: "生活上今天適合讓視野變寬。換條路走、安排小旅行或聊一個有趣話題，都能幫你換氣。",
+    reminder: "給自己一個不照表操課的片刻。",
+  },
+  摩羯座: {
+    text: "生活上今天提醒你重新分配體力。休息不是拖延，而是讓你之後能走得更久的必要準備。",
+    reminder: "今晚把明天要用的東西簡單備好。",
+  },
+  水瓶座: {
+    text: "生活上今天像訊號太多的夜空。暫時降低資訊量，會讓你更清楚自己真正想往哪裡去。",
+    reminder: "留 30 分鐘遠離訊息流。",
+  },
+  雙魚座: {
+    text: "生活上今天需要柔軟邊界。你可以關心別人，但不用把別人的低潮全部收進自己心裡。",
+    reminder: "替自己留一段不回覆也可以的時間。",
+  },
+};
+
+function aspect(seedBase: number, currents: string[], reminders: string[]): FortuneAspect {
   return {
-    stars: stars(daySeeds.s1 + 500),
-    current: pick(currents, daySeeds.s1 + 500),
-    tip: pick(tips, daySeeds.s2 + 500),
-    action: pick(actions, daySeeds.s3 + 500)
+    stars: stars(seedBase),
+    text: pick(currents, seedBase + 1),
+    reminder: pick(reminders, seedBase + 2),
   };
 }
 
-// ── 愛情運 ────────────────────────────────────────────────────────────────
+export function generateDailyFortune(zodiacSign: string, date: string): DailyFortuneData {
+  const baseSeed = [...`${date}-${zodiacSign}`].reduce(
+    (sum, char) => sum + char.charCodeAt(0),
+    0
+  );
 
-function generateLove(_zodiacSign: string, daySeeds: { s1: number; s2: number; s3: number }): FortuneAspect {
-  const currents = [
-    "你今天對關係細節特別敏感，這不是過度反應，而是你在照顧這份連結。",
-    "關係裡的沉默今天有了新的意義，不是冷淡，而是彼此在重新調頻。",
-    "你心裡有話想說，但還在衡量說出來的時機，信任會幫助你。",
-    "愛的方式不只一種，今天你會看見對方用你沒注意過的方式靠近。",
-    "今天的你對陪伴特別渴望，這是在提醒你也要好好陪伴自己。"
-  ];
-  const tips = [
-    "真正的親密來自願意被看見，而不是不斷偽裝。",
-    "先傾聽對方，答案往往在理解後才會浮現。",
-    "放下猜測，用溫柔的問候取代無聲的期待。",
-    "你值得被主動選擇，但也值得先選擇自己。",
-    "關係需要呼吸，讓彼此有完整自己的空間。"
-  ];
-  const actions = [
-    "傳一則溫柔的訊息，不要期待立即回應。",
-    "準備一個對方會喜歡的小驚喜，哪怕再微小。",
-    "主動約一個無壓力的見面，享受當下的陪伴。",
-    "寫下對對方的感謝，即使不說出口，感受也會改變。",
-    "給予對方三個真誠的讚美，看看能帶來什麼變化。"
+  const loveCurrents = [
+    "感情裡有些細節會被你放大，這不是壞事，只是提醒你需要更清楚的回應與安全感。",
+    "今天適合用輕一點的方式靠近對方。少一點試探，多一點真誠，氣氛會變得柔軟。",
+    "你可能會想確認自己在對方心裡的位置。先不要急著逼答案，觀察行動會比猜測更準。",
+    "關係裡有機會出現一段舒服的對話。你可以把在意說短一點、說真一點。",
+    "今天的你需要被理解，也需要先理解自己的需求。別把沉默當成唯一的保護方式。",
   ];
 
-  return {
-    stars: stars(daySeeds.s1 + 100),
-    current: pick(currents, daySeeds.s1 + 100),
-    tip: pick(tips, daySeeds.s2 + 100),
-    action: pick(actions, daySeeds.s3 + 100)
-  };
-}
-
-// ── 工作運 ────────────────────────────────────────────────────────────────
-
-function generateWork(_zodiacSign: string, daySeeds: { s1: number; s2: number; s3: number }): FortuneAspect {
-  const currents = [
-    "今天工作容易被瑣事打斷，真正累的其實是頻繁的轉換注意力。",
-    "你有能力解決眼前的事，但先確認這件事是否真的值得你的力氣。",
-    "今天可能有意外的機會出現，它會以小細節的形式靠近。",
-    "一個挑戰今天會變得清晰，面對它比繞過它更省力。",
-    "你的進度比昨天快，即使感受不到，也已經在往前了。"
+  const loveReminders = [
+    "一句溫柔的問候，比反覆揣測更有力量。",
+    "先看對方是否願意穩定靠近，再決定要不要多投入。",
+    "你值得被好好回應，也值得慢慢確認。",
+    "不要把一時冷淡解讀成全部答案。",
+    "今天適合誠實，但不適合情緒滿出來時攤牌。",
   ];
-  const tips = [
-    "優先處理最有影響力的一件事，其他的會自然就位。",
-    "偶爾停下來深呼吸，才能重新看見工作的全貌。",
-    "完成比完美重要，先交出來再調整。",
-    "你的直覺在工作上也很可信，相信它。",
-    "幫助別人也是在肯定自己的價值。"
+
+  const workCurrents = [
+    "工作上今天適合先抓主線。雜事很多，但真正重要的只有一兩件，先把它們穩住。",
+    "你可能會覺得進度不夠快，但其實是在替後面打底。耐心會比焦急更有效。",
+    "今天容易遇到臨時變動。先確認資訊，再決定怎麼回應，會少走很多冤枉路。",
+    "你的專業會在細節裡被看見。別急著求完美，先讓成果有可以被討論的形狀。",
+    "工作能量偏向整理與收斂。適合收尾、校對、排優先順序，不適合同時開太多新坑。",
   ];
-  const actions = [
-    "列出三個必做的事，只先完成第一個。",
-    "和同事分享一個想法，看看會有什麼發展。",
-    "暫停一個習慣性的反應，觀察有什麼改變。",
-    "記錄今天完成的一件事，晚上回顧時會有意外的滿足。",
-    "適時說不，為更重要的事保留能量。"
+
+  const workReminders = [
+    "先完成最有影響力的一件事。",
+    "把需求問清楚，比默默多做更重要。",
+    "今天不必證明全部能力，穩定完成就很好。",
+    "遇到卡住時，先把問題拆成三個小步驟。",
+    "替自己的時間留邊界，效率會回來。",
+  ];
+
+  const lifeCurrents = [
+    "生活上今天需要一點留白。你可以照顧別人，但別忘了也替自己留一口氣。",
+    "今天適合整理空間或作息。外在變清爽一點，心裡也會跟著安靜下來。",
+    "你的身體可能比心更早感覺疲累。把節奏放慢，不是退後，是在補回能量。",
+    "今天適合把小確幸放進日常裡。熱飲、散步、早點洗澡，都會讓心穩一些。",
+    "生活提醒你別把所有感受都塞滿。能說的說一點，不能說的先溫柔放下。",
+  ];
+
+  const lifeReminders = [
+    "今晚留一段時間給自己，不安排任何任務。",
+    "先照顧身體，情緒會比較願意鬆開。",
+    "把房間一角整理好，也是在替心打開窗。",
+    "少滑一點訊息，多聽一點自己的聲音。",
+    "允許今天普通一點，普通也值得被愛。",
   ];
 
   return {
-    stars: stars(daySeeds.s1 + 200),
-    current: pick(currents, daySeeds.s1 + 200),
-    tip: pick(tips, daySeeds.s2 + 200),
-    action: pick(actions, daySeeds.s3 + 200)
+    overall: pick(overallPool, baseSeed + 10),
+    luckyColor: pick(luckyColors, baseSeed + 20),
+    luckyNumber: 1 + Math.floor(seededRandom(baseSeed + 30) * 9),
+    love: {
+      stars: stars(baseSeed + 100),
+      ...(zodiacLoveOverrides[zodiacSign] ?? {
+        text: pick(loveCurrents, baseSeed + 101),
+        reminder: pick(loveReminders, baseSeed + 102),
+      }),
+    },
+    work: {
+      stars: stars(baseSeed + 200),
+      ...(zodiacWorkOverrides[zodiacSign] ?? {
+        text: pick(workCurrents, baseSeed + 201),
+        reminder: pick(workReminders, baseSeed + 202),
+      }),
+    },
+    life: {
+      stars: stars(baseSeed + 300),
+      ...(zodiacLifeOverrides[zodiacSign] ?? {
+        text: pick(lifeCurrents, baseSeed + 301),
+        reminder: pick(lifeReminders, baseSeed + 302),
+      }),
+    },
+    action: pick(actionPool, baseSeed + 40),
   };
 }
-
-// ── 財運 ──────────────────────────────────────────────────────────────────
-
-function generateWealth(_zodiacSign: string, daySeeds: { s1: number; s2: number; s3: number }): FortuneAspect {
-  const currents = [
-    "今天適合檢視小額支出，那些讓你短暫安心卻沒被真正需要的消費。",
-    "一筆意外的進帳可能會出現，但不要改變既定計畫。",
-    "金錢在今天提醒你關於安全感和自由的平衡。",
-    "你對收支的感受比以往更敏銳，信任這個訊號。",
-    "今天適合為未來做點小準備，不需要一次到位。"
-  ];
-  const tips = [
-    "存錢是為了讓生活更安穩，不是為了無限延遲快樂。",
-    "每一筆支出都在述說你的價值觀，選擇它們。",
-    "財富不只是數字，也包括你對生活的掌控感。",
-    "現在的投資會在某個時刻回報你，只要方向對。",
-    "給予也是一種財富的流動，不用害怕。"
-  ];
-  const actions = [
-    "整理一筆固定支出，保留真正支持生活品質的部分。",
-    "記下今天節省的一筆錢，看看積累會帶來什麼。",
-    "重新評估一個訂閱或會員，確認它還符合你的需求。",
-    "用一筆錢犒賞自己，允許自己值得被好好對待。",
-    "捐獻一個小額度，感受金錢的正向流動。"
-  ];
-
-  return {
-    stars: stars(daySeeds.s1 + 300),
-    current: pick(currents, daySeeds.s1 + 300),
-    tip: pick(tips, daySeeds.s2 + 300),
-    action: pick(actions, daySeeds.s3 + 300)
-  };
-}
-
-// ── 心情 ──────────────────────────────────────────────────────────────────
-
-function generateMood(_zodiacSign: string, daySeeds: { s1: number; s2: number; s3: number }): FortuneAspect {
-  const currents = [
-    "你的心今天需要一點安靜，不是逃避，而是把太滿的感覺慢慢放回原位。",
-    "有些情緒在冒出來，它們不是麻煩，而是在提醒你某些地方需要照顧。",
-    "今天可能有個時刻會特別觸動你，讓它自然流過。",
-    "你比想像中更平靜，那些擾亂都在表面，深處其實很穩。",
-    "疲憊不是失敗的信號，它是身體在說需要暫停一下。"
-  ];
-  const tips = [
-    "情緒是信息，不是故障，好好聽它說。",
-    "允許自己今天不用很好，只需要真實。",
-    "一個小的安定感就能改變整個下午。",
-    "你的敏感是優勢，不是弱點。",
-    "和自己相處，比想著怎麼被理解更重要。"
-  ];
-  const actions = [
-    "給自己十分鐘不滑手機的空白，讓身體先安定下來。",
-    "做一件讓身體感到安心的事，比如泡澡或走路。",
-    "寫下今天的感受，不用整理成邏輯，只是傾倒。",
-    "聽一首能撫慰你的音樂，陪自己度過難受的時刻。",
-    "找一個信任的人傾訴，或者就靜靜地陪著自己。"
-  ];
-
-  return {
-    stars: stars(daySeeds.s1 + 400),
-    current: pick(currents, daySeeds.s1 + 400),
-    tip: pick(tips, daySeeds.s2 + 400),
-    action: pick(actions, daySeeds.s3 + 400)
-  };
-}
-
-// ── 主要 export ───────────────────────────────────────────────────────────
-
-export function generateDailyFortune(zodiacSign: string, date?: Date): DailyFortuneData {
-  const today = date ?? new Date();
-  const dateStr = today.toISOString().slice(0, 10);
-  const baseSeed = [...`${dateStr}-${zodiacSign}`].reduce((sum, char) => sum + char.charCodeAt(0), 0);
-
-  const daySeeds = { s1: baseSeed + 1, s2: baseSeed + 2, s3: baseSeed + 3 };
-
-  return {
-    overall: generateOverall(zodiacSign, daySeeds),
-    love: generateLove(zodiacSign, daySeeds),
-    work: generateWork(zodiacSign, daySeeds),
-    wealth: generateWealth(zodiacSign, daySeeds),
-    mood: generateMood(zodiacSign, daySeeds),
-    luckyColor: pick(luckyColors, baseSeed + 7),
-    luckyNumber: 1 + Math.floor(seededRandom(baseSeed + 11) * 9)
-  };
-}
-
-export { zodiacPersonalities };

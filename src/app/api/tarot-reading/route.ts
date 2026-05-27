@@ -80,19 +80,19 @@ function normalizeCards(cards: unknown): TarotReadingCard[] | null {
 
 function getTopicLabel(topic: TarotReadingTopic) {
   return {
-    love: "感情",
+    love: "愛情",
     career: "工作",
     ambiguous: "曖昧",
-    general: "生活與心情"
+    general: "生活"
   }[topic];
 }
 
 function getTopicGuidance(topic: TarotReadingTopic) {
   return {
-    love: "請偏向感情關係、情緒需求、關係中的真實問題與是否值得繼續投入。",
+    love: "請偏向愛情關係、情緒需求、關係中的真實問題與是否值得繼續投入。",
     career: "請偏向工作狀態、職涯選擇、機會判斷、卡住原因與接下來可採取的行動。",
     ambiguous: "請偏向曖昧關係、試探與拉扯、對方心態、訊息冷熱、是否該主動，以及如何保護自己的安全感。",
-    general: "請偏向生活狀態、心情整理、目前課題與溫柔提醒。"
+    general: "請偏向生活狀態、內在整理、目前課題與溫柔提醒。"
   }[topic];
 }
 
@@ -116,7 +116,7 @@ function buildFreeReading(cards: TarotReadingCard[], topic: TarotReadingTopic, q
       return `${spreadLabel}的 ${card.name}（${orientationLabel}）`;
     })
     .join("、");
-  const questionLine = question ? `你放進宇宙的問題是：「${question}」` : "你沒有把問題說出口，但牌面仍接住了此刻的心情。";
+  const questionLine = question ? `你放進宇宙的問題是：「${question}」` : "你沒有把問題說出口，但牌面仍接住了此刻的感受。";
 
   return `宇宙給你的簡短訊息
 
@@ -195,7 +195,7 @@ function buildAdPrompt(cards: TarotReadingCard[], topic: TarotReadingTopic, ques
       return `${index + 1}. ${card.name}（${orientationLabel}）${spreadText}`;
     })
     .join("\n");
-  const questionText = question ? `\n提問者寫下的心事：${question}` : "\n提問者沒有寫下問題，請以此刻的心情陪伴為主。";
+  const questionText = question ? `\n提問者寫下的心事：${question}` : "\n提問者沒有寫下問題，請以此刻的感受陪伴為主。";
 
   return `請為「宇宙偷偷話」網站寫一段塔羅解讀。
 
@@ -319,7 +319,7 @@ function buildPremiumPrompt(cards: TarotReadingCard[], topic: TarotReadingTopic,
       return `${index + 1}. ${card.name}（${orientationLabel}）${spreadText}`;
     })
     .join("\n");
-  const questionText = question ? `\n提問者寫下的心事：${question}` : "\n提問者沒有寫下問題，請以此刻的心情陪伴為主。";
+  const questionText = question ? `\n提問者寫下的心事：${question}` : "\n提問者沒有寫下問題，請以此刻的感受陪伴為主。";
 
   return `請為「宇宙偷偷話」網站寫一段深度塔羅解讀。
 

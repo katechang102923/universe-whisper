@@ -16,7 +16,7 @@ export type UserDocument = {
 
 export type TarotLogDocument = {
   userId?: string;
-  topic: "感情" | "工作" | "曖昧";
+  topic: "愛情" | "工作" | "生活";
   mode: "single_tarot" | "three_card";
   cardIds: string[];
   question?: string;

@@ -1,7 +1,7 @@
 import { tarotCards, type TarotCard } from "@/data/tarotCards";
 
 export type TarotOrientation = "upright" | "reversed";
-export type TarotTopic = "感情" | "工作" | "曖昧";
+export type TarotTopic = "愛情" | "工作" | "生活";
 
 export type DrawnTarotCard = TarotCard & {
   orientation: TarotOrientation;
@@ -17,8 +17,8 @@ function getTopicMessage(card: TarotCard, topic: TarotTopic) {
     return card.career;
   }
 
-  if (topic === "曖昧") {
-    return `${card.love} ${card.advice}`;
+  if (topic === "生活") {
+    return card.advice;
   }
 
   return card.love;
@@ -29,7 +29,7 @@ function createCosmicMessage(card: TarotCard, orientation: TarotOrientation, top
   return `${baseReading} ${getTopicMessage(card, topic)}`;
 }
 
-export function drawCards(count = 1, topic: TarotTopic = "感情") {
+export function drawCards(count = 1, topic: TarotTopic = "愛情") {
   const shuffled = [...tarotCards].sort(() => Math.random() - 0.5);
 
   return shuffled.slice(0, Math.min(Math.max(count, 1), 3)).map((card, index) => {
