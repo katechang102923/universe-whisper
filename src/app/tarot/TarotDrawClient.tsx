@@ -217,7 +217,6 @@ export function TarotDrawClient() {
   const [lineDeliveryStatus, setLineDeliveryStatus] = useState<"idle" | "sending" | "softPause">("idle");
   const [lineDeliveryMessage, setLineDeliveryMessage] = useState("");
   const [lineResultId, setLineResultId] = useState("");
-  const [lineAuthRequired, setLineAuthRequired] = useState(false);
   const [drawsRemaining, setDrawsRemaining] = useState<number | null>(null);
   const adTimerRef = useRef<number | null>(null);
   const paymentTimerRef = useRef<number | null>(null);
@@ -235,56 +234,21 @@ export function TarotDrawClient() {
     };
   }, []);
 
-  // Detect return from LINE Login and auto-send saved payload
+  // Detect return from LINE Connect flow (?lineSent=1) and LINE Login (?lineLogin=...)
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
+
+    if (params.get("lineSent") === "1") {
+      window.history.replaceState({}, "", window.location.pathname);
+      setLineDeliveryMessage("已傳送到 LINE，請回到 LINE 查看宇宙訊息 ✨");
+      return;
+    }
+
     const lineLogin = params.get("lineLogin");
     if (!lineLogin) return;
-
     window.history.replaceState({}, "", window.location.pathname);
-
-    if (lineLogin === "failed") {
-      setLineDeliveryMessage("LINE 登入失敗，請稍後再試。");
-      return;
-    }
-
-    if (lineLogin !== "success") return;
-
-    let savedPayload: Record<string, unknown> | null = null;
-    try {
-      const raw = sessionStorage.getItem("line-pending-send-payload");
-      if (raw) {
-        savedPayload = JSON.parse(raw) as Record<string, unknown>;
-        sessionStorage.removeItem("line-pending-send-payload");
-      }
-    } catch { /* ignore */ }
-
-    if (!savedPayload) {
-      setLineDeliveryMessage("LINE 登入成功！請再點一次「傳送到 LINE」。");
-      return;
-    }
-
-    setLineDeliveryStatus("sending");
-    void fetch("/api/line/send-tarot", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(savedPayload),
-    })
-      .then(async (r) => {
-        const d = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-        if (d.ok) {
-          setLineDeliveryStatus("idle");
-          setLineDeliveryMessage("已傳送到 LINE，請回到 LINE 查看宇宙訊息 ✨");
-        } else {
-          setLineDeliveryStatus("softPause");
-          setLineDeliveryMessage(d.error || "LINE 傳送失敗，請稍後再試。");
-        }
-      })
-      .catch(() => {
-        setLineDeliveryStatus("softPause");
-        setLineDeliveryMessage("LINE 傳送暫時失敗，請稍後再試。");
-      });
+    if (lineLogin === "failed") setLineDeliveryMessage("LINE 登入失敗，請稍後再試。");
   }, []);
 
   // Fetch remaining draw quota on mount
@@ -317,7 +281,6 @@ export function TarotDrawClient() {
     setLineDeliveryStatus("idle");
     setLineDeliveryMessage("");
     setLineResultId("");
-    setLineAuthRequired(false);
   }
 
   function buildReadingPayload(targetCards: TarotCardFaceData[]) {
@@ -563,7 +526,8 @@ export function TarotDrawClient() {
         question,
         cards,
         shortText: freeSummary.message,
-        fullText: fullReading,
+        // fall back to freeSummary when fullReading is empty (e.g. API returned 429)
+        fullText: fullReading || freeSummary.message,
       }),
     });
     const data = (await response.json().catch(() => ({}))) as { ok?: boolean; resultId?: string; error?: string };
@@ -579,49 +543,14 @@ export function TarotDrawClient() {
   async function sendLineResult() {
     if (!cards.length || lineDeliveryStatus === "sending") return;
 
-    const payload = {
-      cards,
-      topic: toReadingTopic(topic),
-      question: question.trim() || undefined,
-      freeReading: freeSummary.message,
-      // Use fullReading when available; fall back to freeSummary so 429 never blocks this
-      premiumReading: fullReading || freeSummary.message,
-    };
-
     try {
       setLineDeliveryStatus("sending");
       setLineDeliveryMessage("");
-
-      const response = await fetch("/api/line/send-tarot", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const data = (await response.json().catch(() => ({}))) as {
-        ok?: boolean;
-        loginRequired?: boolean;
-        error?: string;
-      };
-
-      if (response.status === 401 || data.loginRequired) {
-        // Save the payload so we can auto-send after login redirect returns
-        try {
-          sessionStorage.setItem("line-pending-send-payload", JSON.stringify(payload));
-        } catch { /* ignore */ }
-        setLineDeliveryStatus("idle");
-        setLineAuthRequired(true);
-        setLineDeliveryMessage("請先完成 LINE 授權，再傳送宇宙訊息。");
-        return;
-      }
-
-      if (!response.ok) {
-        throw new Error(data.error || "LINE 傳送失敗，請稍後再試。");
-      }
-
-      setLineDeliveryStatus("idle");
-      setLineDeliveryMessage("已傳送到 LINE，請回到 LINE 查看宇宙訊息 ✨");
-      try { sessionStorage.removeItem("line-pending-send-payload"); } catch { /* ignore */ }
+      // Create a Firestore result document, then hand off to /line/connect.
+      // LineConnectClient handles LIFF (in-app browser) and desktop OAuth
+      // via /api/line/connect/start → redirect_uri = https://universe-whisper.vercel.app/line/connect
+      const resultId = await createLineResult();
+      window.location.href = `/line/connect?resultId=${encodeURIComponent(resultId)}`;
     } catch (err) {
       setLineDeliveryStatus("softPause");
       setLineDeliveryMessage(err instanceof Error ? err.message : "LINE 傳送暫時失敗，請稍後再試。");
@@ -893,28 +822,15 @@ export function TarotDrawClient() {
             <p className="mx-auto mt-3 max-w-xl text-base leading-8 text-moon/72">
               把本次塔羅抽牌結果傳送到你的 LINE，隨時回顧宇宙訊息。
             </p>
-            {lineAuthRequired ? (
-              <button
-                type="button"
-                onClick={() => {
-                  window.location.href = `/api/line/login/start?returnTo=${encodeURIComponent("/tarot")}`;
-                }}
-                className="pointer-events-auto relative z-10 mt-5 w-full touch-manipulation rounded-full px-6 py-4 text-base font-semibold text-white transition hover:opacity-90 active:scale-95 sm:w-auto sm:min-w-[280px]"
-                style={{ background: "#06C755", boxShadow: "0 0 34px rgba(6,199,85,0.34)" }}
-              >
-                完成 LINE 授權
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={sendLineResult}
-                disabled={lineDeliveryStatus === "sending"}
-                className="pointer-events-auto relative z-10 mt-5 w-full touch-manipulation rounded-full px-6 py-4 text-base font-semibold text-white transition hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:min-w-[280px]"
-                style={{ background: "#06C755", boxShadow: "0 0 34px rgba(6,199,85,0.34)" }}
-              >
-                {lineDeliveryStatus === "sending" ? "正在傳送到 LINE..." : "傳送到 LINE 接收完整宇宙訊息"}
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={sendLineResult}
+              disabled={lineDeliveryStatus === "sending"}
+              className="pointer-events-auto relative z-10 mt-5 w-full touch-manipulation rounded-full px-6 py-4 text-base font-semibold text-white transition hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:min-w-[280px]"
+              style={{ background: "#06C755", boxShadow: "0 0 34px rgba(6,199,85,0.34)" }}
+            >
+              {lineDeliveryStatus === "sending" ? "正在傳送到 LINE..." : "傳送到 LINE 接收完整宇宙訊息"}
+            </button>
             {lineDeliveryMessage ? <p className="mt-4 text-sm leading-6 text-moon/70">{lineDeliveryMessage}</p> : null}
           </div>
         </section>
