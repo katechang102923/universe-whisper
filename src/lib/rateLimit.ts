@@ -16,7 +16,14 @@ export interface RateLimitParams {
 
 export type RateLimitResult =
   | { allowed: true }
-  | { allowed: false; message: string };
+  | { allowed: false; message: string; remaining: 0 };
+
+export interface DrawUsageResult {
+  used: number;
+  limit: number;
+  remaining: number;
+  isLineUser: boolean;
+}
 
 export interface DailyUsageDoc {
   total_requests: number;
@@ -55,7 +62,44 @@ function encodeKey(key: string): string {
   return key.replace(/[.:#$[\]/\\@!%^&*()+=,<>?~`|{}]/g, "_").slice(0, 200);
 }
 
-export async function checkAndIncrementLimit(params: RateLimitParams): Promise<RateLimitResult> {
+export async function getDrawUsage(params: {
+  ip: string;
+  anonymousId: string | null;
+  lineUserId: string | null;
+}, collectionName = "draw_limits"): Promise<DrawUsageResult> {
+  const { ip, anonymousId, lineUserId } = params;
+
+  if (lineUserId && getAdminUserIds().includes(lineUserId)) {
+    return { used: 0, limit: 999, remaining: 999, isLineUser: true };
+  }
+
+  const limit = lineUserId ? LINE_DAILY_LIMIT : UNAUTH_DAILY_LIMIT;
+  const isLineUser = Boolean(lineUserId);
+  const today = getTaipeiDate();
+
+  try {
+    const db = getAdminDb();
+    const snap = await db.collection(collectionName).doc(today).get();
+    const data = (snap.data() ?? {}) as Partial<DailyUsageDoc>;
+
+    let used = 0;
+    if (lineUserId) {
+      used = data.line_usage?.[lineUserId] ?? 0;
+    } else {
+      const ipKey = encodeKey(ip || "unknown");
+      const anonKey = anonymousId ? encodeKey(anonymousId) : null;
+      const ipUsed = data.ip_usage?.[ipKey] ?? 0;
+      const anonUsed = anonKey ? (data.anon_usage?.[anonKey] ?? 0) : 0;
+      used = Math.max(ipUsed, anonUsed);
+    }
+
+    return { used, limit, remaining: Math.max(0, limit - used), isLineUser };
+  } catch {
+    return { used: 0, limit, remaining: limit, isLineUser };
+  }
+}
+
+export async function checkAndIncrementLimit(params: RateLimitParams, collectionName = "rate_limits"): Promise<RateLimitResult> {
   const { ip, anonymousId, lineUserId, adminEmail, feature } = params;
 
   if (lineUserId && getAdminUserIds().includes(lineUserId)) {
@@ -75,7 +119,7 @@ export async function checkAndIncrementLimit(params: RateLimitParams): Promise<R
   }
 
   const today = getTaipeiDate();
-  const docRef = db.collection("rate_limits").doc(today);
+  const docRef = db.collection(collectionName).doc(today);
   let isAllowed = false;
 
   await db.runTransaction(async (tx) => {
@@ -143,7 +187,7 @@ export async function checkAndIncrementLimit(params: RateLimitParams): Promise<R
   });
 
   if (!isAllowed) {
-    return { allowed: false, message: "今日免費宇宙訊息已使用完畢 ✨" };
+    return { allowed: false, message: "今日免費宇宙訊息已使用完畢 ✨", remaining: 0 };
   }
 
   return { allowed: true };

@@ -217,6 +217,8 @@ export function TarotDrawClient() {
   const [lineDeliveryStatus, setLineDeliveryStatus] = useState<"idle" | "sending" | "softPause">("idle");
   const [lineDeliveryMessage, setLineDeliveryMessage] = useState("");
   const [lineResultId, setLineResultId] = useState("");
+  const [lineAuthRequired, setLineAuthRequired] = useState(false);
+  const [drawsRemaining, setDrawsRemaining] = useState<number | null>(null);
   const adTimerRef = useRef<number | null>(null);
   const paymentTimerRef = useRef<number | null>(null);
 
@@ -285,6 +287,17 @@ export function TarotDrawClient() {
       });
   }, []);
 
+  // Fetch remaining draw quota on mount
+  useEffect(() => {
+    const anonId = getOrCreateAnonId();
+    void fetch(`/api/tarot/usage?anonymousId=${encodeURIComponent(anonId)}`)
+      .then(async (r) => {
+        const data = (await r.json().catch(() => ({}))) as { remaining?: number };
+        if (typeof data.remaining === "number") setDrawsRemaining(data.remaining);
+      })
+      .catch(() => { /* fail open */ });
+  }, []);
+
   function resetReading() {
     if (adTimerRef.current) clearInterval(adTimerRef.current);
     if (paymentTimerRef.current) clearTimeout(paymentTimerRef.current);
@@ -304,6 +317,7 @@ export function TarotDrawClient() {
     setLineDeliveryStatus("idle");
     setLineDeliveryMessage("");
     setLineResultId("");
+    setLineAuthRequired(false);
   }
 
   function buildReadingPayload(targetCards: TarotCardFaceData[]) {
@@ -354,6 +368,7 @@ export function TarotDrawClient() {
 
   async function draw() {
     if (status === "drawing" || readingStatus === "loading") return;
+    if (drawsRemaining === 0) return; // already blocked, do nothing
 
     setStatus("drawing");
     setCards([]);
@@ -363,13 +378,29 @@ export function TarotDrawClient() {
       const response = await fetch("/api/tarot/draw", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode, topic, question }),
+        body: JSON.stringify({ mode, topic, question, anonymousId: getOrCreateAnonId() }),
       });
-      const data = await response.json();
+      const data = (await response.json().catch(() => ({}))) as {
+        cards?: TarotCardFaceData[];
+        error?: string;
+        code?: string;
+        message?: string;
+        remaining?: number;
+        resetAt?: string;
+      };
+
+      if (response.status === 429 || data.code === "DAILY_LIMIT_REACHED") {
+        setStatus("idle");
+        setDrawsRemaining(0);
+        setError(data.message || "今天的免費抽牌次數已用完，明天再來聽宇宙說話。");
+        return;
+      }
 
       if (!response.ok) {
         throw new Error(data.error || "抽牌失敗，請稍後再試。");
       }
+
+      setDrawsRemaining((prev) => (typeof prev === "number" && prev > 0 ? prev - 1 : prev));
 
       window.setTimeout(() => {
         const revealedCards = data.cards ?? [];
@@ -579,7 +610,8 @@ export function TarotDrawClient() {
           sessionStorage.setItem("line-pending-send-payload", JSON.stringify(payload));
         } catch { /* ignore */ }
         setLineDeliveryStatus("idle");
-        window.location.href = `/api/line/login/start?returnTo=${encodeURIComponent("/tarot")}`;
+        setLineAuthRequired(true);
+        setLineDeliveryMessage("請先完成 LINE 授權，再傳送宇宙訊息。");
         return;
       }
 
@@ -719,7 +751,13 @@ export function TarotDrawClient() {
 
       <div className="relative z-10 mt-6">
         <p className="text-base font-medium text-moon">在心裡默想一個問題，或輸入你想問宇宙的事。</p>
-        <p className="mt-1 text-sm text-moon/52">免費抽牌每日 1 次，觀看廣告可免費解鎖完整版一次。</p>
+        <p className="mt-1 text-sm text-moon/52">
+          {drawsRemaining === null
+            ? "免費抽牌每日 1 次，觀看廣告可免費解鎖完整版一次。"
+            : drawsRemaining === 0
+              ? "今天的免費抽牌次數已用完，加入 LINE 可每日抽 3 次，或明天再來。"
+              : `今日剩餘抽牌次數：${drawsRemaining} 次`}
+        </p>
       </div>
       <textarea
         id="question"
@@ -735,13 +773,26 @@ export function TarotDrawClient() {
       <button
         type="button"
         onClick={draw}
-        disabled={status === "drawing" || status === "selecting" || status === "revealing" || readingStatus === "loading"}
+        disabled={
+          status === "drawing" ||
+          status === "selecting" ||
+          status === "revealing" ||
+          readingStatus === "loading" ||
+          drawsRemaining === 0
+        }
         className="relative z-10 mt-5 w-full rounded-full bg-moon px-6 py-3 font-medium text-midnight shadow-[0_0_24px_rgba(247,241,223,0.28)] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
-        {status === "drawing" ? "星光正在洗牌..." : "開始抽牌"}
+        {status === "drawing" ? "星光正在洗牌..." : drawsRemaining === 0 ? "今日次數已用完" : "開始抽牌"}
       </button>
 
-      {error ? <p className="relative z-10 mt-4 rounded-2xl border border-lavender/30 bg-nebula/20 p-4 text-sm text-moon">{error}</p> : null}
+      {error ? (
+        <div className="relative z-10 mt-4 rounded-2xl border border-lavender/30 bg-nebula/20 p-4 text-sm text-moon">
+          <p>{error}</p>
+          {drawsRemaining === 0 ? (
+            <p className="mt-2 text-moon/72">加入 LINE 官方帳號可每日免費抽 3 次。</p>
+          ) : null}
+        </div>
+      ) : null}
 
       {status === "drawing" || status === "selecting" || status === "revealing" ? (
         <TarotRitualDraw
@@ -842,15 +893,28 @@ export function TarotDrawClient() {
             <p className="mx-auto mt-3 max-w-xl text-base leading-8 text-moon/72">
               把本次塔羅抽牌結果傳送到你的 LINE，隨時回顧宇宙訊息。
             </p>
-            <button
-              type="button"
-              onClick={sendLineResult}
-              disabled={lineDeliveryStatus === "sending"}
-              className="pointer-events-auto relative z-10 mt-5 w-full touch-manipulation rounded-full px-6 py-4 text-base font-semibold text-white transition hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:min-w-[280px]"
-              style={{ background: "#06C755", boxShadow: "0 0 34px rgba(6,199,85,0.34)" }}
-            >
-              {lineDeliveryStatus === "sending" ? "正在傳送到 LINE..." : "傳送到 LINE 接收完整宇宙訊息"}
-            </button>
+            {lineAuthRequired ? (
+              <button
+                type="button"
+                onClick={() => {
+                  window.location.href = `/api/line/login/start?returnTo=${encodeURIComponent("/tarot")}`;
+                }}
+                className="pointer-events-auto relative z-10 mt-5 w-full touch-manipulation rounded-full px-6 py-4 text-base font-semibold text-white transition hover:opacity-90 active:scale-95 sm:w-auto sm:min-w-[280px]"
+                style={{ background: "#06C755", boxShadow: "0 0 34px rgba(6,199,85,0.34)" }}
+              >
+                完成 LINE 授權
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={sendLineResult}
+                disabled={lineDeliveryStatus === "sending"}
+                className="pointer-events-auto relative z-10 mt-5 w-full touch-manipulation rounded-full px-6 py-4 text-base font-semibold text-white transition hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:min-w-[280px]"
+                style={{ background: "#06C755", boxShadow: "0 0 34px rgba(6,199,85,0.34)" }}
+              >
+                {lineDeliveryStatus === "sending" ? "正在傳送到 LINE..." : "傳送到 LINE 接收完整宇宙訊息"}
+              </button>
+            )}
             {lineDeliveryMessage ? <p className="mt-4 text-sm leading-6 text-moon/70">{lineDeliveryMessage}</p> : null}
           </div>
         </section>
