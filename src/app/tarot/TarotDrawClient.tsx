@@ -11,6 +11,29 @@ type SpreadPosition = "past" | "present" | "future";
 const AD_COUNTDOWN_SECONDS = 15;
 const ANON_ID_STORAGE_KEY = "cosmic_anon_id";
 const AD_UNLOCK_STORAGE_KEY = "cosmic_ad_unlock_date";
+const REWARDED_AD_TIMEOUT_MS = 3500;
+const GOOGLE_REWARDED_AD_CLIENT = process.env.NEXT_PUBLIC_GOOGLE_ADSENSE_CLIENT;
+const GOOGLE_REWARDED_AD_SLOT = process.env.NEXT_PUBLIC_GOOGLE_REWARDED_AD_SLOT;
+
+type RewardedAdInstance = {
+  show?: () => void;
+};
+
+type AdsByGoogleQueue = {
+  push: (payload: {
+    params?: Record<string, string>;
+    onAdLoaded?: (rewardedAd?: RewardedAdInstance) => void;
+    onAdFailedToLoad?: (error?: unknown) => void;
+    onAdClosed?: () => void;
+    onRewarded?: () => void;
+  }) => unknown;
+};
+
+declare global {
+  interface Window {
+    adsbygoogle?: AdsByGoogleQueue | unknown[];
+  }
+}
 
 const modes = [
   { key: "single_tarot", label: "單張牌", description: "快速接收今天最重要的宇宙訊息" },
@@ -84,6 +107,10 @@ function markAdUnlockUsedToday() {
   } catch {
     // localStorage can be unavailable in private modes.
   }
+}
+
+function isAdsByGoogleQueue(value: Window["adsbygoogle"]): value is AdsByGoogleQueue {
+  return Boolean(value && typeof (value as AdsByGoogleQueue).push === "function");
 }
 
 function ReadingContent({ text }: { text: string }) {
@@ -266,6 +293,25 @@ export function TarotDrawClient() {
 
     setAdNotice("");
     setAdCountdown(AD_COUNTDOWN_SECONDS);
+    setAdNotice("正在確認 Google Rewarded Ad...");
+    void tryGoogleRewardedAd().then((playedGoogleAd) => {
+      if (!playedGoogleAd) startFallbackRewardedAd();
+    });
+  }
+
+  function completeRewardedAd(source: "google" | "fallback") {
+    console.info("[rewarded-ad] Reward completed", { source });
+    markAdUnlockUsedToday();
+    setAdUnlocked(true);
+    setAdModalOpen(false);
+    setAdNotice("");
+  }
+
+  function startFallbackRewardedAd(reason?: unknown) {
+    console.info("[rewarded-ad] Fallback fake rewarded", { reason });
+    if (adTimerRef.current) clearInterval(adTimerRef.current);
+    setAdCountdown(AD_COUNTDOWN_SECONDS);
+    setAdNotice("");
     setAdModalOpen(true);
     let remaining = AD_COUNTDOWN_SECONDS;
     adTimerRef.current = window.setInterval(() => {
@@ -275,11 +321,75 @@ export function TarotDrawClient() {
       if (remaining <= 0) {
         if (adTimerRef.current) clearInterval(adTimerRef.current);
         adTimerRef.current = null;
-        markAdUnlockUsedToday();
-        setAdUnlocked(true);
-        setAdModalOpen(false);
+        completeRewardedAd("fallback");
       }
     }, 1000);
+  }
+
+  async function tryGoogleRewardedAd() {
+    if (typeof window === "undefined") return false;
+
+    const adsbygoogle = window.adsbygoogle;
+    if (!isAdsByGoogleQueue(adsbygoogle)) {
+      console.info("[rewarded-ad] Reward failed", { reason: "adsbygoogle unavailable" });
+      return false;
+    }
+
+    if (!GOOGLE_REWARDED_AD_CLIENT || !GOOGLE_REWARDED_AD_SLOT) {
+      console.info("[rewarded-ad] Reward failed", { reason: "rewarded ad env missing" });
+      return false;
+    }
+
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      let rewarded = false;
+      let timeoutId: number | null = null;
+      const finish = (played: boolean, error?: unknown) => {
+        if (settled) return;
+        settled = true;
+        if (timeoutId) window.clearTimeout(timeoutId);
+        if (!played) console.info("[rewarded-ad] Reward failed", { error });
+        resolve(played);
+      };
+      timeoutId = window.setTimeout(() => {
+        finish(false, "rewarded ad timeout or no inventory");
+      }, REWARDED_AD_TIMEOUT_MS);
+
+      try {
+        adsbygoogle.push({
+          params: {
+            google_ad_client: GOOGLE_REWARDED_AD_CLIENT,
+            google_ad_slot: GOOGLE_REWARDED_AD_SLOT,
+            google_ad_format: "rewarded",
+          },
+          onAdLoaded: (rewardedAd) => {
+            console.info("[rewarded-ad] Google Rewarded available");
+            if (typeof rewardedAd?.show !== "function") {
+              finish(false, "rewarded ad show unavailable");
+              return;
+            }
+            try {
+              rewardedAd.show();
+            } catch (error) {
+              finish(false, error);
+            }
+          },
+          onRewarded: () => {
+            rewarded = true;
+            completeRewardedAd("google");
+            finish(true);
+          },
+          onAdClosed: () => {
+            if (!rewarded) finish(false, "rewarded ad closed before reward");
+          },
+          onAdFailedToLoad: (error) => {
+            finish(false, error ?? "rewarded ad failed to load");
+          },
+        });
+      } catch (error) {
+        finish(false, error);
+      }
+    });
   }
 
   async function createLineResult() {
@@ -513,8 +623,7 @@ export function TarotDrawClient() {
               <button
                 type="button"
                 onClick={startAdUnlock}
-                disabled={readingStatus !== "done"}
-                className="mt-5 w-full rounded-full bg-[#d8bd70] px-6 py-4 text-base font-semibold text-midnight shadow-[0_0_28px_rgba(216,189,112,0.28)] transition hover:bg-moon disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:min-w-[280px]"
+                className="mt-5 w-full rounded-full bg-[#d8bd70] px-6 py-4 text-base font-semibold text-midnight shadow-[0_0_28px_rgba(216,189,112,0.28)] transition hover:bg-moon active:scale-95 sm:w-auto sm:min-w-[280px]"
               >
                 觀看廣告免費解鎖完整版
               </button>
