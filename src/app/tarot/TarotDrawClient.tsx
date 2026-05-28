@@ -1,6 +1,7 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ShareStoryCard } from "@/components/ShareStoryCard";
 import { TarotCardBack, TarotCardFace, type TarotCardFaceData } from "@/components/TarotCardFace";
 import { TarotRitualDraw } from "./TarotRitualDraw";
 import { useAuth } from "@/contexts/AuthContext";
@@ -16,11 +17,6 @@ const AD_UNLOCK_STORAGE_KEY = "cosmic_ad_unlock_date";
 const REWARDED_AD_TIMEOUT_MS = 3500;
 const GOOGLE_REWARDED_AD_CLIENT = process.env.NEXT_PUBLIC_GOOGLE_ADSENSE_CLIENT;
 const GOOGLE_REWARDED_AD_SLOT = process.env.NEXT_PUBLIC_GOOGLE_REWARDED_AD_SLOT;
-const LINE_ADD_FRIEND_URL = process.env.NEXT_PUBLIC_LINE_ADD_FRIEND_URL ?? "https://line.me/R/ti/p/@453gfmok";
-if (typeof window !== "undefined" && !process.env.NEXT_PUBLIC_LINE_ADD_FRIEND_URL) {
-  console.warn("[LINE] NEXT_PUBLIC_LINE_ADD_FRIEND_URL is not defined, using fallback URL");
-}
-
 type RewardedAdInstance = {
   show?: () => void;
 };
@@ -120,7 +116,7 @@ function isAdsByGoogleQueue(value: Window["adsbygoogle"]): value is AdsByGoogleQ
 }
 
 function ReadingContent({ text }: { text: string }) {
-  const blocks = parseReadingSections(text)
+  const blocks = parseReadingSectionsForDisplay(text)
     .map((section) => `${section.title}\n${section.body}`)
     .filter(Boolean);
 
@@ -165,8 +161,61 @@ function parseReadingSections(text: string) {
   return sections.length ? sections : lines.map((block, index) => ({ title: index === 0 ? "🌙 宇宙偷偷話" : "", body: block }));
 }
 
+type ReadingSection = { title: string; body: string };
+
+const READING_FALLBACK_TEXT = "宇宙正在整理訊息中 ✨";
+
+const READING_SECTION_TITLES = [
+  "🌙 宇宙偷偷話",
+  "🔮 這張牌正在說什麼",
+  "🐈 你現在的狀態",
+  "✨ 接下來可以怎麼做",
+  "🌌 給你的溫柔提醒",
+  "🕯️ 7日能量提示",
+  "💫 一句專屬祝福",
+];
+
+function parseReadingSectionsForDisplay(text: string): ReadingSection[] {
+  const cleaned = text.replace(/\*\*/g, "").trim();
+  if (!cleaned) return [{ title: "🌙 宇宙偷偷話", body: READING_FALLBACK_TEXT }];
+
+  const sections: ReadingSection[] = [];
+  let current: ReadingSection | null = null;
+  const pushCurrent = () => {
+    if (!current) return;
+    sections.push({
+      title: current.title,
+      body: current.body.trim() || READING_FALLBACK_TEXT,
+    });
+  };
+
+  for (const rawLine of cleaned.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    const title = READING_SECTION_TITLES.find((item) => line === item || line.startsWith(`${item} `));
+
+    if (title) {
+      pushCurrent();
+      current = { title, body: line.slice(title.length).trim() };
+      continue;
+    }
+
+    if (!current) {
+      current = { title: "🌙 宇宙偷偷話", body: line };
+      continue;
+    }
+
+    current.body = [current.body, line].filter(Boolean).join("\n");
+  }
+
+  pushCurrent();
+
+  return sections.length ? sections : [{ title: "🌙 宇宙偷偷話", body: READING_FALLBACK_TEXT }];
+}
+
 function ReadingSectionList({ text, limit }: { text: string; limit?: number }) {
-  const sections = parseReadingSections(text);
+  const sections = parseReadingSectionsForDisplay(text);
   const visibleSections = typeof limit === "number" ? sections.slice(0, limit) : sections;
 
   return (
@@ -186,7 +235,7 @@ function ReadingSectionList({ text, limit }: { text: string; limit?: number }) {
 }
 
 function buildFreeSummary(cards: TarotCardFaceData[], fullReading: string) {
-  const sections = parseReadingSections(fullReading).slice(0, 3);
+  const sections = fullReading.trim() ? parseReadingSectionsForDisplay(fullReading).slice(0, 3) : [];
   const firstLines = sections.map((section) => section.body).join(" ");
   const fallback = cards.map((card) => card.cosmicMessage).join(" ");
   const source = firstLines || fallback || "宇宙提醒你，把注意力收回自己身上，答案會慢慢變清楚。";
@@ -195,6 +244,301 @@ function buildFreeSummary(cards: TarotCardFaceData[], fullReading: string) {
     message: source.length > 96 ? `${source.slice(0, 96)}...` : source,
     reminder: "提醒：先不要急著做最後決定，今天只需要看見真正的感受。",
   };
+}
+
+function buildStoryCopy(card: TarotCardFaceData | undefined, fullReading: string, freeSummary: { message: string; reminder: string }) {
+  const sections = fullReading.trim() ? parseReadingSectionsForDisplay(fullReading) : [];
+  const resultText = sections[0]?.body || card?.cosmicMessage || freeSummary.message || READING_FALLBACK_TEXT;
+  const adviceText = sections[1]?.body || sections[2]?.body || freeSummary.reminder || "把今天留一點空白給自己，答案會在安靜的地方慢慢浮出來。";
+
+  return {
+    resultText: resultText.length > 118 ? `${resultText.slice(0, 116)}...` : resultText,
+    adviceText: adviceText.length > 82 ? `${adviceText.slice(0, 80)}...` : adviceText,
+  };
+}
+
+// ──────────────────────────────────────────────────────────
+// Client-side Canvas image generation — 1080 × 1920 PNG
+// ──────────────────────────────────────────────────────────
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`圖片載入失敗：${src}`));
+    img.src = src;
+  });
+}
+
+function canvasRoundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number, r: number,
+) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function wrapCanvasText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  if (!text) return [];
+  const lines: string[] = [];
+  let current = "";
+  for (const char of text) {
+    const test = current + char;
+    if (ctx.measureText(test).width > maxWidth && current.length > 0) {
+      lines.push(current);
+      current = char;
+    } else {
+      current = test;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
+async function generateStoryImage(
+  cardNameZh: string,
+  cardNameEn: string,
+  cardImageSrc: string,
+  resultText: string,
+  siteUrl: string,
+): Promise<Blob> {
+  const W = 1080;
+  const H = 1920;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("無法建立 Canvas 環境，請嘗試重新整理頁面。");
+
+  const ff = "'PingFang TC', 'Microsoft JhengHei', 'Noto Sans TC', sans-serif";
+
+  // ── Background gradient ──
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+  bgGrad.addColorStop(0, "#05071d");
+  bgGrad.addColorStop(0.55, "#0d0b2a");
+  bgGrad.addColorStop(1, "#1a0e2e");
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Try to overlay background image
+  try {
+    const bgImg = await loadImage("/reference/story-bg.png");
+    ctx.drawImage(bgImg, 0, 0, W, H);
+  } catch {
+    /* gradient fallback already drawn */
+  }
+
+  // ── Decorative stars ──
+  const stars = [
+    { x: 120, y: 88, size: 28, alpha: 0.55 },
+    { x: W - 148, y: 130, size: 20, alpha: 0.38 },
+    { x: 96, y: H - 240, size: 22, alpha: 0.45 },
+    { x: W - 116, y: H - 268, size: 18, alpha: 0.38 },
+  ];
+  ctx.textAlign = "left";
+  for (const s of stars) {
+    ctx.font = `${s.size}px serif`;
+    ctx.fillStyle = `rgba(247,217,135,${s.alpha})`;
+    ctx.fillText("✦", s.x, s.y + s.size);
+  }
+
+  // ── Header ──
+  let curY = 100;
+  ctx.textAlign = "center";
+
+  ctx.font = `600 30px ${ff}`;
+  ctx.fillStyle = "rgba(247,217,135,0.88)";
+  ctx.fillText("UNIVERSE WHISPER", W / 2, curY + 36);
+  curY += 80;
+
+  ctx.font = `700 84px ${ff}`;
+  ctx.fillStyle = "#f7d987";
+  ctx.shadowBlur = 20;
+  ctx.shadowColor = "rgba(247,217,135,0.36)";
+  ctx.fillText("宇宙偷偷話", W / 2, curY + 84);
+  ctx.shadowBlur = 0;
+  curY += 106;
+
+  ctx.font = `400 30px ${ff}`;
+  ctx.fillStyle = "rgba(255,247,230,0.76)";
+  ctx.fillText("宇宙想對你說...", W / 2, curY + 34);
+  curY += 64;
+
+  // ── Card image ──
+  const CARD_W = 290;
+  const CARD_H = 440;
+  const cardCX = W / 2;
+  const cardCY = curY + 64 + CARD_H / 2;
+
+  // Glow behind card
+  ctx.save();
+  ctx.shadowBlur = 64;
+  ctx.shadowColor = "rgba(247,217,135,0.38)";
+  ctx.fillStyle = "rgba(247,217,135,0.18)";
+  canvasRoundRect(ctx, cardCX - CARD_W / 2 - 22, cardCY - CARD_H / 2 - 22, CARD_W + 44, CARD_H + 44, 44);
+  ctx.fill();
+  ctx.restore();
+
+  // Card face (rotated -3°)
+  ctx.save();
+  ctx.translate(cardCX, cardCY);
+  ctx.rotate(-3 * Math.PI / 180);
+  canvasRoundRect(ctx, -CARD_W / 2, -CARD_H / 2, CARD_W, CARD_H, 30);
+  ctx.clip();
+  ctx.fillStyle = "#130b32";
+  ctx.fillRect(-CARD_W / 2, -CARD_H / 2, CARD_W, CARD_H);
+  try {
+    const cardImg = await loadImage(cardImageSrc);
+    ctx.drawImage(cardImg, -CARD_W / 2, -CARD_H / 2, CARD_W, CARD_H);
+  } catch {
+    ctx.fillStyle = "#f7d987";
+    ctx.font = "80px serif";
+    ctx.textAlign = "center";
+    ctx.fillText("☾", 0, 28);
+  }
+  ctx.restore();
+
+  // Card border
+  ctx.save();
+  ctx.translate(cardCX, cardCY);
+  ctx.rotate(-3 * Math.PI / 180);
+  canvasRoundRect(ctx, -CARD_W / 2, -CARD_H / 2, CARD_W, CARD_H, 30);
+  ctx.strokeStyle = "rgba(247,217,135,0.82)";
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  ctx.restore();
+
+  curY = cardCY + CARD_H / 2 + 56;
+
+  // ── Card name ──
+  ctx.textAlign = "center";
+  ctx.font = `700 72px ${ff}`;
+  ctx.fillStyle = "#f7d987";
+  ctx.shadowBlur = 16;
+  ctx.shadowColor = "rgba(45,24,20,0.48)";
+  ctx.fillText(cardNameZh.slice(0, 12), W / 2, curY + 72);
+  ctx.shadowBlur = 0;
+  curY += 88;
+
+  ctx.font = `600 30px ${ff}`;
+  ctx.fillStyle = "rgba(255,247,230,0.80)";
+  ctx.fillText(cardNameEn.slice(0, 36), W / 2, curY + 32);
+  curY += 54;
+
+  // ── Result text box ──
+  const BPAD_X = 64;
+  const BPAD_Y = 46;
+  const BOX_W = 920;
+  const BOX_X = (W - BOX_W) / 2;
+  const BOX_Y = curY + 54;
+
+  const cleanResult = resultText
+    .replace(/\*\*/g, "")
+    .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 96);
+
+  ctx.font = `400 34px ${ff}`;
+  const msgLines = wrapCanvasText(
+    ctx,
+    cleanResult || "宇宙正在整理訊息，靜靜感受當下。",
+    BOX_W - BPAD_X * 2,
+  );
+  const lineH = 34 * 1.8;
+  const badgeRowH = 52;
+  const BOX_H = BPAD_Y * 2 + badgeRowH + 32 + msgLines.length * lineH;
+
+  // Box fill
+  ctx.save();
+  canvasRoundRect(ctx, BOX_X, BOX_Y, BOX_W, BOX_H, 52);
+  ctx.clip();
+  const boxGrad = ctx.createLinearGradient(BOX_X, BOX_Y, BOX_X + BOX_W * 0.5, BOX_Y + BOX_H);
+  boxGrad.addColorStop(0, "rgba(255,247,230,0.95)");
+  boxGrad.addColorStop(0.48, "rgba(248,232,216,0.91)");
+  boxGrad.addColorStop(1, "rgba(246,219,226,0.87)");
+  ctx.fillStyle = boxGrad;
+  ctx.fillRect(BOX_X, BOX_Y, BOX_W, BOX_H);
+  ctx.restore();
+
+  // Box border + shadow
+  ctx.save();
+  ctx.shadowBlur = 80;
+  ctx.shadowColor = "rgba(5,7,24,0.3)";
+  canvasRoundRect(ctx, BOX_X, BOX_Y, BOX_W, BOX_H, 52);
+  ctx.strokeStyle = "rgba(202,168,95,0.55)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
+
+  // Badge
+  const badgeText = "宇宙訊息";
+  ctx.font = `700 26px ${ff}`;
+  const badgeTW = ctx.measureText(badgeText).width;
+  const badgePX = 28;
+  const badgeFW = badgeTW + badgePX * 2;
+  const badgeBX = (W - badgeFW) / 2;
+  const badgeBY = BOX_Y + BPAD_Y;
+
+  ctx.save();
+  ctx.shadowBlur = 24;
+  ctx.shadowColor = "rgba(202,168,95,0.42)";
+  canvasRoundRect(ctx, badgeBX, badgeBY, badgeFW, badgeRowH, 28);
+  ctx.fillStyle = "#caa85f";
+  ctx.fill();
+  ctx.restore();
+
+  ctx.textAlign = "center";
+  ctx.font = `700 26px ${ff}`;
+  ctx.fillStyle = "white";
+  ctx.fillText(badgeText, W / 2, badgeBY + 34);
+
+  // Separator lines
+  const sepY = badgeBY + badgeRowH / 2;
+  ctx.strokeStyle = "rgba(189,148,75,0.6)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(BOX_X + BPAD_X, sepY);
+  ctx.lineTo(badgeBX - 18, sepY);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(badgeBX + badgeFW + 18, sepY);
+  ctx.lineTo(BOX_X + BOX_W - BPAD_X, sepY);
+  ctx.stroke();
+
+  // Message text
+  ctx.font = `400 34px ${ff}`;
+  ctx.fillStyle = "#241937";
+  ctx.textAlign = "center";
+  const msgStartY = badgeBY + badgeRowH + 32;
+  for (let i = 0; i < msgLines.length; i++) {
+    ctx.fillText(msgLines[i], W / 2, msgStartY + i * lineH + 34);
+  }
+
+  // ── Footer ──
+  ctx.font = `400 24px ${ff}`;
+  ctx.fillStyle = "rgba(255,247,230,0.42)";
+  ctx.textAlign = "center";
+  ctx.fillText(`✦  ${siteUrl}  ✦`, W / 2, H - 72);
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("Canvas 圖片轉換失敗，請嘗試重新整理頁面後再試。"));
+      },
+      "image/png",
+    );
+  });
 }
 
 export function TarotDrawClient() {
@@ -218,14 +562,13 @@ export function TarotDrawClient() {
   const [adCountdown, setAdCountdown] = useState(AD_COUNTDOWN_SECONDS);
   const [adNotice, setAdNotice] = useState("");
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
-  const [paymentPurpose, setPaymentPurpose] = useState<"draw" | "line">("draw");
   const [paymentStatus, setPaymentStatus] = useState<"idle" | "processing" | "success">("idle");
-  const [lineDeliveryStatus, setLineDeliveryStatus] = useState<"idle" | "sending" | "softPause">("idle");
-  const [lineDeliveryMessage, setLineDeliveryMessage] = useState("");
-  const [lineResultId, setLineResultId] = useState("");
   const [drawsRemaining, setDrawsRemaining] = useState<number | null>(null);
+  const [storyDownloadStatus, setStoryDownloadStatus] = useState<"idle" | "working" | "done" | "error">("idle");
+  const [storyError, setStoryError] = useState("");
   const adTimerRef = useRef<number | null>(null);
   const paymentTimerRef = useRef<number | null>(null);
+  const storyCardRef = useRef<HTMLDivElement | null>(null);
 
   const cardCount = mode === "three_card" ? 3 : 1;
   const visibleBacks = useMemo(() => Array.from({ length: cardCount }), [cardCount]);
@@ -235,6 +578,10 @@ export function TarotDrawClient() {
   const shouldShowPaidPlan = isOutOfFreeDraws && adUnlockUsedToday && !hasFullAccess;
   const currentSpreadGroup = spreadQuestionGroups[topic];
   const freeSummary = useMemo(() => buildFreeSummary(cards, fullReading), [cards, fullReading]);
+  const isSingleResult = mode === "single_tarot" && cards.length === 1;
+  const storyCard = isSingleResult ? cards[0] : undefined;
+  const storyCopy = useMemo(() => buildStoryCopy(storyCard, fullReading, freeSummary), [storyCard, fullReading, freeSummary]);
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://universe-whisper.vercel.app";
 
   useEffect(() => {
     return () => {
@@ -247,23 +594,6 @@ export function TarotDrawClient() {
     setAdUnlocked((current) => current || isAdmin);
     setAdUnlockUsedToday(hasUsedAdUnlockToday());
   }, [isAdmin]);
-
-  // Detect return from LINE Connect flow (?lineSent=1) and LINE Login (?lineLogin=...)
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-
-    if (params.get("lineSent") === "1") {
-      window.history.replaceState({}, "", window.location.pathname);
-      setLineDeliveryMessage("已傳送到 LINE，請回到 LINE 查看宇宙訊息 ✨");
-      return;
-    }
-
-    const lineLogin = params.get("lineLogin");
-    if (!lineLogin) return;
-    window.history.replaceState({}, "", window.location.pathname);
-    if (lineLogin === "failed") setLineDeliveryMessage("LINE 登入失敗，請稍後再試。");
-  }, []);
 
   // Fetch remaining draw quota on mount and whenever auth state changes.
   // Passes the Firebase ID token so the server can grant unlimited draws for admins.
@@ -306,9 +636,8 @@ export function TarotDrawClient() {
     setAdNotice("");
     setPaymentModalOpen(false);
     setPaymentStatus("idle");
-    setLineDeliveryStatus("idle");
-    setLineDeliveryMessage("");
-    setLineResultId("");
+    setStoryDownloadStatus("idle");
+    setStoryError("");
   }
 
   function buildReadingPayload(targetCards: TarotCardFaceData[]) {
@@ -349,16 +678,17 @@ export function TarotDrawClient() {
       body: JSON.stringify(buildReadingPayload(targetCards)),
     });
     const data = (await response.json().catch(() => ({}))) as { reading?: string; error?: string };
+    console.log("[tarot-reading] result", data);
 
     if (response.status === 429) {
       throw new Error(data.error || "宇宙訊息正在排隊中，請稍後再試");
     }
 
-    if (!response.ok || !data.reading) {
+    if (!response.ok) {
       throw new Error(data.error || "宇宙訊號有點微弱，請稍後再試一次。");
     }
 
-    setFullReading(data.reading);
+    setFullReading(data.reading?.trim() || `🌙 宇宙偷偷話\n${READING_FALLBACK_TEXT}`);
     setReadingStatus("done");
   }
 
@@ -483,7 +813,6 @@ export function TarotDrawClient() {
   }
 
   function openPaidDrawModal() {
-    setPaymentPurpose("draw");
     setPaymentStatus("idle");
     setPaymentModalOpen(true);
   }
@@ -573,62 +902,33 @@ export function TarotDrawClient() {
     });
   }
 
-  async function createLineResult() {
-    if (lineResultId) return lineResultId;
-
-    const response = await fetch("/api/results/create", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type: "tarot",
-        question,
-        cards,
-        shortText: freeSummary.message,
-        // fall back to freeSummary when fullReading is empty (e.g. API returned 429)
-        fullText: fullReading || freeSummary.message,
-      }),
-    });
-    const data = (await response.json().catch(() => ({}))) as { ok?: boolean; resultId?: string; error?: string };
-
-    if (!response.ok || !data.ok || !data.resultId) {
-      throw new Error(data.error || "暫時無法建立 LINE 保存內容。");
-    }
-
-    setLineResultId(data.resultId);
-    return data.resultId;
-  }
-
-  async function sendLineResult() {
-    if (!cards.length || lineDeliveryStatus === "sending") return;
-    if (!hasFullAccess) {
-      setLineDeliveryStatus("softPause");
-      setLineDeliveryMessage("請先觀看廣告解鎖，或使用 NT$49 再抽一次取得完整訊息。");
-      return;
-    }
-
+  async function downloadStoryImage() {
+    if (storyDownloadStatus === "working") return;
+    setStoryError("");
     try {
-      setLineDeliveryStatus("sending");
-      setLineDeliveryMessage("");
-      // Create a Firestore result document, then hand off to /line/connect.
-      // LineConnectClient handles LIFF (in-app browser) and desktop OAuth
-      // via /api/line/connect/start → redirect_uri = https://universe-whisper.vercel.app/line/connect
-      const resultId = await createLineResult();
-      window.location.href = `/line/connect?resultId=${encodeURIComponent(resultId)}`;
+      setStoryDownloadStatus("working");
+      const blob = await generateStoryImage(
+        storyCard?.nameZh ?? storyCard?.name ?? "",
+        storyCard?.nameEn ?? storyCard?.name ?? "",
+        storyCard?.image ?? "",
+        storyCopy.resultText,
+        siteUrl,
+      );
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "universe-whisper-story.png";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setStoryDownloadStatus("done");
+      window.setTimeout(() => setStoryDownloadStatus("idle"), 3500);
     } catch (err) {
-      setLineDeliveryStatus("softPause");
-      setLineDeliveryMessage(err instanceof Error ? err.message : "LINE 傳送暫時失敗，請稍後再試。");
+      console.error("[share-story] Canvas image generation failed", err);
+      setStoryError(err instanceof Error ? err.message : String(err));
+      setStoryDownloadStatus("error");
     }
-  }
-
-  function openPaymentModal() {
-    if (!hasFullAccess) {
-      setLineDeliveryStatus("softPause");
-      setLineDeliveryMessage("請先觀看廣告解鎖，或使用 NT$49 再抽一次取得完整訊息。");
-      return;
-    }
-    setPaymentPurpose("line");
-    setPaymentStatus("idle");
-    setPaymentModalOpen(true);
   }
 
   function simulatePayment() {
@@ -636,30 +936,10 @@ export function TarotDrawClient() {
     setPaymentStatus("processing");
     paymentTimerRef.current = window.setTimeout(() => {
       setPaymentStatus("success");
-      if (paymentPurpose === "draw") {
-        setPaymentModalOpen(false);
-        setPaidUnlocked(true);
-        void draw({ paid: true });
-        return;
-      }
-      void sendPaidLineResult();
-    }, 1000);
-  }
-
-  async function sendPaidLineResult() {
-    if (!cards.length || lineDeliveryStatus === "sending") return;
-
-    try {
-      setLineDeliveryStatus("sending");
-      setLineDeliveryMessage("付款成功，正在準備 LINE 永久保存...");
-      const resultId = await createLineResult();
-      window.location.href = `/line/connect?resultId=${encodeURIComponent(resultId)}`;
-    } catch (err) {
       setPaymentModalOpen(false);
-      setLineDeliveryStatus("softPause");
-      const message = err instanceof Error ? err.message : "LINE 保存流程暫時失敗。";
-      setLineDeliveryMessage(message);
-    }
+      setPaidUnlocked(true);
+      void draw({ paid: true });
+    }, 1000);
   }
 
   function handleModeChange(nextMode: (typeof modes)[number]["key"]) {
@@ -829,6 +1109,35 @@ export function TarotDrawClient() {
 
       {canShowReadings ? (
         <section className="relative z-10 mt-9 space-y-5">
+          {isSingleResult && storyCard ? (
+            <div className="cosmic-reading-card mx-auto max-w-[460px] rounded-[2rem] border border-[#d8bd70]/24 bg-midnight/58 p-4 text-center shadow-glow sm:p-6">
+              <ShareStoryCard
+                ref={storyCardRef}
+                cardNameZh={storyCard.nameZh ?? storyCard.name}
+                cardNameEn={storyCard.nameEn ?? storyCard.name}
+                cardImageUrl={storyCard.image}
+                resultText={storyCopy.resultText}
+                adviceText={storyCopy.adviceText}
+                siteUrl={siteUrl}
+              />
+              <div className="mt-5 flex flex-col gap-3">
+                <button
+                  type="button"
+                  onClick={downloadStoryImage}
+                  disabled={storyDownloadStatus === "working"}
+                  className="rounded-full border border-[#d8bd70]/35 bg-[#d8bd70] px-5 py-3 text-sm font-semibold text-midnight shadow-[0_0_24px_rgba(216,189,112,0.24)] transition hover:bg-moon active:scale-95 disabled:cursor-wait disabled:opacity-70"
+                >
+                  {storyDownloadStatus === "working" ? "正在產生圖片..." : "⬇ 下載限動圖片"}
+                </button>
+                {storyDownloadStatus === "done" ? (
+                  <p className="text-sm text-moon/72">圖片已下載，可以發到 IG 限動囉 ✨</p>
+                ) : null}
+                {storyDownloadStatus === "error" ? (
+                  <p className="text-sm text-[#ffb4b4]">{storyError || "圖片產生失敗，請稍後再試。"}</p>
+                ) : null}
+              </div>
+            </div>
+          ) : (
           <div className="cosmic-reading-card rounded-[1.75rem] border border-lavender/20 bg-midnight/58 p-5 shadow-glow sm:p-6">
             <p className="text-sm tracking-[0.22em] text-lavender/70">免費版・部分結果</p>
             <h3 className="mt-2 text-2xl font-semibold text-moon">宇宙給你的簡短訊息</h3>
@@ -853,6 +1162,7 @@ export function TarotDrawClient() {
               </div>
             </div>
           </div>
+          )}
 
           {!hasFullAccess ? (
             <div className="cosmic-reading-card rounded-[1.75rem] border border-[#d8bd70]/24 bg-midnight/58 p-5 text-center shadow-glow sm:p-6">
@@ -882,36 +1192,6 @@ export function TarotDrawClient() {
             </div>
           )}
 
-          <div
-            className="cosmic-reading-card rounded-[1.75rem] border p-5 text-center shadow-glow sm:p-6"
-            style={{
-              borderColor: "rgba(6, 199, 85, 0.24)",
-              background: "linear-gradient(135deg, rgba(10,16,40,0.82) 0%, rgba(10,28,20,0.88) 100%)",
-              boxShadow: "0 0 48px rgba(6, 199, 85, 0.12)",
-            }}
-          >
-            <p className="text-sm tracking-[0.22em]" style={{ color: "rgba(6, 199, 85, 0.82)" }}>LINE 傳送</p>
-            <h3 className="mt-2 text-2xl font-semibold text-moon">傳送到 LINE 接收完整宇宙訊息</h3>
-            <p className="mx-auto mt-3 max-w-xl text-base leading-8 text-moon/72">
-              {hasFullAccess ? "把本次塔羅抽牌結果傳送到你的 LINE，隨時回顧宇宙訊息。" : "完整內容解鎖後，就可以把本次結果傳送到 LINE。"}
-            </p>
-            <button
-              type="button"
-              onClick={hasFullAccess ? sendLineResult : (shouldShowPaidPlan ? openPaidDrawModal : startAdUnlock)}
-              disabled={lineDeliveryStatus === "sending"}
-              className="pointer-events-auto relative z-10 mt-5 w-full touch-manipulation rounded-full px-6 py-4 text-base font-semibold text-white transition hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:min-w-[280px]"
-              style={{ background: "#06C755", boxShadow: "0 0 34px rgba(6,199,85,0.34)" }}
-            >
-              {lineDeliveryStatus === "sending"
-                ? "正在傳送到 LINE..."
-                : hasFullAccess
-                  ? "傳送到 LINE 接收完整宇宙訊息"
-                  : shouldShowPaidPlan
-                    ? "NT$49 再抽一次"
-                    : "觀看廣告解鎖"}
-            </button>
-            {lineDeliveryMessage ? <p className="mt-4 text-sm leading-6 text-moon/70">{lineDeliveryMessage}</p> : null}
-          </div>
         </section>
       ) : null}
 
@@ -930,14 +1210,12 @@ export function TarotDrawClient() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-5 backdrop-blur-sm">
           <div className="cosmic-reading-card w-full max-w-md rounded-[1.75rem] border border-[#06C755]/24 bg-midnight p-6 text-center shadow-glow">
             <p className="text-sm tracking-[0.22em] text-[#06C755]/78">Fake Payment Mode</p>
-            <h3 className="mt-3 text-2xl font-semibold text-moon">{paymentPurpose === "draw" ? "再抽一次完整訊息" : "LINE 永久保存"}</h3>
+            <h3 className="mt-3 text-2xl font-semibold text-moon">再抽一次完整訊息</h3>
             <p className="mt-3 text-base leading-7 text-moon/72">
-              {paymentPurpose === "draw"
-                ? "模擬付款成功後，會重新進入抽牌流程，並直接顯示完整內容與 LINE 傳送。"
-                : "先使用模擬付款流程，之後可串接綠界正式金流。"}
+              模擬付款成功後，會重新進入抽牌流程，並直接顯示完整內容。
             </p>
             <div className="mt-5 rounded-2xl border border-white/10 bg-white/6 p-4">
-              <p className="text-sm text-moon/58">{paymentPurpose === "draw" ? "完整抽牌費用" : "保存費用"}</p>
+              <p className="text-sm text-moon/58">完整抽牌費用</p>
               <p className="mt-1 text-3xl font-semibold text-moon">NT$ 49</p>
             </div>
             <div className="mt-5 flex flex-col gap-3 sm:flex-row">
@@ -954,7 +1232,7 @@ export function TarotDrawClient() {
                 disabled={paymentStatus === "processing"}
                 className="flex-1 rounded-full bg-[#06C755] px-5 py-3 text-sm font-semibold text-white shadow-[0_0_28px_rgba(6,199,85,0.32)] transition hover:opacity-90 disabled:opacity-60"
               >
-                {paymentStatus === "processing" ? "付款確認中..." : paymentStatus === "success" ? "付款成功" : paymentPurpose === "draw" ? "NT$49 再抽一次" : "模擬付款成功"}
+                {paymentStatus === "processing" ? "付款確認中..." : paymentStatus === "success" ? "付款成功 ✓" : "NT$49 再抽一次"}
               </button>
             </div>
           </div>
@@ -963,3 +1241,4 @@ export function TarotDrawClient() {
     </div>
   );
 }
+

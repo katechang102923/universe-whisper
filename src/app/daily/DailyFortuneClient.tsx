@@ -82,6 +82,21 @@ const zodiacImages: Record<ZodiacSign, string> = {
   雙魚座: "/images/zodiac/pisces-cat.webp",
 };
 
+const zodiacEnNames: Record<ZodiacSign, string> = {
+  牡羊座: "ARIES",
+  金牛座: "TAURUS",
+  雙子座: "GEMINI",
+  巨蟹座: "CANCER",
+  獅子座: "LEO",
+  處女座: "VIRGO",
+  天秤座: "LIBRA",
+  天蠍座: "SCORPIO",
+  射手座: "SAGITTARIUS",
+  摩羯座: "CAPRICORN",
+  水瓶座: "AQUARIUS",
+  雙魚座: "PISCES",
+};
+
 const dailyFortunes: Record<ZodiacSign, Omit<DailyFortune, "mood">> = {
   牡羊座: {
     overall: "今天的你適合把想做的事先往前推一步，但不用急著證明自己。真正重要的是，把力氣用在值得的地方。",
@@ -445,22 +460,277 @@ function isDailyFortune(value: unknown): value is DailyFortune {
   );
 }
 
+// ──────────────────────────────────────────────────────
+// Canvas helpers for zodiac story image (1080 × 1920)
+// ──────────────────────────────────────────────────────
+
+function zLoadImg(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = document.createElement("img");
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`圖片載入失敗：${src}`));
+    img.src = src;
+  });
+}
+
+function zRR(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function zWrap(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  if (!text) return [];
+  const lines: string[] = [];
+  let cur = "";
+  for (const ch of text) {
+    if (ctx.measureText(cur + ch).width > maxWidth && cur) { lines.push(cur); cur = ch; }
+    else cur += ch;
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+
+async function generateZodiacStoryImage(
+  sign: ZodiacSign,
+  fortune: DailyFortune,
+  siteUrlRaw: string,
+): Promise<Blob> {
+  const W = 1080, H = 1920;
+  const canvas = document.createElement("canvas");
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("無法建立 Canvas 環境，請重新整理頁面。");
+
+  const ff = "'PingFang TC','Microsoft JhengHei','Noto Sans TC',sans-serif";
+  const siteUrl = siteUrlRaw.replace(/^https?:\/\//, "");
+
+  // Background gradient
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, "#05071d"); bg.addColorStop(0.55, "#0d0b2a"); bg.addColorStop(1, "#1a0e2e");
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  try { const bi = await zLoadImg("/reference/story-bg.png"); ctx.drawImage(bi, 0, 0, W, H); } catch { /* use gradient */ }
+
+  // Decorative stars
+  for (const [x, y, sz, a] of [[110, 90, 26, 0.55], [W-130, 125, 20, 0.38], [88, H-228, 22, 0.45], [W-108, H-260, 18, 0.38]] as [number, number, number, number][]) {
+    ctx.font = `${sz}px serif`; ctx.fillStyle = `rgba(247,217,135,${a})`; ctx.textAlign = "left";
+    ctx.fillText("✦", x, y + sz);
+  }
+
+  // ── Header ──
+  ctx.textAlign = "center";
+  ctx.font = `600 28px ${ff}`; ctx.fillStyle = "rgba(247,217,135,0.88)";
+  ctx.fillText("UNIVERSE WHISPER", W / 2, 120);
+
+  ctx.font = `700 80px ${ff}`; ctx.fillStyle = "#f7d987";
+  ctx.shadowBlur = 18; ctx.shadowColor = "rgba(247,217,135,0.36)";
+  ctx.fillText("宇宙偷偷話", W / 2, 208); ctx.shadowBlur = 0;
+
+  ctx.font = `400 28px ${ff}`; ctx.fillStyle = "rgba(255,247,230,0.72)";
+  ctx.fillText("今日星座運勢", W / 2, 265);
+
+  // ── Zodiac image ──
+  const IW = 270, IH = 390, icx = W / 2, icy = 525;
+  ctx.save();
+  ctx.shadowBlur = 56; ctx.shadowColor = "rgba(247,217,135,0.36)";
+  ctx.fillStyle = "rgba(247,217,135,0.16)";
+  zRR(ctx, icx - IW / 2 - 18, icy - IH / 2 - 18, IW + 36, IH + 36, 40); ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(icx, icy);
+  zRR(ctx, -IW / 2, -IH / 2, IW, IH, 26); ctx.clip();
+  ctx.fillStyle = "#130b32"; ctx.fillRect(-IW / 2, -IH / 2, IW, IH);
+  try {
+    const zi = await zLoadImg(zodiacImages[sign]);
+    ctx.drawImage(zi, -IW / 2, -IH / 2, IW, IH);
+  } catch {
+    ctx.font = "72px serif"; ctx.textAlign = "center"; ctx.fillStyle = "#f7d987";
+    ctx.fillText(zodiacSymbols[sign], 0, 28);
+  }
+  ctx.restore();
+
+  ctx.save(); ctx.translate(icx, icy);
+  zRR(ctx, -IW / 2, -IH / 2, IW, IH, 26);
+  ctx.strokeStyle = "rgba(247,217,135,0.80)"; ctx.lineWidth = 2.5; ctx.stroke();
+  ctx.restore();
+
+  // ── Sign name ──
+  let cy = icy + IH / 2 + 50;
+  ctx.textAlign = "center";
+  ctx.font = `700 64px ${ff}`; ctx.fillStyle = "#f7d987";
+  ctx.shadowBlur = 14; ctx.shadowColor = "rgba(45,24,20,0.4)";
+  ctx.fillText(`${zodiacSymbols[sign]} ${sign}`, W / 2, cy); ctx.shadowBlur = 0;
+  cy += 60;
+  ctx.font = `600 26px ${ff}`; ctx.fillStyle = "rgba(255,247,230,0.68)";
+  ctx.fillText(zodiacEnNames[sign], W / 2, cy); cy += 44;
+  ctx.font = `400 22px ${ff}`; ctx.fillStyle = "rgba(255,247,230,0.48)";
+  ctx.fillText(new Intl.DateTimeFormat("zh-TW", { timeZone: "Asia/Taipei", year: "numeric", month: "long", day: "numeric" }).format(new Date()), W / 2, cy);
+  cy += 50;
+
+  // ── Overall box ──
+  const BX = 80, BW = 920, BPXY = 34, BPXX = 52;
+  const otext = fortune.overall.replace(/\*\*/g, "").trim();
+  ctx.font = `400 29px ${ff}`;
+  const oLines = zWrap(ctx, otext, BW - BPXX * 2).slice(0, 3);
+  const LH29 = 29 * 1.72;
+  const BH = BPXY * 2 + 44 + 16 + oLines.length * LH29;
+
+  ctx.save();
+  zRR(ctx, BX, cy, BW, BH, 46); ctx.clip();
+  const bg2 = ctx.createLinearGradient(BX, cy, BX + BW * 0.5, cy + BH);
+  bg2.addColorStop(0, "rgba(255,247,230,0.94)"); bg2.addColorStop(0.5, "rgba(248,232,216,0.90)"); bg2.addColorStop(1, "rgba(246,219,226,0.86)");
+  ctx.fillStyle = bg2; ctx.fillRect(BX, cy, BW, BH);
+  ctx.restore();
+
+  ctx.save(); ctx.shadowBlur = 50; ctx.shadowColor = "rgba(5,7,24,0.28)";
+  zRR(ctx, BX, cy, BW, BH, 46); ctx.strokeStyle = "rgba(202,168,95,0.52)"; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.restore();
+
+  const btext = "今日整體運勢";
+  ctx.font = `700 22px ${ff}`;
+  const bfw = ctx.measureText(btext).width + 44;
+  const bbx = (W - bfw) / 2, bby = cy + BPXY;
+  ctx.save(); zRR(ctx, bbx, bby, bfw, 44, 22); ctx.fillStyle = "#caa85f"; ctx.fill(); ctx.restore();
+  ctx.textAlign = "center"; ctx.font = `700 22px ${ff}`; ctx.fillStyle = "white"; ctx.fillText(btext, W / 2, bby + 29);
+  const sly = bby + 22;
+  ctx.strokeStyle = "rgba(189,148,75,0.55)"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(BX + BPXX, sly); ctx.lineTo(bbx - 12, sly); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(bbx + bfw + 12, sly); ctx.lineTo(BX + BW - BPXX, sly); ctx.stroke();
+
+  ctx.font = `400 29px ${ff}`; ctx.fillStyle = "#241937"; ctx.textAlign = "center";
+  const otY = bby + 44 + 20;
+  oLines.forEach((l, i) => ctx.fillText(l, W / 2, otY + i * LH29));
+  cy += BH + 20;
+
+  // ── Aspect boxes (2 × 2) ──
+  const AW = 490, AH = 155, AGAPX = 20, AGAPY = 14, APX = 26, APY = 18;
+  const AX0 = (W - AW * 2 - AGAPX) / 2;
+  const aspects: { label: string; stars: number; text: string }[] = [
+    { label: "愛情運", stars: fortune.love.stars, text: fortune.love.reminder },
+    { label: "工作運", stars: fortune.work.stars, text: fortune.work.reminder },
+    { label: "財運",   stars: fortune.life.stars, text: fortune.life.reminder },
+    { label: "宇宙小提醒", stars: 0, text: fortune.action },
+  ];
+  const aColors = ["rgba(252,182,200,0.28)", "rgba(100,200,230,0.22)", "rgba(200,230,150,0.22)", "rgba(200,180,255,0.22)"];
+
+  for (let i = 0; i < 4; i++) {
+    const col = i % 2, row = Math.floor(i / 2);
+    const ax = AX0 + col * (AW + AGAPX);
+    const ay = cy + row * (AH + AGAPY);
+    const asp = aspects[i];
+
+    ctx.save(); zRR(ctx, ax, ay, AW, AH, 28);
+    ctx.fillStyle = "rgba(13,11,42,0.78)"; ctx.fill();
+    ctx.strokeStyle = "rgba(247,217,135,0.20)"; ctx.lineWidth = 1.5; ctx.stroke(); ctx.restore();
+
+    ctx.save(); zRR(ctx, ax, ay, AW, AH, 28); ctx.clip();
+    const tg = ctx.createLinearGradient(ax, ay, ax, ay + 55);
+    tg.addColorStop(0, aColors[i]); tg.addColorStop(1, "transparent");
+    ctx.fillStyle = tg; ctx.fillRect(ax, ay, AW, AH); ctx.restore();
+
+    ctx.font = `700 23px ${ff}`; ctx.fillStyle = "#f7d987"; ctx.textAlign = "left";
+    ctx.fillText(asp.label, ax + APX, ay + APY + 23);
+
+    if (asp.stars > 0) {
+      ctx.font = "18px serif";
+      for (let s = 0; s < 5; s++) {
+        ctx.fillStyle = s < asp.stars ? "#f5c518" : "rgba(255,255,255,0.18)";
+        ctx.fillText(s < asp.stars ? "★" : "☆", ax + AW - APX - (5 - s) * 20, ay + APY + 23);
+      }
+    }
+
+    const dly = ay + APY + 35;
+    ctx.strokeStyle = "rgba(247,217,135,0.18)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(ax + APX, dly); ctx.lineTo(ax + AW - APX, dly); ctx.stroke();
+
+    const tlines = zWrap(ctx, asp.text.replace(/\*\*/g, "").trim(), AW - APX * 2).slice(0, 3);
+    ctx.font = `400 21px ${ff}`; ctx.fillStyle = "rgba(255,247,230,0.80)"; ctx.textAlign = "left";
+    tlines.forEach((l, li) => ctx.fillText(l, ax + APX, dly + 24 + li * (21 * 1.58)));
+  }
+  cy += 2 * AH + AGAPY + 22;
+
+  // ── Lucky info ──
+  const LCW = 185, LCH = 76;
+  const lcX = W / 2 - LCW - 14;
+  ctx.save(); zRR(ctx, lcX, cy, LCW, LCH, 18);
+  ctx.fillStyle = "rgba(247,217,135,0.12)"; ctx.fill(); ctx.strokeStyle = "rgba(247,217,135,0.30)"; ctx.lineWidth = 1; ctx.stroke(); ctx.restore();
+  ctx.textAlign = "center";
+  ctx.font = `400 18px ${ff}`; ctx.fillStyle = "rgba(255,247,230,0.52)"; ctx.fillText("幸運色", lcX + LCW / 2, cy + 24);
+  ctx.font = `700 24px ${ff}`; ctx.fillStyle = "#d8bd70"; ctx.fillText(fortune.luckyColor, lcX + LCW / 2, cy + 57);
+
+  const lnX = W / 2 + 14;
+  ctx.save(); zRR(ctx, lnX, cy, LCW, LCH, 18);
+  ctx.fillStyle = "rgba(200,180,255,0.10)"; ctx.fill(); ctx.strokeStyle = "rgba(200,180,255,0.28)"; ctx.lineWidth = 1; ctx.stroke(); ctx.restore();
+  ctx.font = `400 18px ${ff}`; ctx.fillStyle = "rgba(255,247,230,0.52)"; ctx.fillText("幸運數字", lnX + LCW / 2, cy + 24);
+  ctx.font = `700 36px ${ff}`; ctx.fillStyle = "rgba(255,247,230,0.88)"; ctx.fillText(String(fortune.luckyNumber), lnX + LCW / 2, cy + 62);
+  cy += LCH + 30;
+
+  // ── QR code + LINE invite ──
+  const QS = 130, QX = W - QS - 72, QY = cy;
+
+  let qrImg: HTMLImageElement | null = null;
+  try {
+    const { default: QRCode } = await import("qrcode");
+    const qrUrl = await QRCode.toDataURL("https://lin.ee/ObZxFcx", {
+      width: 160, margin: 2, color: { dark: "#2a1a3e", light: "#fff8f0" },
+    });
+    qrImg = await zLoadImg(qrUrl);
+  } catch { /* skip QR on failure */ }
+
+  if (qrImg) {
+    ctx.save(); ctx.shadowBlur = 20; ctx.shadowColor = "rgba(247,217,135,0.24)";
+    zRR(ctx, QX - 8, QY - 8, QS + 16, QS + 16, 14);
+    ctx.fillStyle = "#fff8f0"; ctx.fill(); ctx.restore();
+    ctx.drawImage(qrImg, QX, QY, QS, QS);
+  }
+
+  ctx.textAlign = "left";
+  ctx.font = `700 24px ${ff}`; ctx.fillStyle = "rgba(255,247,230,0.86)";
+  ctx.fillText("掃描加入 LINE", 72, QY + 38);
+  ctx.font = `400 20px ${ff}`; ctx.fillStyle = "rgba(255,247,230,0.60)";
+  ctx.fillText("接收每日宇宙訊息", 72, QY + 72);
+
+  // ── Footer ──
+  ctx.textAlign = "center";
+  ctx.font = `400 22px ${ff}`; ctx.fillStyle = "rgba(255,247,230,0.58)";
+  ctx.fillText(`✦  ${siteUrl}  ✦`, W / 2, H - 68);
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => blob ? resolve(blob) : reject(new Error("Canvas 轉換失敗，請重新整理後再試。")),
+      "image/png",
+    );
+  });
+}
+
 export function DailyFortuneClient() {
-  const [selectedZodiac, setSelectedZodiac] = useState<ZodiacSign>("巨蟹座");
+  const [selectedZodiac, setSelectedZodiac] = useState<ZodiacSign | null>(null);
   const [remoteFortunes, setRemoteFortunes] = useState<Partial<Record<ZodiacSign, DailyFortune>>>({});
   const [loadingZodiac, setLoadingZodiac] = useState<ZodiacSign | null>(null);
   const [dailyNote, setDailyNote] = useState("");
+  const [storyDownloadStatus, setStoryDownloadStatus] = useState<"idle" | "working" | "done" | "error">("idle");
+  const [storyError, setStoryError] = useState("");
+
+  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? "universe-whisper.vercel.app");
 
   useEffect(() => {
     const saved = window.localStorage.getItem("universe-whisper-daily-zodiac");
-
     if (saved && zodiacSigns.includes(saved as ZodiacSign)) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedZodiac(saved as ZodiacSign);
     }
   }, []);
 
   useEffect(() => {
+    if (!selectedZodiac) return; // no zodiac selected yet
     const controller = new AbortController();
 
     setLoadingZodiac(selectedZodiac);
@@ -475,11 +745,7 @@ export function DailyFortuneClient() {
       })
       .then((data) => {
         if (!isDailyFortune(data)) throw new Error("daily fortune payload invalid");
-
-        setRemoteFortunes((current) => ({
-          ...current,
-          [selectedZodiac]: data,
-        }));
+        setRemoteFortunes((current) => ({ ...current, [selectedZodiac]: data }));
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
@@ -489,22 +755,42 @@ export function DailyFortuneClient() {
         setLoadingZodiac((current) => (current === selectedZodiac ? null : current));
       });
 
-    return () => {
-      controller.abort();
-    };
+    return () => { controller.abort(); };
   }, [selectedZodiac]);
 
   function selectZodiac(sign: ZodiacSign) {
     setSelectedZodiac(sign);
     window.localStorage.setItem("universe-whisper-daily-zodiac", sign);
+    setStoryDownloadStatus("idle");
+    setStoryError("");
   }
 
-  const fallbackFortune: DailyFortune = {
-    ...dailyFortunes[selectedZodiac],
-    mood: moodFortunes[selectedZodiac],
-  };
-  const fortune = remoteFortunes[selectedZodiac] ?? fallbackFortune;
-  const isLoading = loadingZodiac === selectedZodiac;
+  // fortune is always defined; dummy fallback used when selectedZodiac is null (never rendered)
+  const _ref = selectedZodiac ?? "巨蟹座";
+  const fortune: DailyFortune =
+    (selectedZodiac ? remoteFortunes[selectedZodiac] : undefined) ??
+    { ...dailyFortunes[_ref], mood: moodFortunes[_ref] };
+  const isLoading = selectedZodiac !== null && loadingZodiac === selectedZodiac;
+
+  async function downloadZodiacImage() {
+    if (storyDownloadStatus === "working" || !selectedZodiac) return;
+    setStoryError("");
+    try {
+      setStoryDownloadStatus("working");
+      const blob = await generateZodiacStoryImage(selectedZodiac, fortune, siteUrl);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = "universe-whisper-zodiac-story.png";
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a); URL.revokeObjectURL(url);
+      setStoryDownloadStatus("done");
+      window.setTimeout(() => setStoryDownloadStatus("idle"), 3500);
+    } catch (err) {
+      console.error("[zodiac-story] Canvas failed", err);
+      setStoryError(err instanceof Error ? err.message : String(err));
+      setStoryDownloadStatus("error");
+    }
+  }
 
   return (
     <>
@@ -553,105 +839,109 @@ export function DailyFortuneClient() {
         </div>
       </section>
 
-      <section className="relative mt-6 overflow-hidden rounded-[1.75rem] border border-lavender/20 bg-midnight/52 shadow-glow">
-        <div className="pointer-events-none absolute inset-y-4 right-[-10%] z-0 w-[78%] max-w-[520px] opacity-[0.11] blur-[1.5px] sm:right-0 sm:w-[46%]">
-          <Image
-            src={zodiacImages[selectedZodiac]}
-            alt=""
-            fill
-            sizes="(max-width: 640px) 80vw, 520px"
-            className="object-contain object-center sm:object-right"
-            aria-hidden="true"
-          />
+      {!selectedZodiac ? (
+        <div className="mt-8 rounded-[1.75rem] border border-white/8 bg-midnight/28 px-6 py-12 text-center">
+          <p className="text-lg text-moon/55">點選上方星座，查看今日宇宙訊息 ✦</p>
         </div>
-
-        <div className="relative z-10 h-1 bg-gradient-to-r from-nebula/60 via-lavender/80 to-aurora/60" />
-        <div className="relative z-10 p-5 sm:p-7">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.28em] text-lavender/70">整體</p>
-              <h2 className="mt-2 text-2xl font-semibold text-moon">{selectedZodiac}今日訊息</h2>
-              {isLoading && (
-                <p className="mt-2 text-sm text-[#d8bd70]/78">正在取回今天的星光訊息…</p>
-              )}
-              {dailyNote && !isLoading && (
-                <p className="mt-2 text-sm text-lavender/76">{dailyNote}</p>
-              )}
-              <p className="mt-3 max-w-2xl text-sm leading-7 text-moon/78 sm:text-base">
-                {fortune.overall}
-              </p>
+      ) : (
+        <>
+          <section className="relative mt-6 overflow-hidden rounded-[1.75rem] border border-lavender/20 bg-midnight/52 shadow-glow">
+            <div className="pointer-events-none absolute inset-y-4 right-[-10%] z-0 w-[78%] max-w-[520px] opacity-[0.11] blur-[1.5px] sm:right-0 sm:w-[46%]">
+              <Image
+                src={zodiacImages[selectedZodiac]}
+                alt=""
+                fill
+                sizes="(max-width: 640px) 80vw, 520px"
+                className="object-contain object-center sm:object-right"
+                aria-hidden="true"
+              />
             </div>
-
-            <div className="flex gap-3">
-              <div className="rounded-xl border border-white/10 bg-white/7 px-3 py-2 text-center backdrop-blur">
-                <p className="text-xs text-moon/50">幸運色</p>
-                <p className="mt-0.5 text-sm font-medium text-lavender">{fortune.luckyColor}</p>
-              </div>
-              <div className="rounded-xl border border-white/10 bg-white/7 px-3 py-2 text-center backdrop-blur">
-                <p className="text-xs text-moon/50">幸運數字</p>
-                <p className="mt-0.5 text-lg font-semibold text-moon">{fortune.luckyNumber}</p>
+            <div className="relative z-10 h-1 bg-gradient-to-r from-nebula/60 via-lavender/80 to-aurora/60" />
+            <div className="relative z-10 p-5 sm:p-7">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.28em] text-lavender/70">整體</p>
+                  <h2 className="mt-2 text-2xl font-semibold text-moon">{selectedZodiac}今日訊息</h2>
+                  {isLoading && <p className="mt-2 text-sm text-[#d8bd70]/78">正在取回今天的星光訊息…</p>}
+                  {dailyNote && !isLoading && <p className="mt-2 text-sm text-lavender/76">{dailyNote}</p>}
+                  <p className="mt-3 max-w-2xl text-sm leading-7 text-moon/78 sm:text-base">{fortune.overall}</p>
+                </div>
+                <div className="flex gap-3">
+                  <div className="rounded-xl border border-white/10 bg-white/7 px-3 py-2 text-center backdrop-blur">
+                    <p className="text-xs text-moon/50">幸運色</p>
+                    <p className="mt-0.5 text-sm font-medium text-lavender">{fortune.luckyColor}</p>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-white/7 px-3 py-2 text-center backdrop-blur">
+                    <p className="text-xs text-moon/50">幸運數字</p>
+                    <p className="mt-0.5 text-lg font-semibold text-moon">{fortune.luckyNumber}</p>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
+          </section>
 
-        </div>
-      </section>
+          <section className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {aspectConfig.map((aspect) => {
+              const data = fortune[aspect.key];
+              return (
+                <article
+                  key={aspect.key}
+                  className="relative overflow-hidden rounded-[1.5rem] border border-white/10 bg-midnight/50 shadow-glow transition duration-300 hover:-translate-y-1 hover:border-[#d8bd70]/35"
+                >
+                  <div className="pointer-events-none absolute inset-y-3 right-[-18px] w-36 opacity-[0.09] blur-[1.25px] sm:w-44">
+                    <Image src={zodiacImages[selectedZodiac]} alt="" fill sizes="180px" className="object-contain" aria-hidden="true" />
+                  </div>
+                  <div className={`relative z-10 h-1 bg-gradient-to-r ${aspect.gradient}`} />
+                  <div className="relative z-10 p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="text-lg font-semibold text-moon">{aspect.label}</h3>
+                      <Stars count={data.stars} />
+                    </div>
+                    <div className="mt-4 space-y-3 text-sm leading-7 text-moon/76 sm:text-base">
+                      <p>{data.text}</p>
+                      <p className="border-t border-white/8 pt-3 text-lavender/82">{data.reminder}</p>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
 
-      <section className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {aspectConfig.map((aspect) => {
-          const data = fortune[aspect.key];
-
-          return (
-            <article
-              key={aspect.key}
-              className="relative overflow-hidden rounded-[1.5rem] border border-white/10 bg-midnight/50 shadow-glow transition duration-300 hover:-translate-y-1 hover:border-[#d8bd70]/35"
-            >
+            <article className="relative overflow-hidden rounded-[1.5rem] border border-[#d8bd70]/20 bg-[#d8bd70]/8 shadow-glow transition duration-300 hover:-translate-y-1 hover:border-[#d8bd70]/42">
               <div className="pointer-events-none absolute inset-y-3 right-[-18px] w-36 opacity-[0.09] blur-[1.25px] sm:w-44">
-                <Image
-                  src={zodiacImages[selectedZodiac]}
-                  alt=""
-                  fill
-                  sizes="180px"
-                  className="object-contain"
-                  aria-hidden="true"
-                />
+                <Image src={zodiacImages[selectedZodiac]} alt="" fill sizes="180px" className="object-contain" aria-hidden="true" />
               </div>
-              <div className={`relative z-10 h-1 bg-gradient-to-r ${aspect.gradient}`} />
+              <div className="relative z-10 h-1 bg-gradient-to-r from-[#d8bd70]/50 via-moon/40 to-lavender/28" />
               <div className="relative z-10 p-5">
-                <div className="flex items-center justify-between gap-3">
-                  <h3 className="text-lg font-semibold text-moon">{aspect.label}</h3>
-                  <Stars count={data.stars} />
-                </div>
-
-                <div className="mt-4 space-y-3 text-sm leading-7 text-moon/76 sm:text-base">
-                  <p>{data.text}</p>
-                  <p className="border-t border-white/8 pt-3 text-lavender/82">
-                    {data.reminder}
-                  </p>
-                </div>
+                <h3 className="text-lg font-semibold text-moon">今日小行動</h3>
+                <p className="mt-4 text-sm leading-7 text-moon/84 sm:text-base">{fortune.action}</p>
               </div>
             </article>
-          );
-        })}
+          </section>
 
-        <article className="relative overflow-hidden rounded-[1.5rem] border border-[#d8bd70]/20 bg-[#d8bd70]/8 shadow-glow transition duration-300 hover:-translate-y-1 hover:border-[#d8bd70]/42">
-          <div className="pointer-events-none absolute inset-y-3 right-[-18px] w-36 opacity-[0.09] blur-[1.25px] sm:w-44">
-            <Image
-              src={zodiacImages[selectedZodiac]}
-              alt=""
-              fill
-              sizes="180px"
-              className="object-contain"
-              aria-hidden="true"
-            />
+          {/* ── Download story image ── */}
+          <div className="mt-6 rounded-[1.75rem] border border-[#d8bd70]/22 bg-midnight/52 p-5 shadow-glow sm:p-6">
+            <p className="text-xs uppercase tracking-[0.28em] text-[#d8bd70]/70">限動圖片</p>
+            <h3 className="mt-2 text-lg font-semibold text-moon">下載 IG 限動圖片</h3>
+            <p className="mt-1 text-sm text-moon/55">產出 1080×1920 星座運勢海報，直接發到 IG 限時動態。</p>
+            <div className="mt-4 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={downloadZodiacImage}
+                disabled={storyDownloadStatus === "working"}
+                className="w-full rounded-full border border-[#d8bd70]/35 bg-[#d8bd70] px-5 py-3 text-sm font-semibold text-midnight shadow-[0_0_24px_rgba(216,189,112,0.22)] transition hover:bg-moon active:scale-95 disabled:cursor-wait disabled:opacity-70 sm:w-auto"
+              >
+                {storyDownloadStatus === "working" ? "正在產生圖片..." : "⬇ 下載限動圖片"}
+              </button>
+              {storyDownloadStatus === "done" && (
+                <p className="text-sm text-moon/72">圖片已下載，可以發到 IG 限動囉 ✨</p>
+              )}
+              {storyDownloadStatus === "error" && (
+                <p className="text-sm text-[#ffb4b4]">{storyError || "圖片產生失敗，請稍後再試。"}</p>
+              )}
+            </div>
           </div>
-          <div className="relative z-10 h-1 bg-gradient-to-r from-[#d8bd70]/50 via-moon/40 to-lavender/28" />
-          <div className="relative z-10 p-5">
-            <h3 className="text-lg font-semibold text-moon">今日小行動</h3>
-            <p className="mt-4 text-sm leading-7 text-moon/84 sm:text-base">{fortune.action}</p>
-          </div>
-        </article>
-      </section>
+        </>
+      )}
     </>
   );
 }
