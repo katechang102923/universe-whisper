@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { TarotCard } from "@/data/tarotCards";
 
@@ -28,9 +29,9 @@ function PlaceholderCard() {
 
 function DetailBlock({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <article className="rounded-3xl border border-white/10 bg-white/[0.055] p-4">
+    <article className="rounded-[1.6rem] border border-white/10 bg-white/[0.052] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.16)]">
       <h3 className="text-sm font-semibold tracking-[0.18em] text-[#d8bd70]/86">{title}</h3>
-      <p className="mt-3 text-sm leading-7 text-moon/76">{children}</p>
+      <p className="mt-4 whitespace-pre-line text-base leading-8 text-moon/78">{children}</p>
     </article>
   );
 }
@@ -86,14 +87,14 @@ export function TarotCardsClient({ cards }: { cards: TarotCard[] }) {
                   onClick={() => setSelectedCard(card)}
                   className="group rounded-3xl border border-[#d8bd70]/20 bg-midnight/58 p-3 text-left shadow-[0_18px_54px_rgba(0,0,0,0.22)] transition duration-300 hover:-translate-y-1 hover:border-[#d8bd70]/58 hover:shadow-[0_0_38px_rgba(216,189,112,0.22)] active:scale-[0.98]"
                 >
-                  <div className="relative aspect-[2/3] overflow-hidden rounded-2xl border border-white/10 bg-white/6">
+                  <div className="relative flex aspect-[2/3] items-center justify-center rounded-2xl border border-white/10 bg-black/20 p-2">
                     {card.image ? (
                       <Image
                         src={card.image}
                         alt={`${card.nameZh} ${card.nameEn}`}
                         fill
                         sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 220px"
-                        className="object-cover transition duration-500 group-hover:scale-105"
+                        className="rounded-xl object-contain transition duration-300 group-hover:brightness-110"
                       />
                     ) : (
                       <PlaceholderCard />
@@ -116,7 +117,7 @@ export function TarotCardsClient({ cards }: { cards: TarotCard[] }) {
             if (event.target === event.currentTarget) setSelectedCard(null);
           }}
         >
-          <section className="relative max-h-[100svh] w-full overflow-y-auto border border-[#d8bd70]/36 bg-midnight shadow-[0_0_70px_rgba(216,189,112,0.22)] sm:max-h-[92vh] sm:max-w-5xl sm:rounded-[2rem]">
+          <section className="relative max-h-[100svh] w-full overflow-y-auto border border-[#d8bd70]/36 bg-midnight shadow-[0_0_70px_rgba(216,189,112,0.22)] sm:max-h-[92vh] sm:max-w-5xl sm:rounded-[2.25rem]">
             <div className="pointer-events-none absolute inset-0 star-field opacity-30" />
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_12%,rgba(216,189,112,0.18),transparent_28%),radial-gradient(circle_at_90%_22%,rgba(203,184,255,0.18),transparent_28%)]" />
 
@@ -129,16 +130,16 @@ export function TarotCardsClient({ cards }: { cards: TarotCard[] }) {
               ×
             </button>
 
-            <div className="relative z-10 grid gap-6 p-5 sm:p-7 lg:grid-cols-[minmax(260px,340px)_1fr]">
-              <div>
-                <div className="relative mx-auto aspect-[2/3] w-full max-w-[320px] overflow-hidden rounded-[1.5rem] border border-[#d8bd70]/46 bg-white/6 shadow-[0_0_46px_rgba(216,189,112,0.18)]">
+            <div className="relative z-10 grid gap-8 p-5 pb-8 sm:p-8 lg:grid-cols-[minmax(250px,330px)_1fr] lg:gap-10">
+              <div className="pt-10 sm:pt-2">
+                <div className="relative mx-auto flex aspect-[2/3] w-full max-w-[420px] items-center justify-center rounded-3xl border border-[#d8bd70]/46 bg-black/20 p-3 shadow-[0_0_46px_rgba(216,189,112,0.18)]">
                   {selectedCard.image ? (
                     <Image
                       src={selectedCard.image}
                       alt={`${selectedCard.nameZh} ${selectedCard.nameEn}`}
                       fill
-                      sizes="320px"
-                      className="object-cover"
+                      sizes="(max-width: 640px) 90vw, 420px"
+                      className="rounded-2xl object-contain"
                       priority
                     />
                   ) : (
@@ -147,12 +148,14 @@ export function TarotCardsClient({ cards }: { cards: TarotCard[] }) {
                 </div>
               </div>
 
-              <div>
+              <div className="space-y-6">
                 <p className="text-xs uppercase tracking-[0.3em] text-[#d8bd70]/78">{classification(selectedCard)}</p>
-                <h2 className="mt-3 text-4xl font-semibold text-moon">{selectedCard.nameZh}</h2>
-                <p className="mt-1 text-lg text-lavender/76">{selectedCard.nameEn}</p>
+                <div>
+                  <h2 className="text-4xl font-semibold text-moon sm:text-5xl">{selectedCard.nameZh}</h2>
+                  <p className="mt-2 text-lg text-lavender/76">{selectedCard.nameEn}</p>
+                </div>
 
-                <div className="mt-5 flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2">
                   {selectedCard.keywords.map((keyword) => (
                     <span key={keyword} className="rounded-full border border-white/10 bg-white/8 px-3 py-1 text-sm text-moon/76">
                       {keyword}
@@ -160,21 +163,24 @@ export function TarotCardsClient({ cards }: { cards: TarotCard[] }) {
                   ))}
                 </div>
 
-                <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 md:grid-cols-2">
                   <DetailBlock title="正位意思">{selectedCard.upright}</DetailBlock>
                   <DetailBlock title="逆位意思">{selectedCard.reversed}</DetailBlock>
                 </div>
 
-                <div className="mt-4 grid gap-4 md:grid-cols-3">
-                  <DetailBlock title="感情解讀">{selectedCard.love}</DetailBlock>
-                  <DetailBlock title="工作解讀">{selectedCard.career}</DetailBlock>
-                  <DetailBlock title="財運解讀">{selectedCard.money}</DetailBlock>
+                <DetailBlock title="牌卡象徵">{selectedCard.symbolism}</DetailBlock>
+
+                <div className="rounded-[1.8rem] border border-[#d8bd70]/30 bg-[#d8bd70]/10 p-5 shadow-[0_0_38px_rgba(216,189,112,0.12)]">
+                  <h3 className="text-sm font-semibold tracking-[0.18em] text-[#d8bd70]/86">宇宙提醒</h3>
+                  <p className="mt-4 text-lg leading-9 text-moon/82">{selectedCard.universeMessage}</p>
                 </div>
 
-                <div className="mt-4 rounded-3xl border border-[#d8bd70]/30 bg-[#d8bd70]/10 p-4">
-                  <h3 className="text-sm font-semibold tracking-[0.18em] text-[#d8bd70]/86">宇宙提醒</h3>
-                  <p className="mt-3 leading-8 text-moon/80">{selectedCard.advice}</p>
-                </div>
+                <Link
+                  href="/tarot"
+                  className="inline-flex w-full items-center justify-center rounded-full bg-moon px-6 py-4 text-base font-semibold text-midnight shadow-[0_0_30px_rgba(247,241,223,0.24)] transition hover:bg-white sm:w-auto"
+                >
+                  🌙 抽一組專屬宇宙訊息
+                </Link>
               </div>
             </div>
           </section>

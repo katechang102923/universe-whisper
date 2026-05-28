@@ -24,6 +24,8 @@ export type TarotCard = {
   keywords: string[];
   upright: string;
   reversed: string;
+  symbolism: string;
+  universeMessage: string;
   uprightMeaning: string;
   reversedMeaning: string;
   meanings: Record<TarotTopicKey, TarotCardTopicMeaning>;
@@ -56,6 +58,235 @@ function getSuitLabel(suit: TarotSuit): TarotCard["suitLabel"] {
   return undefined;
 }
 
+const majorDetailFocus: Record<string, { upright: string; reversed: string; symbolism: string }> = {
+  "the-fool": {
+    upright: "這張牌的核心是起點、冒險與信任未知，適合以開放姿態開始新旅程。",
+    reversed: "逆位時，新的開始可能混入逃避、衝動或準備不足，需要先確認腳下的路。",
+    symbolism: "愚者象徵靈魂踏上未知旅程的第一步。牌面中的行囊、白玫瑰與懸崖，提醒我們純真和自由很珍貴，但仍需要對腳下的世界保持覺察。",
+  },
+  "the-magician": {
+    upright: "這張牌談的是意志、資源與顯化，當想法和行動對齊，計畫會開始成形。",
+    reversed: "逆位時，能量容易分散成空談、操控或自我懷疑，需要把焦點重新收回手中。",
+    symbolism: "魔術師象徵把靈感帶入現實的通道。桌上的四元素工具代表你可運用的資源，指向天地的姿態提醒你，真正的創造來自意志與行動的連結。",
+  },
+  "the-high-priestess": {
+    upright: "這張牌象徵直覺、潛意識與尚未揭露的訊息，答案需要在安靜中被讀懂。",
+    reversed: "逆位時，可能是忽略直覺、資訊混亂或秘密壓力浮現，需要分辨感受與想像。",
+    symbolism: "女祭司象徵神秘知識、直覺與內在門檻。帷幕、月亮與經卷都指向尚未公開的真相，提醒你有些答案不靠追問，而是在安靜裡慢慢浮現。",
+  },
+  "the-empress": {
+    upright: "這張牌代表豐盛、滋養、創造與身體感受，好的事物正在透過照顧慢慢生長。",
+    reversed: "逆位時，滋養可能變成依附、過度付出或創造力受阻，需要重新照顧自己的土壤。",
+    symbolism: "皇后象徵大地、母性、感官與生命孕育。豐盛的自然景象提醒我們，創造不是逼迫成果，而是讓適合的環境、時間與照顧一起發生。",
+  },
+  "the-emperor": {
+    upright: "這張牌帶來秩序、責任、界線與結構，是把混亂整理成可承擔形狀的力量。",
+    reversed: "逆位時，秩序可能變成控制、僵硬或失去方向，需要找回穩定而不壓迫的界線。",
+    symbolism: "皇帝象徵王座、規則、權威與穩定結構。石座與山脈代表成熟的承擔，提醒你真正的力量不是壓制，而是能建立安全可靠的秩序。",
+  },
+  "the-hierophant": {
+    upright: "這張牌關於信念、傳承、學習與制度，適合向成熟經驗或內在信仰尋求指引。",
+    reversed: "逆位時，舊規則可能不再適合你，也要小心盲從或為反叛而反叛。",
+    symbolism: "教皇象徵傳統、教導、儀式與精神秩序。鑰匙與祝福手勢提醒你，知識需要被理解後內化，而不是只照著外界標準生活。",
+  },
+  "the-lovers": {
+    upright: "這張牌不只談愛，也談選擇、價值觀與真心對齊，重要的是誠實選擇自己願意承諾的方向。",
+    reversed: "逆位時，可能出現價值衝突、逃避選擇或關係失衡，需要看清真正的需求。",
+    symbolism: "戀人象徵連結、吸引、選擇與靈魂價值。牌面中的兩人與天使提醒你，真正的結合不只是心動，也包含誠實、自由與願意承擔的選擇。",
+  },
+  "the-chariot": {
+    upright: "這張牌象徵意志、掌控與前進，當內在拉扯被整合，行動就會有方向。",
+    reversed: "逆位時，可能是失控、急衝或目標分裂，需要先重新握穩韁繩。",
+    symbolism: "戰車象徵意志駕馭相反力量。黑白雙獸與車身代表內在拉扯，提醒你不是消滅矛盾，而是讓不同力量朝同一方向前進。",
+  },
+  strength: {
+    upright: "這張牌的力量不是壓制，而是溫柔馴服本能，以耐心和勇氣穩住局面。",
+    reversed: "逆位時，可能出現自我懷疑、壓抑怒氣或過度逞強，需要讓力量回到柔軟中心。",
+    symbolism: "力量牌象徵溫柔的勇氣與本能的整合。女子與獅子的互動提醒你，真正的堅定不一定大聲，而是能以柔軟安撫內在野性。",
+  },
+  "the-hermit": {
+    upright: "這張牌象徵獨處、內省與尋找真理，暫時遠離喧囂能讓答案更清楚。",
+    reversed: "逆位時，獨處可能變成封閉、逃避或與世界斷線，需要讓光重新照出去。",
+    symbolism: "隱者象徵提燈前行的內在導師。山巔、長袍與燈光代表經驗凝結後的智慧，提醒你有些路需要一個人走，才會聽見真正的指引。",
+  },
+  "wheel-of-fortune": {
+    upright: "這張牌代表週期、轉機與命運之輪，事情正在換檔，順勢比硬抗更重要。",
+    reversed: "逆位時，可能感到卡在循環裡，或試圖控制不可控制的變化，需要看懂模式。",
+    symbolism: "命運之輪象徵生命循環、時間流動與不可預期的轉折。圓輪提醒我們每個階段都會轉動，低谷不會永遠停留，高峰也需要謙卑面對。",
+  },
+  justice: {
+    upright: "這張牌談公平、因果、真相與清楚判斷，適合用誠實和責任面對結果。",
+    reversed: "逆位時，可能有偏見、不公或逃避責任，需要把失衡的天秤重新校準。",
+    symbolism: "正義象徵天秤與寶劍，一邊衡量真相，一邊做出清楚決斷。它提醒你，溫柔不等於模糊，真正的平衡需要誠實和責任。",
+  },
+  "the-hanged-man": {
+    upright: "這張牌象徵暫停、換位思考與臣服，放慢不是失敗，而是讓視角翻轉。",
+    reversed: "逆位時，停滯可能變成拖延、無謂犧牲或抗拒看見新角度。",
+    symbolism: "吊人象徵自願暫停與視角翻轉。倒掛的姿態不是懲罰，而是讓你從平常看不見的方向理解局勢，等待新的洞察成熟。",
+  },
+  death: {
+    upright: "這張牌代表結束、轉化與舊我退場，不是恐嚇，而是生命必經的更新。",
+    reversed: "逆位時，可能是不願放手、害怕改變或拖延告別，讓新階段難以進來。",
+    symbolism: "死神象徵結束、清理與重生的門檻。牌面不是預告災難，而是提醒舊形式退場後，生命才有空間長出新的樣子。",
+  },
+  temperance: {
+    upright: "這張牌象徵調和、節制與煉金，把相反的能量慢慢混合成新的平衡。",
+    reversed: "逆位時，可能出現失衡、過度或節奏混亂，需要重新找到適合自己的比例。",
+    symbolism: "節制象徵水杯之間的流動、混合與煉金。天使的姿態提醒你，真正的療癒不是走極端，而是讓不同部分找到可以共存的比例。",
+  },
+  "the-devil": {
+    upright: "這張牌看見慾望、束縛與執著，也提醒你辨認哪些連結正在消耗自由。",
+    reversed: "逆位時，束縛開始鬆動，但仍需要誠實面對依賴、逃避或誘惑。",
+    symbolism: "惡魔象徵慾望、依附與看似無法掙脫的鎖鏈。牌面提醒你，束縛有時來自恐懼與習慣；看見它，就是鬆動的第一步。",
+  },
+  "the-tower": {
+    upright: "這張牌象徵突變、崩解與真相擊落假結構，留下的是更真實的地基。",
+    reversed: "逆位時，可能正在抗拒必要的改變，或把裂縫藏起來不願處理。",
+    symbolism: "高塔象徵被閃電擊中的舊結構。它提醒你，不穩的建築終究會裂開；崩塌雖然震動，卻也讓真正可靠的基礎重新出現。",
+  },
+  "the-star": {
+    upright: "這張牌代表希望、療癒與長遠信念，經歷風暴後，內在重新看見光。",
+    reversed: "逆位時，希望感可能變弱，或過度依賴外界肯定，需要重新與內在星光連線。",
+    symbolism: "星星象徵療癒、信任與宇宙祝福。倒水的身影提醒你，當情緒重新流動，內在荒地也會慢慢恢復柔軟與生命力。",
+  },
+  "the-moon": {
+    upright: "這張牌象徵夢境、潛意識、迷霧與直覺，事情未必全貌清楚，需要慢慢辨認。",
+    reversed: "逆位時，迷霧開始散去，也可能揭露焦慮、誤解或被壓下的恐懼。",
+    symbolism: "月亮象徵夜路、幻象、夢境與潛意識潮汐。狼、犬與水中的生物提醒你，理性之外還有本能在說話，但需要慢慢分辨真實與投射。",
+  },
+  "the-sun": {
+    upright: "這張牌代表清晰、生命力、喜悅與成功，是能量被照亮後的坦然展現。",
+    reversed: "逆位時，光仍存在，只是可能被自我懷疑、延遲或過度追求完美遮住。",
+    symbolism: "太陽象徵光、生命力、坦率與純粹喜悅。明亮的日光讓一切變得清楚，也提醒你可以用更自然的方式展現自己。",
+  },
+  judgement: {
+    upright: "這張牌象徵覺醒、召喚與重新評估人生，過去的經驗正在被整合成新的回應。",
+    reversed: "逆位時，可能抗拒覺醒、害怕被評價或不願聽見內在真正的召喚。",
+    symbolism: "審判象徵號角、甦醒與靈魂回應召喚。它提醒你，過去不是用來困住你，而是等待被理解、被整合，然後成為新的生命方向。",
+  },
+  "the-world": {
+    upright: "這張牌代表完成、整合與階段圓滿，一段旅程抵達終點，也孕育下一個起點。",
+    reversed: "逆位時，可能只差最後整合，或因未完成的細節而無法真正收尾。",
+    symbolism: "世界象徵圓滿、整合與旅程完成。花環與四方守護者提醒你，真正的完成不是停止，而是帶著完整經驗進入下一個循環。",
+  },
+};
+
+const rankFocus: Record<string, { upright: string; reversed: string; symbolism: string }> = {
+  ace: {
+    upright: "Ace 是一個元素能量的種子，代表新機會、起心動念與值得培養的開始。",
+    reversed: "逆位時，種子尚未落地，可能是延遲、動機不穩或把機會握得太緊。",
+    symbolism: "一號牌象徵元素能量剛被交到你手中，像一顆還沒發芽的種子。它提醒你先辨認機會的品質，再用實際行動讓它成形。",
+  },
+  "2": {
+    upright: "二號牌關於選擇、平衡與雙方力量的互動，需要看見兩端之間的張力。",
+    reversed: "逆位時，平衡被打破，可能出現猶豫、失衡或不願面對選擇。",
+    symbolism: "二號牌象徵兩股力量的對照與協調。牌面通常帶著選擇、等待或互動的張力，提醒你不要只看其中一端。",
+  },
+  "3": {
+    upright: "三號牌帶來成長、合作或初步成果，能量開始從想法走向外在展開。",
+    reversed: "逆位時，成長受阻，常見於合作不順、期待落差或計畫尚未成形。",
+    symbolism: "三號牌象徵能量開始向外擴張，從一個念頭變成可被看見的形式。它提醒你，成果往往需要互動、時間與下一步建構。",
+  },
+  "4": {
+    upright: "四號牌重視結構、安定與可以停靠的基礎，是把能量固定下來的階段。",
+    reversed: "逆位時，穩定可能變成卡住，也可能表示根基鬆動或安全感不足。",
+    symbolism: "四號牌象徵框架、地基與暫時穩定。它像一個能讓你停靠的空間，也提醒你檢查這份安定是否仍有流動性。",
+  },
+  "5": {
+    upright: "五號牌通常帶來衝突、變動與挑戰，逼你看見系統裡真正需要調整的地方。",
+    reversed: "逆位時，衝突正在內化或收束，重點是不要逃避修正與誠實面對。",
+    symbolism: "五號牌象徵秩序被打破後的摩擦。它提醒你，混亂不一定是壞事，有時正是變化把被忽略的問題推到眼前。",
+  },
+  "6": {
+    upright: "六號牌關於修復、流動與重新取得某種和諧，代表能量開始找到回應。",
+    reversed: "逆位時，和諧尚未穩定，可能是付出失衡、回應延遲或仍困在舊模式。",
+    symbolism: "六號牌象徵調整後的回流與重新連結。它像一座橋，提醒你在經歷波動之後，仍有機會走向更平衡的狀態。",
+  },
+  "7": {
+    upright: "七號牌像一道試煉，要求你評估立場、信念與真正想守住的東西。",
+    reversed: "逆位時，試煉容易變成疲憊、逃避或方向不清，需要重新選擇重心。",
+    symbolism: "七號牌象徵內在或外在的考驗。它提醒你，真正的挑戰不只是眼前事件，而是你如何確認自己的立場與信念。",
+  },
+  "8": {
+    upright: "八號牌帶來推進、累積或某種被強化的節奏，事情正在要求更專注的行動。",
+    reversed: "逆位時，節奏可能失控或停滯，提醒你調整方法而不是只增加力氣。",
+    symbolism: "八號牌象徵力量的流動、重複與加速。它提醒你，當能量被持續投入，局勢會推進，但方向也必須被看顧。",
+  },
+  "9": {
+    upright: "九號牌接近一個階段的成熟，常與自我承擔、成果或最後考驗有關。",
+    reversed: "逆位時，成熟前的陰影浮現，可能是過度防備、不滿足或自我價值失衡。",
+    symbolism: "九號牌象徵接近完成前的個人狀態。它常帶著成果、孤獨或最後一道關卡，提醒你看見自己已累積的力量。",
+  },
+  "10": {
+    upright: "十號牌代表某個循環的完成，成果、壓力或終局都已經來到眼前。",
+    reversed: "逆位時，完成被延遲，可能是放不下、收尾困難或需要重新分配重量。",
+    symbolism: "十號牌象徵一段循環抵達飽和。它提醒你，完成有時是收穫，有時是重量；兩者都在推你進入下一個階段。",
+  },
+  page: {
+    upright: "侍者帶來學習、訊息與初生的元素能量，適合以好奇心探索。",
+    reversed: "逆位時，能量仍不成熟，可能出現分心、逃避練習或訊息判讀失準。",
+    symbolism: "侍者象徵初學者、訊息與剛被喚醒的元素天賦。它提醒你保持好奇，但也要給靈感足夠的練習和時間。",
+  },
+  knight: {
+    upright: "騎士代表行動、追尋與推進方式，展現這組元素如何奔向目標。",
+    reversed: "逆位時，行動容易失衡，可能太急、太慢或被情緒與衝動牽動。",
+    symbolism: "騎士象徵正在移動的力量。它提醒你觀察自己前進的方式：速度、方向與動機，都會影響這段旅程的結果。",
+  },
+  queen: {
+    upright: "皇后代表內在掌握與成熟接納，能把元素能量轉化成穩定的吸引力。",
+    reversed: "逆位時，內在掌握失衡，可能過度消耗、依賴認可或界線變薄。",
+    symbolism: "皇后象徵元素能量的內在成熟。她提醒你先安住於自己，當內在足夠穩定，外在自然會感受到你的力量。",
+  },
+  king: {
+    upright: "國王代表外在掌握、決策與成熟運用，能把元素能量帶入現實秩序。",
+    reversed: "逆位時，掌握可能變成控制、僵化或濫用力量，需要回到清明。",
+    symbolism: "國王象徵元素能量的外在統御。它提醒你，成熟的力量不是證明自己高於他人，而是能穩定地承擔與引導。",
+  },
+};
+
+function buildDetailUpright(input: CardInput): string {
+  if (input.suit === "major") {
+    const focus = majorDetailFocus[input.id]?.upright ?? "這張大阿爾克那代表人生旅程中的重要課題，提醒你看見事件背後更深的主題。";
+    return `${input.nameZh}正位代表${input.uprightKeywords.join("、")}。${input.uprightMeaning}${focus}當這張牌出現時，適合看見事件背後的核心課題，並用更清醒的方式回應眼前的變化。`;
+  }
+
+  const key = input.court ?? String(input.number ?? "");
+  const suitLabel = getSuitLabel(input.suit) ?? "牌組";
+  const focus = rankFocus[key]?.upright ?? "這張牌顯示能量正在日常層面展開。";
+  return `${input.nameZh}正位代表${input.uprightKeywords.join("、")}。${input.uprightMeaning}${focus}在${suitLabel}的領域裡，它會讓你更清楚看見這股力量如何運作，也提醒你把牌面能量落實到具體選擇中。`;
+}
+
+function buildDetailReversed(input: CardInput): string {
+  if (input.suit === "major") {
+    const focus = majorDetailFocus[input.id]?.reversed ?? "逆位時，這個課題可能以延遲、失衡或抗拒的方式出現，適合先整理內在狀態。";
+    return `${input.nameZh}逆位代表${input.reversedKeywords.join("、")}。${input.reversedMeaning}${focus}它並不是壞消息，而是提醒你先停下來觀察，看看是哪一個模式正在反覆出現。`;
+  }
+
+  const key = input.court ?? String(input.number ?? "");
+  const suitLabel = getSuitLabel(input.suit) ?? "牌組";
+  const focus = rankFocus[key]?.reversed ?? "逆位時，這股能量可能暫時受阻。";
+  return `${input.nameZh}逆位代表${input.reversedKeywords.join("、")}。${input.reversedMeaning}${focus}在${suitLabel}的領域裡，請先看見失衡的位置，再用更溫柔但清楚的方式慢慢調整。`;
+}
+
+function buildSymbolism(input: CardInput): string {
+  if (input.suit === "major") {
+    return majorDetailFocus[input.id]?.symbolism ?? `${input.nameZh}象徵人生旅程中的重要原型。它提醒你，牌面不只是事件描述，也是一面讓你看見內在課題的鏡子。`;
+  }
+
+  const key = input.court ?? String(input.number ?? "");
+  const suitLabel = getSuitLabel(input.suit) ?? "這組牌";
+  const suitSymbolism =
+    input.suit === "wands"
+      ? "權杖象徵火元素，關於熱情、意志、創造力與行動。"
+      : input.suit === "cups"
+        ? "聖杯象徵水元素，關於情感、直覺、關係與內在流動。"
+        : input.suit === "swords"
+          ? "寶劍象徵風元素，關於思想、真相、溝通與判斷。"
+          : "錢幣象徵土元素，關於資源、身體、金錢與現實建構。";
+
+  return `${input.nameZh}屬於${suitLabel}牌組。${suitSymbolism}${rankFocus[key]?.symbolism ?? "牌面象徵這股元素能量在日常生活中的具體呈現，提醒你看見事件背後的節奏與位置。"}`;
+}
+
 function card(input: CardInput): TarotCard {
   return {
     ...input,
@@ -64,8 +295,10 @@ function card(input: CardInput): TarotCard {
     suitLabel: getSuitLabel(input.suit),
     name: input.nameZh,
     keywords: input.uprightKeywords,
-    upright: input.uprightMeaning,
-    reversed: input.reversedMeaning,
+    upright: buildDetailUpright(input),
+    reversed: buildDetailReversed(input),
+    symbolism: buildSymbolism(input),
+    universeMessage: input.meanings.life.upright,
     love: input.meanings.love.upright,
     career: input.meanings.work.upright,
     money:
