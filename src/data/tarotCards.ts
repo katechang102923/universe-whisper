@@ -9,7 +9,10 @@ export type TarotCardTopicMeaning = {
 
 export type TarotCard = {
   id: string;
+  slug: string;
   suit: TarotSuit;
+  arcana: "大阿爾克那" | "小阿爾克那";
+  suitLabel?: "權杖" | "聖杯" | "寶劍" | "錢幣";
   number?: number;
   court?: TarotCourt;
   nameEn: string;
@@ -19,11 +22,14 @@ export type TarotCard = {
   uprightKeywords: string[];
   reversedKeywords: string[];
   keywords: string[];
+  upright: string;
+  reversed: string;
   uprightMeaning: string;
   reversedMeaning: string;
   meanings: Record<TarotTopicKey, TarotCardTopicMeaning>;
   love: string;
   career: string;
+  money: string;
   advice: string;
 };
 
@@ -42,13 +48,30 @@ type CardInput = {
   meanings: Record<TarotTopicKey, TarotCardTopicMeaning>;
 };
 
+function getSuitLabel(suit: TarotSuit): TarotCard["suitLabel"] {
+  if (suit === "wands") return "權杖";
+  if (suit === "cups") return "聖杯";
+  if (suit === "swords") return "寶劍";
+  if (suit === "pentacles") return "錢幣";
+  return undefined;
+}
+
 function card(input: CardInput): TarotCard {
   return {
     ...input,
+    slug: input.id,
+    arcana: input.suit === "major" ? "大阿爾克那" : "小阿爾克那",
+    suitLabel: getSuitLabel(input.suit),
     name: input.nameZh,
     keywords: input.uprightKeywords,
+    upright: input.uprightMeaning,
+    reversed: input.reversedMeaning,
     love: input.meanings.love.upright,
     career: input.meanings.work.upright,
+    money:
+      input.suit === "pentacles"
+        ? input.meanings.work.upright
+        : `${input.meanings.work.upright} 財務與資源層面，適合用務實節奏慢慢整理。`,
     advice: input.meanings.life.upright,
   };
 }
@@ -650,7 +673,7 @@ const suitInfo: Record<Exclude<TarotSuit, "major">, { zh: string; en: string; im
   wands: { zh: "權杖", en: "Wands", imagePrefix: "wands" },
   cups: { zh: "聖杯", en: "Cups", imagePrefix: "cups" },
   swords: { zh: "寶劍", en: "Swords", imagePrefix: "swords" },
-  pentacles: { zh: "星幣", en: "Pentacles", imagePrefix: "pentacles" },
+  pentacles: { zh: "錢幣", en: "Pentacles", imagePrefix: "pentacles" },
 };
 
 function minorImage(suit: Exclude<TarotSuit, "major">, key: string) {

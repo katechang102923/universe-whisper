@@ -1,7 +1,7 @@
-import Image from "next/image";
 import type { Metadata } from "next";
 import { AppShell } from "@/components/AppShell";
 import { tarotCards } from "@/data/tarotCards";
+import { TarotCardsClient } from "./TarotCardsClient";
 
 export const metadata: Metadata = {
   title: "塔羅牌介紹",
@@ -11,9 +11,6 @@ export const metadata: Metadata = {
     description: "認識塔羅牌結構、四元素牌組、常見牌義與娛樂自我探索聲明。",
   },
 };
-
-const majorCards = tarotCards.filter((card) => card.suit === "major").slice(0, 8);
-const minorCards = tarotCards.filter((card) => card.suit !== "major").slice(0, 12);
 
 const suits = [
   { name: "權杖", key: "wands", element: "火元素", text: "象徵行動、熱情、創造力與生命動能。" },
@@ -30,31 +27,6 @@ const meanings = [
   "力量：溫柔的勇氣、耐心與自我安撫。",
   "星星：希望、療癒、重新相信未來。",
 ];
-
-function CardGrid({ title, cards }: { title: string; cards: typeof tarotCards }) {
-  return (
-    <section className="mt-10">
-      <h2 className="text-2xl font-semibold text-moon">{title}</h2>
-      <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {cards.map((card) => (
-          <article key={card.id} className="rounded-3xl border border-[#d8bd70]/24 bg-midnight/56 p-3 shadow-glow">
-            <div className="relative aspect-[2/3] overflow-hidden rounded-2xl border border-white/10 bg-white/6">
-              {card.image ? (
-                <Image src={card.image} alt={card.nameZh} fill sizes="(max-width: 640px) 45vw, 180px" className="object-cover" />
-              ) : (
-                <div className="flex h-full items-center justify-center bg-[radial-gradient(circle,rgba(216,189,112,0.22),rgba(109,77,242,0.16),transparent)] text-3xl text-moon/70">
-                  ✦
-                </div>
-              )}
-            </div>
-            <h3 className="mt-3 text-base font-semibold text-moon">{card.nameZh}</h3>
-            <p className="mt-1 text-xs leading-5 text-moon/58">{card.keywords.slice(0, 3).join("・")}</p>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
 
 export default function TarotCardsPage() {
   return (
@@ -94,8 +66,7 @@ export default function TarotCardsPage() {
           </div>
         </section>
 
-        <CardGrid title="大阿爾克那卡牌" cards={majorCards} />
-        <CardGrid title="小阿爾克那卡牌" cards={minorCards} />
+        <TarotCardsClient cards={tarotCards} />
 
         <section className="mt-10 grid gap-4 lg:grid-cols-3">
           <article className="rounded-3xl border border-lavender/18 bg-midnight/54 p-5">
