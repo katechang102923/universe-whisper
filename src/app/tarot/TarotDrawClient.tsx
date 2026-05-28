@@ -9,12 +9,16 @@ type ReadingStatus = "idle" | "loading" | "done" | "error";
 type ReadingTopic = "love" | "career" | "general";
 type SpreadPosition = "past" | "present" | "future";
 
-const AD_COUNTDOWN_SECONDS = 15;
+const AD_COUNTDOWN_SECONDS = 5;
 const ANON_ID_STORAGE_KEY = "cosmic_anon_id";
 const AD_UNLOCK_STORAGE_KEY = "cosmic_ad_unlock_date";
 const REWARDED_AD_TIMEOUT_MS = 3500;
 const GOOGLE_REWARDED_AD_CLIENT = process.env.NEXT_PUBLIC_GOOGLE_ADSENSE_CLIENT;
 const GOOGLE_REWARDED_AD_SLOT = process.env.NEXT_PUBLIC_GOOGLE_REWARDED_AD_SLOT;
+const LINE_ADD_FRIEND_URL = process.env.NEXT_PUBLIC_LINE_ADD_FRIEND_URL ?? "https://line.me/R/ti/p/@453gfmok";
+if (typeof window !== "undefined" && !process.env.NEXT_PUBLIC_LINE_ADD_FRIEND_URL) {
+  console.warn("[LINE] NEXT_PUBLIC_LINE_ADD_FRIEND_URL is not defined, using fallback URL");
+}
 
 type RewardedAdInstance = {
   show?: () => void;
@@ -285,7 +289,7 @@ export function TarotDrawClient() {
     const data = (await response.json().catch(() => ({}))) as { reading?: string; error?: string };
 
     if (response.status === 429) {
-      throw new Error(data.error || "今日免費宇宙訊息已使用完畢 ✨");
+      throw new Error(data.error || "宇宙訊息正在排隊中，請稍後再試");
     }
 
     if (!response.ok || !data.reading) {
@@ -361,10 +365,6 @@ export function TarotDrawClient() {
     if (adUnlocked) return;
     if (hasUsedAdUnlockToday()) {
       setAdNotice("今日免費廣告解鎖已使用完畢 ✨");
-      return;
-    }
-    if (!fullReading.trim()) {
-      setAdNotice("完整訊息仍在生成中，請稍等一下。");
       return;
     }
 
@@ -712,7 +712,7 @@ export function TarotDrawClient() {
                 onClick={startAdUnlock}
                 className="mt-5 w-full rounded-full bg-[#d8bd70] px-6 py-4 text-base font-semibold text-midnight shadow-[0_0_28px_rgba(216,189,112,0.28)] transition hover:bg-moon active:scale-95 sm:w-auto sm:min-w-[280px]"
               >
-                加入 LINE 接收完整宇宙訊息
+                觀看廣告解鎖完整版
               </button>
               {adNotice ? <p className="mt-4 text-sm leading-6 text-lavender/82">{adNotice}</p> : null}
             </div>
@@ -734,21 +734,19 @@ export function TarotDrawClient() {
               boxShadow: "0 0 48px rgba(6, 199, 85, 0.12)",
             }}
           >
-            <p className="text-sm tracking-[0.22em]" style={{ color: "rgba(6, 199, 85, 0.82)" }}>LINE 保存・付費功能</p>
-            <h3 className="mt-2 text-2xl font-semibold text-moon">傳送到 LINE 永久保存</h3>
+            <p className="text-sm tracking-[0.22em]" style={{ color: "rgba(6, 199, 85, 0.82)" }}>LINE 官方帳號</p>
+            <h3 className="mt-2 text-2xl font-semibold text-moon">加入 LINE 接收宇宙訊息</h3>
             <p className="mx-auto mt-3 max-w-xl text-base leading-8 text-moon/72">
-              完整版可直接在此查看。若想把結果傳送到 LINE 長期保存，需完成付款。
+              加入宇宙偷偷話 LINE 官方帳號，每日接收星座運勢與塔羅解讀。
             </p>
             <button
               type="button"
-              onClick={openPaymentModal}
-              disabled={lineDeliveryStatus === "sending"}
-              className="pointer-events-auto relative z-10 mt-5 w-full touch-manipulation rounded-full px-6 py-4 text-base font-semibold text-white transition hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:min-w-[280px]"
+              onClick={() => window.open(LINE_ADD_FRIEND_URL, "_blank")}
+              className="pointer-events-auto relative z-10 mt-5 w-full touch-manipulation rounded-full px-6 py-4 text-base font-semibold text-white transition hover:opacity-90 active:scale-95 sm:w-auto sm:min-w-[280px]"
               style={{ background: "#06C755", boxShadow: "0 0 34px rgba(6,199,85,0.34)" }}
             >
-              {lineDeliveryStatus === "sending" ? "正在前往 LINE..." : "傳送到 LINE 永久保存"}
+              加入 LINE 官方帳號
             </button>
-            {lineDeliveryMessage ? <p className="mt-4 text-sm leading-6 text-moon/70">{lineDeliveryMessage}</p> : null}
           </div>
         </section>
       ) : null}
