@@ -1,8 +1,14 @@
-import { auth, db } from "./firebaseClient";
+"use client";
+
+/**
+ * Re-exports the lazy Firebase getters for convenience.
+ * See firebaseClient.ts for details.
+ */
+import { getClientAuth, getClientDb } from "./firebaseClient";
 
 export const collections = {
   users: "users",
-  tarotLogs: "tarot_logs"
+  tarotLogs: "tarot_logs",
 } as const;
 
 export type UserDocument = {
@@ -23,4 +29,4 @@ export type TarotLogDocument = {
   createdAt?: unknown;
 };
 
-export { auth, db };
+export { getClientAuth, getClientDb };

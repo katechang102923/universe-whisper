@@ -4,8 +4,12 @@
  * AuthContext — wraps the entire app and provides the current Firebase user,
  * admin status, and sign-in / sign-out helpers.
  *
+ * Firebase Auth is obtained lazily via getClientAuth() inside useEffect /
+ * event handlers — never at module scope — so this file is safe during
+ * Next.js build even when NEXT_PUBLIC_FIREBASE_* env vars are absent.
+ *
  * Admin detection: an authenticated user whose email matches the hard-coded
- * admin list is flagged `isAdmin = true` on the **client side only** (for UI
+ * admin list is flagged `isAdmin = true` on the CLIENT SIDE only (for UI
  * gating). All server-side admin bypasses verify the ID token independently
  * via verifyAdminIdToken() — the client value is never trusted by the server.
  */
@@ -24,7 +28,8 @@ import {
   signInWithPopup,
   signOut as firebaseSignOut,
 } from "firebase/auth";
-import { auth } from "@/lib/firebaseClient";
+// Only import the GETTER — this never calls getAuth() at module level.
+import { getClientAuth } from "@/lib/firebaseClient";
 
 const ADMIN_EMAILS = ["ciut0000@gmail.com"];
 
@@ -41,8 +46,8 @@ type AuthContextValue = {
   /** True when the signed-in user is a recognised admin. */
   isAdmin: boolean;
   /**
-   * Returns the current ID token (force-refreshes if `forceRefresh` is true).
-   * Returns null if not signed in.
+   * Returns the current ID token (force-refreshes if forceRefresh is true).
+   * Returns null if not signed in or Firebase is not configured.
    */
   getIdToken: (forceRefresh?: boolean) => Promise<string | null>;
   /** Triggers Google Sign-In via popup. */
@@ -65,10 +70,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // getClientAuth() returns null on the server OR when env vars are missing.
+    // In that case skip the subscription and mark loading done so the UI
+    // doesn't hang indefinitely.
+    const auth = getClientAuth();
+    if (!auth) {
+      setLoading(false);
+      return;
+    }
+
+    // onAuthStateChanged is imported statically but only CALLED here inside
+    // useEffect, so it only runs in the browser — never during build/SSR.
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
       setLoading(false);
     });
+
     return unsubscribe;
   }, []);
 
@@ -85,14 +102,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const signIn = useCallback(async () => {
+    const auth = getClientAuth();
+    if (!auth) {
+      console.warn("[AuthContext] Firebase Auth is not configured — skipping sign-in.");
+      return;
+    }
     const provider = new GoogleAuthProvider();
-    // Hint the account chooser towards the admin email so the user picks the
-    // right Google account without having to scroll through all their accounts.
+    // Hint the account chooser towards the admin email.
     provider.setCustomParameters({ login_hint: ADMIN_EMAILS[0] });
     await signInWithPopup(auth, provider);
   }, []);
 
   const signOut = useCallback(async () => {
+    const auth = getClientAuth();
+    if (!auth) return;
     await firebaseSignOut(auth);
   }, []);
 
