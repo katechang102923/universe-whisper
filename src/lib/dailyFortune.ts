@@ -99,22 +99,22 @@ JSON 結構：
   "luckyColor": "<1-5字幸運色>",
   "luckyNumber": <1到9的整數>,
   "love": {
-    "stars": <2到5的整數>,
+    "stars": <1到5的整數，依真實狀況給分，分布大致 1星10%、2星20%、3星35%、4星25%、5星10%>,
     "text": "<45-75字，愛情目前狀態與今日提醒>",
     "reminder": "<20-36字，一句具體提醒>"
   },
   "work": {
-    "stars": <2到5的整數>,
+    "stars": <1到5的整數，依真實狀況給分，分布大致 1星10%、2星20%、3星35%、4星25%、5星10%>,
     "text": "<45-75字，工作目前狀態與今日提醒>",
     "reminder": "<20-36字，一句具體提醒>"
   },
   "life": {
-    "stars": <2到5的整數>,
+    "stars": <1到5的整數，依真實狀況給分，分布大致 1星10%、2星20%、3星35%、4星25%、5星10%>,
     "text": "<45-75字，生活狀態與今日照顧提醒>",
     "reminder": "<20-36字，一句具體提醒>"
   },
   "mood": {
-    "stars": <2到5的整數>,
+    "stars": <1到5的整數，依真實狀況給分，分布大致 1星10%、2星20%、3星35%、4星25%、5星10%>,
     "text": "<45-75字，今天內在狀態、情緒流動與自我照顧提醒>",
     "reminder": "<20-36字，一句具體提醒>"
   },
@@ -140,7 +140,7 @@ function validateAspect(raw: unknown): FortuneAspect | null {
   if (rawStars === null || !text || !reminder) return null;
 
   return {
-    stars: Math.min(5, Math.max(2, Math.round(rawStars))),
+    stars: Math.min(5, Math.max(1, Math.round(rawStars))),
     text,
     reminder,
   };

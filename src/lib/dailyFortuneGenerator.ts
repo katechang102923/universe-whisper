@@ -8,7 +8,13 @@ function pick<T>(items: T[], seed: number): T {
 }
 
 function stars(seed: number): number {
-  return 2 + Math.floor(seededRandom(seed) * 4);
+  // Weighted 1–5 distribution: ~10% / 20% / 35% / 25% / 10%
+  const r = seededRandom(seed);
+  if (r < 0.10) return 1;
+  if (r < 0.30) return 2;
+  if (r < 0.65) return 3;
+  if (r < 0.90) return 4;
+  return 5;
 }
 
 export interface FortuneAspect {

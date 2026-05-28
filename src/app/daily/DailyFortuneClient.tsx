@@ -103,7 +103,7 @@ const dailyFortunes: Record<ZodiacSign, Omit<DailyFortune, "mood">> = {
     luckyColor: "晨光金",
     luckyNumber: 7,
     love: {
-      stars: 4,
+      stars: 3,
       text: "感情裡有一點想靠近又怕太快的拉扯。你可以主動釋出善意，但不必把全部感受一次攤開。",
       reminder: "先丟出一個輕鬆訊號，觀察對方是否願意接住。",
     },
@@ -113,7 +113,7 @@ const dailyFortunes: Record<ZodiacSign, Omit<DailyFortune, "mood">> = {
       reminder: "把最重要的一件事排到上午完成。",
     },
     life: {
-      stars: 3,
+      stars: 2,
       text: "生活節奏有點緊，身體可能比心更早感覺疲累。別把休息當成偷懶，它是在替明天補光。",
       reminder: "晚上留 20 分鐘給自己，不安排任何任務。",
     },
@@ -124,17 +124,17 @@ const dailyFortunes: Record<ZodiacSign, Omit<DailyFortune, "mood">> = {
     luckyColor: "月霧綠",
     luckyNumber: 2,
     love: {
-      stars: 3,
+      stars: 1,
       text: "愛情裡你今天更需要穩定感。慢熱不是退縮，而是在確認這段靠近是否真的安全，不用急著逼出答案。",
       reminder: "先看對方是否持續靠近，再決定投入多少。",
     },
     work: {
-      stars: 5,
+      stars: 4,
       text: "今天很適合處理需要耐心的任務。你會在細節裡找到進度，也能讓別人看見你的可靠。",
       reminder: "把待辦拆小，先清掉最卡的那一格。",
     },
     life: {
-      stars: 4,
+      stars: 3,
       text: "生活需要一點質感來安定你。吃好一點、睡穩一點，心裡的焦躁會慢慢降下來。",
       reminder: "為自己準備一個舒服的夜晚儀式。",
     },
@@ -145,17 +145,17 @@ const dailyFortunes: Record<ZodiacSign, Omit<DailyFortune, "mood">> = {
     luckyColor: "星河銀",
     luckyNumber: 5,
     love: {
-      stars: 4,
+      stars: 3,
       text: "對話會替你打開新的理解。若心裡有疑問，試著用好奇取代試探，氣氛會柔軟很多。",
       reminder: "問一個簡單問題，不要一次追太深。",
     },
     work: {
-      stars: 3,
+      stars: 2,
       text: "工作上容易被臨時消息打斷。保持彈性是優勢，但今天也要替自己的專注留一個邊界。",
       reminder: "先列三件必做，其餘晚點再回應。",
     },
     life: {
-      stars: 4,
+      stars: 3,
       text: "你需要一點新鮮感來換氣。短短散步、換一首歌、讀幾頁書，都能讓心重新亮起來。",
       reminder: "今晚讓自己接觸一個新的小靈感。",
     },
@@ -171,7 +171,7 @@ const dailyFortunes: Record<ZodiacSign, Omit<DailyFortune, "mood">> = {
       reminder: "把一句想說的話說短一點、真一點。",
     },
     work: {
-      stars: 3,
+      stars: 2,
       text: "工作上可能有人需要你的協助，但你不必把所有責任都接過來。清楚界線會讓效率更好。",
       reminder: "答應前先確認自己的時間與能量。",
     },
@@ -187,7 +187,7 @@ const dailyFortunes: Record<ZodiacSign, Omit<DailyFortune, "mood">> = {
     luckyColor: "暖琥珀",
     luckyNumber: 1,
     love: {
-      stars: 4,
+      stars: 3,
       text: "感情中你很想被重視。今天可以大方表達喜歡，但也把舞台留一點給對方靠近。",
       reminder: "接受讚美，也接受對方慢慢來。",
     },
@@ -197,7 +197,7 @@ const dailyFortunes: Record<ZodiacSign, Omit<DailyFortune, "mood">> = {
       reminder: "主動說出你的方案，不要等別人猜。",
     },
     life: {
-      stars: 3,
+      stars: 1,
       text: "生活上容易為了面子撐太久。今天請允許自己有普通的一面，那並不會讓你失去光。",
       reminder: "做一件只讓自己開心的小事。",
     },
@@ -208,17 +208,17 @@ const dailyFortunes: Record<ZodiacSign, Omit<DailyFortune, "mood">> = {
     luckyColor: "霧藍灰",
     luckyNumber: 4,
     love: {
-      stars: 3,
+      stars: 2,
       text: "你可能會反覆檢查對方的細節，但感情不是考卷。今天試著看整體感受，而不是只盯著瑕疵。",
       reminder: "少分析一點，多感受一次相處後的身心狀態。",
     },
     work: {
-      stars: 5,
+      stars: 4,
       text: "你的整理能力會派上用場。適合修正流程、補齊資料，也適合替接下來的計畫打底。",
       reminder: "先處理最容易產生連鎖效應的問題。",
     },
     life: {
-      stars: 4,
+      stars: 3,
       text: "生活需要減量。不是每件事都要排滿，留白反而能讓你更快恢復清醒。",
       reminder: "刪掉一個不必要的安排。",
     },
@@ -234,12 +234,12 @@ const dailyFortunes: Record<ZodiacSign, Omit<DailyFortune, "mood">> = {
       reminder: "把猶豫縮短，讓對方看見你的心意。",
     },
     work: {
-      stars: 3,
+      stars: 2,
       text: "工作上可能需要協調不同期待。你擅長看見雙方立場，但今天也要明確說出自己的底線。",
       reminder: "先寫下你能接受與不能接受的條件。",
     },
     life: {
-      stars: 4,
+      stars: 3,
       text: "美感會療癒你。換一個桌面、點一盞燈、穿上喜歡的顏色，都能讓今天更順眼。",
       reminder: "為生活加一個小小的漂亮細節。",
     },
@@ -250,17 +250,17 @@ const dailyFortunes: Record<ZodiacSign, Omit<DailyFortune, "mood">> = {
     luckyColor: "深莓紫",
     luckyNumber: 9,
     love: {
-      stars: 4,
+      stars: 3,
       text: "你可能感覺到對方沒有說完的部分。先別用猜測傷害自己，觀察行動比反覆推演更準。",
       reminder: "把安全感交回自己手裡一點。",
     },
     work: {
-      stars: 4,
+      stars: 3,
       text: "適合處理隱藏問題或重新評估合作關係。今天你能看出關鍵，但表達時要留一點柔軟。",
       reminder: "先掌握證據，再提出判斷。",
     },
     life: {
-      stars: 3,
+      stars: 2,
       text: "情緒需要出口，不適合全部壓著。寫下來、洗個熱水澡、把房間燈調暗，都能讓心慢慢鬆開。",
       reminder: "不要在情緒最滿的時候做決定。",
     },
@@ -271,17 +271,17 @@ const dailyFortunes: Record<ZodiacSign, Omit<DailyFortune, "mood">> = {
     luckyColor: "曙光橘",
     luckyNumber: 3,
     love: {
-      stars: 3,
+      stars: 1,
       text: "感情裡需要一點空氣。若你覺得被期待壓住，先誠實說明你的節奏，不要突然消失。",
       reminder: "用輕鬆方式說出你需要的自由。",
     },
     work: {
-      stars: 4,
+      stars: 3,
       text: "新的想法會浮現，適合研究方向、開啟提案或看看外部機會。別急著定案，先收集素材。",
       reminder: "今天花 15 分鐘查一個想學的新技能。",
     },
     life: {
-      stars: 5,
+      stars: 4,
       text: "生活運帶著流動感。換條路走、安排小旅行或跟有趣的人聊聊，都能讓心恢復明亮。",
       reminder: "給自己一個不照表操課的片刻。",
     },
@@ -292,17 +292,17 @@ const dailyFortunes: Record<ZodiacSign, Omit<DailyFortune, "mood">> = {
     luckyColor: "松石黑",
     luckyNumber: 10,
     love: {
-      stars: 3,
+      stars: 2,
       text: "愛情裡別讓工作壓力替你說話。你可以有界線，也可以示弱；不要把冷靜包裝成逃避。",
       reminder: "先分開壓力與感受，再回應對方。",
     },
     work: {
-      stars: 5,
+      stars: 4,
       text: "工作上適合處理長期計畫與重要承諾。你的穩定會帶來信任，但別把別人的急迫全變成你的壓力。",
       reminder: "先分清楚哪件事真的今天非做不可。",
     },
     life: {
-      stars: 4,
+      stars: 3,
       text: "生活提醒你重新安排體力。休息不是拖延，而是讓你之後走得更久的必要準備。",
       reminder: "今晚把明天要用的東西先簡單備好。",
     },
@@ -313,17 +313,17 @@ const dailyFortunes: Record<ZodiacSign, Omit<DailyFortune, "mood">> = {
     luckyColor: "極光藍",
     luckyNumber: 11,
     love: {
-      stars: 4,
+      stars: 3,
       text: "感情裡有新鮮的互動可能。你可以分享一個真實想法，讓對方看見你冷靜背後的溫度。",
       reminder: "不要只回應事情，也回應感受。",
     },
     work: {
-      stars: 4,
+      stars: 3,
       text: "適合提出不同觀點或改善既有方式。你的創意有價值，但今天要把概念說得更容易被理解。",
       reminder: "用一個具體例子說明你的想法。",
     },
     life: {
-      stars: 3,
+      stars: 1,
       text: "生活有點像訊號太多的夜空。暫時降低資訊量，反而能讓你聽見內心真正想去哪裡。",
       reminder: "睡前 30 分鐘遠離訊息流。",
     },
@@ -334,17 +334,17 @@ const dailyFortunes: Record<ZodiacSign, Omit<DailyFortune, "mood">> = {
     luckyColor: "月光紫",
     luckyNumber: 12,
     love: {
-      stars: 5,
+      stars: 4,
       text: "感情裡有被理解的機會。你可以多相信自己的感覺，但也要讓對方知道你真正需要的是什麼。",
       reminder: "別只等待對方猜中，給一點清楚提示。",
     },
     work: {
-      stars: 3,
+      stars: 2,
       text: "工作上容易被情緒影響判斷。今天適合先完成簡單明確的任務，讓成就感慢慢把你拉回來。",
       reminder: "先做最不需要糾結的那一件。",
     },
     life: {
-      stars: 4,
+      stars: 3,
       text: "生活需要一點柔軟的邊界。你可以關心別人，但不用把別人的低潮全部接到自己身上。",
       reminder: "替自己留一段不回覆也可以的時間。",
     },
@@ -354,42 +354,42 @@ const dailyFortunes: Record<ZodiacSign, Omit<DailyFortune, "mood">> = {
 
 const moodFortunes: Record<ZodiacSign, FortuneAspect> = {
   牡羊座: {
-    stars: 4,
+    stars: 3,
     text: "今天內在像剛點亮的火，想快點把事情推開。先別急著衝出去，給自己三次深呼吸，情緒會更有方向。",
     reminder: "有力量，也要讓心跟上腳步。",
   },
   金牛座: {
-    stars: 4,
+    stars: 2,
     text: "今天你的內在需要安定與確定感。與其反覆檢查外界反應，不如先照顧身體，讓自己回到穩穩的節奏。",
     reminder: "慢下來，不代表停在原地。",
   },
   雙子座: {
-    stars: 3,
+    stars: 2,
     text: "今天腦中訊息跑得很快，情緒也容易被不同想法牽著走。把念頭寫下來，會比一直在心裡轉更清楚。",
     reminder: "先整理腦袋，再決定感受。",
   },
   巨蟹座: {
-    stars: 5,
+    stars: 4,
     text: "今天你比較容易吸收別人的情緒。請記得你可以溫柔，但不用把每個人的低潮都放進自己心裡。",
     reminder: "把界線放柔，但不要拿掉。",
   },
   獅子座: {
-    stars: 3,
+    stars: 2,
     text: "今天你可能想保持明亮，卻也有一點不想被看見的疲累。允許自己普通一點，光不會因此消失。",
     reminder: "不用一直表現很好，也值得被愛。",
   },
   處女座: {
-    stars: 4,
+    stars: 3,
     text: "今天你容易在細節裡打轉，覺得哪裡還不夠好。先把標準放低一點，你會發現自己已經做得不少。",
     reminder: "整理可以，但不要苛責自己。",
   },
   天秤座: {
-    stars: 4,
+    stars: 3,
     text: "今天你的內在在找平衡，可能一邊想配合，一邊又覺得委屈。先聽見自己的偏好，再去談和諧。",
     reminder: "真正的平衡也包含你的感受。",
   },
   天蠍座: {
-    stars: 3,
+    stars: 1,
     text: "今天內在感受很深，容易把一個訊號想得很遠。先別急著下結論，讓情緒沉一沉，真相會更清楚。",
     reminder: "深刻很好，但別用猜測傷自己。",
   },
@@ -399,17 +399,17 @@ const moodFortunes: Record<ZodiacSign, FortuneAspect> = {
     reminder: "讓身體移動，心也會鬆開。",
   },
   摩羯座: {
-    stars: 4,
+    stars: 3,
     text: "今天你可能習慣把累收起來，像沒事一樣繼續做。請分清楚堅強與硬撐，今晚可以少扛一點。",
     reminder: "休息不是失控，是重新站穩。",
   },
   水瓶座: {
-    stars: 3,
+    stars: 2,
     text: "今天你的情緒可能隔著一層理性才被看見。別急著分析所有原因，先承認自己其實也需要被理解。",
     reminder: "想清楚之前，也可以先感受。",
   },
   雙魚座: {
-    stars: 5,
+    stars: 4,
     text: "今天內在像潮水，容易被一句話或一段回憶牽動。把感受放慢，不用急著替所有情緒命名。",
     reminder: "溫柔接住自己，比解釋更重要。",
   },
@@ -530,15 +530,15 @@ async function generateZodiacStoryImage(
   ctx.font = `600 28px ${ff}`; ctx.fillStyle = "rgba(247,217,135,0.88)";
   ctx.fillText("UNIVERSE WHISPER", W / 2, 120);
 
-  ctx.font = `700 80px ${ff}`; ctx.fillStyle = "#f7d987";
+  ctx.font = `700 90px ${ff}`; ctx.fillStyle = "#f7d987";
   ctx.shadowBlur = 18; ctx.shadowColor = "rgba(247,217,135,0.36)";
-  ctx.fillText("宇宙偷偷話", W / 2, 208); ctx.shadowBlur = 0;
+  ctx.fillText("宇宙偷偷話", W / 2, 210); ctx.shadowBlur = 0;
 
   ctx.font = `400 28px ${ff}`; ctx.fillStyle = "rgba(255,247,230,0.72)";
   ctx.fillText("今日星座運勢", W / 2, 265);
 
   // ── Zodiac image ──
-  const IW = 270, IH = 390, icx = W / 2, icy = 525;
+  const IW = 302, IH = 437, icx = W / 2, icy = 540;
   ctx.save();
   ctx.shadowBlur = 56; ctx.shadowColor = "rgba(247,217,135,0.36)";
   ctx.fillStyle = "rgba(247,217,135,0.16)";
@@ -563,18 +563,12 @@ async function generateZodiacStoryImage(
   ctx.strokeStyle = "rgba(247,217,135,0.80)"; ctx.lineWidth = 2.5; ctx.stroke();
   ctx.restore();
 
-  // ── Sign name ──
-  let cy = icy + IH / 2 + 50;
+  // ── Date ──
+  let cy = icy + IH / 2 + 36;
   ctx.textAlign = "center";
-  ctx.font = `700 64px ${ff}`; ctx.fillStyle = "#f7d987";
-  ctx.shadowBlur = 14; ctx.shadowColor = "rgba(45,24,20,0.4)";
-  ctx.fillText(`${zodiacSymbols[sign]} ${sign}`, W / 2, cy); ctx.shadowBlur = 0;
-  cy += 60;
-  ctx.font = `600 26px ${ff}`; ctx.fillStyle = "rgba(255,247,230,0.68)";
-  ctx.fillText(zodiacEnNames[sign], W / 2, cy); cy += 44;
-  ctx.font = `400 22px ${ff}`; ctx.fillStyle = "rgba(255,247,230,0.48)";
+  ctx.font = `400 26px ${ff}`; ctx.fillStyle = "rgba(247,217,135,0.80)";
   ctx.fillText(new Intl.DateTimeFormat("zh-TW", { timeZone: "Asia/Taipei", year: "numeric", month: "long", day: "numeric" }).format(new Date()), W / 2, cy);
-  cy += 50;
+  cy += 46;
 
   // ── Overall box ──
   const BX = 80, BW = 920, BPXY = 34, BPXX = 52;
