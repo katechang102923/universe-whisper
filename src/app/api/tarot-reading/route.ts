@@ -449,6 +449,7 @@ export async function POST(request: Request) {
     question?: unknown;
     readingMode?: unknown;
     anonymousId?: unknown;
+    adminEmail?: unknown;
   };
   const cards = normalizeCards(source.cards);
   const topic = isTopic(source.topic) ? source.topic : null;
@@ -456,6 +457,7 @@ export async function POST(request: Request) {
   const readingMode = isReadingMode(source.readingMode) ? source.readingMode : "premium";
   const anonymousId =
     typeof source.anonymousId === "string" ? source.anonymousId.slice(0, 128) : null;
+  const adminEmail = typeof source.adminEmail === "string" ? source.adminEmail.slice(0, 200) : null;
 
   if (!cards) {
     return NextResponse.json({ error: "請提供 1 到 3 張有效牌卡。" }, { status: 400 });
@@ -466,7 +468,7 @@ export async function POST(request: Request) {
   }
 
   // ── 免費版（Firestore 限流，AI API 呼叫前檢查）────────────────────────────
-  if (readingMode === "free") {
+  if (readingMode === "free" || readingMode === "premium") {
     const cookieStore = await cookies();
     const lineUserId = cookieStore.get("line_user_id")?.value ?? null;
     const ip = getRequestIp(request);
@@ -477,6 +479,7 @@ export async function POST(request: Request) {
         ip,
         anonymousId,
         lineUserId,
+        adminEmail,
         feature,
       });
       if (!limitResult.allowed) {
@@ -487,10 +490,12 @@ export async function POST(request: Request) {
       console.error("[rate-limit] checkAndIncrementLimit failed:", err);
     }
 
-    return NextResponse.json({
-      readingMode,
-      reading: buildFreeReading(cards, topic, question),
-    });
+    if (readingMode === "free") {
+      return NextResponse.json({
+        readingMode,
+        reading: buildFreeReading(cards, topic, question),
+      });
+    }
   }
 
   const apiKey = process.env.OPENAI_API_KEY;

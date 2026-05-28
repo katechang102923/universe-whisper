@@ -333,7 +333,6 @@ export async function getDailyFortune(zodiacInput: string): Promise<DailyFortune
   const date = getTaipeiDate();
   const { label, slug } = normalized;
   const lockOwner = randomUUID();
-  const fallback = () => generateDailyFortune(label, date);
 
   try {
     const db = getAdminDb();
@@ -390,41 +389,28 @@ export async function getDailyFortune(zodiacInput: string): Promise<DailyFortune
     }
 
     if (!shouldGenerate && shouldWait) {
-      const fortune = fallback();
-      const storedFortune = await writeReadyFortune(ref, {
-        date,
-        slug,
-        label,
-        fortune,
-        source: "fallback",
-        lockOwner: randomUUID(),
-      });
-      updateStats(date, "fallback_generation", label).catch(() => {});
-      return storedFortune;
+      throw new Error("Daily fortune is still generating. Please retry shortly.");
     }
 
     const aiFortune = await generateWithAI(label, date);
-    const source: DailyFortuneSource = aiFortune ? "ai" : "fallback";
-    const fortune = aiFortune ?? fallback();
+    if (!aiFortune) {
+      throw new Error("Daily fortune AI generation failed.");
+    }
 
     const storedFortune = await writeReadyFortune(ref, {
       date,
       slug,
       label,
-      fortune,
-      source,
+      fortune: aiFortune,
+      source: "ai",
       lockOwner,
     });
-    updateStats(
-      date,
-      source === "ai" ? "ai_generation" : "fallback_generation",
-      label
-    ).catch(() => {});
+    updateStats(date, "ai_generation", label).catch(() => {});
 
     return storedFortune;
   } catch (err) {
-    console.error("[dailyFortune] getDailyFortune failed, using local fallback:", err);
-    return fallback();
+    console.error("[dailyFortune] getDailyFortune failed:", err);
+    throw err;
   }
 }
 
