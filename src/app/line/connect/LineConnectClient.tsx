@@ -20,6 +20,8 @@ declare global {
 type ConnectStatus = "booting" | "login" | "sending" | "done" | "error";
 
 const SENT_RESULT_STORAGE_PREFIX = "line-connect-sent:";
+const DESKTOP_RESULT_STORAGE_KEY = "line-connect-desktop-result-id";
+const DESKTOP_REDIRECT_URI = "https://universe-whisper.vercel.app/line/connect";
 
 const statusText: Record<ConnectStatus, string> = {
   booting: "正在連接宇宙訊息...",
@@ -72,6 +74,10 @@ function extractResultId(searchParams: URLSearchParams) {
   }
 }
 
+function isLineInAppBrowser() {
+  return /Line\//i.test(window.navigator.userAgent);
+}
+
 function getCurrentSearchParams() {
   return new URLSearchParams(window.location.search);
 }
@@ -94,6 +100,30 @@ function getCleanRedirectUri(resultId: string) {
   url.search = new URLSearchParams({ resultId }).toString();
   url.hash = "";
   return url.toString();
+}
+
+function saveDesktopResultId(resultId: string) {
+  try {
+    window.sessionStorage.setItem(DESKTOP_RESULT_STORAGE_KEY, resultId);
+  } catch {
+    // sessionStorage can be unavailable in some browser modes.
+  }
+}
+
+function getDesktopResultId() {
+  try {
+    return window.sessionStorage.getItem(DESKTOP_RESULT_STORAGE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function clearDesktopResultId() {
+  try {
+    window.sessionStorage.removeItem(DESKTOP_RESULT_STORAGE_KEY);
+  } catch {
+    // sessionStorage can be unavailable in some browser modes.
+  }
 }
 
 function wasResultSent(resultId: string) {
@@ -136,18 +166,73 @@ export function LineConnectClient() {
     }, 1200);
   }
 
+  async function postDesktopConnect(resultId: string, code: string) {
+    if (postingRef.current) {
+      console.info("[line-connect-client] postingConnect skippedDuplicate", { resultId, mode: "desktop-oauth" });
+      return;
+    }
+
+    setStatus("sending");
+    postingRef.current = true;
+    console.info("[line-connect-client] postingConnect", {
+      resultId,
+      hasCode: Boolean(code),
+      redirectUri: DESKTOP_REDIRECT_URI,
+      mode: "desktop-oauth",
+    });
+
+    try {
+      const response = await fetch("/api/line/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resultId, code, redirectUri: DESKTOP_REDIRECT_URI }),
+      });
+      const data = (await response.json().catch(() => ({}))) as { error?: string; pushStatus?: string };
+
+      if (!response.ok) {
+        console.error("[line-connect-client] connectFailed", {
+          resultId,
+          status: response.status,
+          error: data.error,
+          mode: "desktop-oauth",
+        });
+        throw new Error(data.error || "LINE connect failed.");
+      }
+
+      completedRef.current = true;
+      markResultSent(resultId);
+      clearDesktopResultId();
+      console.info("[line-connect-client] connectSuccess", { resultId, pushStatus: data.pushStatus, mode: "desktop-oauth" });
+      setStatus("done");
+      setMessage("已傳送到 LINE，請打開 LINE 查看。");
+    } catch (error) {
+      console.error("[line-connect-client] connectFailed", { error, mode: "desktop-oauth" });
+      setStatus("error");
+      const errorMessage = error instanceof Error ? error.message : "LINE 連接失敗。";
+      setMessage(`送出前卡住了：${errorMessage}`);
+    } finally {
+      postingRef.current = false;
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
 
     async function connectLine(trigger: string) {
       const params = getCurrentSearchParams();
-      const { resultId, source } = extractResultId(params);
+      const desktopCode = params.get("code") ?? "";
+      const lineInAppBrowser = isLineInAppBrowser();
+      const extracted = extractResultId(params);
+      const resultId = lineInAppBrowser ? extracted.resultId : extracted.resultId || getDesktopResultId();
+      const source = lineInAppBrowser ? extracted.source : extracted.resultId ? extracted.source : "sessionStorage";
       const receivedParams = summarizeParams(params);
       const liffId = process.env.NEXT_PUBLIC_LINE_LIFF_ID;
       console.info("[line-connect-client] gotParams", {
         trigger,
         resultId,
         resultIdSource: source,
+        hasCode: Boolean(desktopCode),
+        lineInAppBrowser,
         hasLiffId: Boolean(liffId),
         currentPath: window.location.pathname,
         currentSearch: window.location.search,
@@ -157,6 +242,26 @@ export function LineConnectClient() {
       if (!resultId) {
         setStatus("error");
         setMessage(`缺少結果代碼，收到的參數：${JSON.stringify(receivedParams)}`);
+        return;
+      }
+
+      if (!lineInAppBrowser) {
+        if (completedRef.current || wasResultSent(resultId)) {
+          completedRef.current = true;
+          setStatus("done");
+          setMessage("已傳送到 LINE，請打開 LINE 查看。");
+          return;
+        }
+
+        if (desktopCode) {
+          await postDesktopConnect(resultId, desktopCode);
+          return;
+        }
+
+        saveDesktopResultId(resultId);
+        setStatus("login");
+        console.info("[line-connect-client] gotParams desktopOAuthRedirect", { resultId, redirectUri: DESKTOP_REDIRECT_URI });
+        window.location.href = "/api/line/connect/start";
         return;
       }
 
