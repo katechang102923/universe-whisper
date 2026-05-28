@@ -3,10 +3,10 @@ import { AppShell } from "@/components/AppShell";
 
 export const metadata: Metadata = {
   title: "娛樂與自我探索聲明",
-  description: "宇宙偷偷話的塔羅、星座、宇宙訊息與 AI 解析內容僅供娛樂、靈感啟發與自我探索參考。",
+  description: "宇宙偷偷話的塔羅、星座與宇宙訊息僅供娛樂、靈感啟發與自我探索參考。",
   openGraph: {
     title: "娛樂與自我探索聲明 | 宇宙偷偷話 Universe Whisper",
-    description: "塔羅、星座與 AI 解析內容僅供娛樂與自我探索參考，不構成專業建議。",
+    description: "塔羅、星座與宇宙訊息僅供娛樂與自我探索參考，不構成專業建議。",
   },
 };
 
@@ -20,7 +20,7 @@ export default function DisclaimerPage() {
         <h1 className="mt-3 text-4xl font-semibold text-moon sm:text-5xl">娛樂與自我探索聲明</h1>
         <div className="cosmic-tool-panel mt-8 rounded-[1.75rem] p-5 sm:p-7">
           <p className="leading-8 text-moon/76">
-            本網站提供的塔羅、星座、宇宙訊息與 AI 解析內容，僅供娛樂、靈感啟發與自我探索參考。
+            本網站提供的塔羅、星座與宇宙訊息，僅供娛樂、靈感啟發與自我探索參考。
           </p>
           <h2 className="mt-7 text-2xl font-semibold text-moon">本網站內容不構成：</h2>
           <ul className="mt-4 grid gap-3 sm:grid-cols-2">

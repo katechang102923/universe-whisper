@@ -92,7 +92,7 @@ export default function TarotCardsPage() {
         <section className="mt-10 rounded-[1.75rem] border border-[#d8bd70]/24 bg-[#d8bd70]/8 p-5">
           <h2 className="text-2xl font-semibold text-moon">娛樂與自我探索聲明</h2>
           <p className="mt-3 leading-8 text-moon/74">
-            本網站提供的塔羅、星座、宇宙訊息與 AI 解析內容，僅供娛樂、靈感啟發與自我探索參考，不構成醫療、法律、財務、投資或其他專業建議。
+            本網站提供的塔羅、星座與宇宙訊息，僅供娛樂、靈感啟發與自我探索參考，不構成醫療、法律、財務、投資或其他專業建議。
           </p>
         </section>
       </section>

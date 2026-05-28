@@ -2,6 +2,11 @@ import OpenAI from "openai";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { checkAndIncrementLimit, type RateLimitFeature } from "@/lib/rateLimit";
+import {
+  TAROT_READING_SECTIONS,
+  TAROT_READING_STYLE_RULES,
+  TAROT_READING_SYSTEM_PROMPT,
+} from "@/lib/tarotReadingPromptConfig";
 
 export const runtime = "nodejs";
 
@@ -158,31 +163,22 @@ function buildFreeReading(cards: TarotReadingCard[], topic: TarotReadingTopic, q
     .join("、");
   const questionLine = question ? `你放進宇宙的問題是：「${question}」` : "你沒有把問題說出口，但牌面仍接住了此刻的感受。";
 
-  return `✨ 宇宙訊息
+  return `🌙 宇宙偷偷話
 
 ${questionLine}
 
 這次牌面落在${topicLabel}的主題裡：${cardLine}。
-偷偷說，宇宙不是來催你做決定的 ✨
-它只是想陪你把心裡那團線，慢慢放鬆一點。
+宇宙不是來替你宣布答案，而是把一盞小燈放在你心裡，讓你重新聽見自己。
 
-🌙 情緒狀態
+🔮 這張牌正在說什麼
 
-其實呀，你最近可能真的有一點累了吧 ☁️
-不是你太敏感，
-是心裡那個小小的地方，很想被好好回應。
+這組牌正在提醒你：牌義裡的正逆位不是好壞判決，而是能量流動的方向。
+有些事正在成形，有些事則需要你先看清卡住的位置。
 
-🕯️ 接下來可以做的事
+🐈 你現在的狀態
 
-先不用逼自己馬上有答案。
-今天只做一件會讓你安心的小事就好，
-慢慢來，宇宙陪你。
-
-☁️ 溫暖收尾
-
-有些答案不用急著現在得到呀。
-你已經比自己想像中，
-更努力地走到這裡了 🍀`;
+你其實不是沒有答案，只是最近太習慣把自己的聲音放得很小。
+先不要急著證明什麼，把心收回來，答案會變得比較清楚。`;
 }
 
 // ── 廣告解鎖版（中長版，含情緒分析、關係分析、七日走向、深夜訊息）────────
@@ -220,31 +216,37 @@ function buildAdFallback(cards: TarotReadingCard[], topic: TarotReadingTopic, qu
     general: "今晚先把沒說出口的話，輕輕放在枕邊吧。\n你不用全部想通，明天的你會多懂一點點。\n有些路不是白走，它正在悄悄替未來鋪光。"
   };
 
-  return `✨ 宇宙訊息
+  return `🌙 宇宙偷偷話
 
 ${questionLine}
 
-🌙 情緒狀態
+這次出現的 ${cardNames}，像深夜裡被翻開的一封信。
+它不急著預言未來，只是溫柔地指出：你正在靠近一個需要重新選擇自己的時刻。
 
-${emotionSection[topic]}
-
-💞 關係提醒
+🔮 這張牌正在說什麼
 
 ${relationshipSection[topic]}
 
-🕯️ 七日走向
+🐈 你現在的狀態
 
-${sevenDaySection[topic]}
+${emotionSection[topic]}
 
-🐾 深夜悄悄話
+✨ 接下來可以怎麼做
+
+先把注意力從「一定要立刻有答案」移開。
+做一個能讓自己更穩的小行動，讓牌面提醒變成日常裡可以踩住的一步。
+
+🌌 給你的溫柔提醒
 
 ${midnightSection[topic]}
 
-☁️ 溫暖收尾
+🕯️ 7日能量提示
 
-宇宙沒有催你立刻變得完美。
-它只是想提醒你：累的時候，也可以先坐一下。
-今晚先讓心靠岸，明天再往前一點點 🍀`;
+${sevenDaySection[topic]}
+
+💫 一句專屬祝福
+
+願你在還不確定的夜裡，也能慢慢相信自己的光。`;
 }
 
 function buildAdPrompt(cards: TarotReadingCard[], topic: TarotReadingTopic, question: string) {
@@ -263,66 +265,31 @@ function buildAdPrompt(cards: TarotReadingCard[], topic: TarotReadingTopic, ques
 ${cardText}
 ${questionText}
 
-請使用繁體中文。語氣要像「深夜會安慰人的朋友」加上一點塔羅占卜師的神秘感：溫柔、可愛、有陪伴感，像宇宙偷偷跟提問者說話。
-可以自然加入 ✨ 🌙 ☁️ 🐾 💫 🍀 🕯️，但不要過度浮誇。
-可以使用「其實呀」「偷偷說」「老實說」「你是不是也有一點這種感覺？」「沒關係啦」「慢慢來就好」這類聊天感句子，但不要太幼稚。
-不要寫成分析報告，不要太像心理諮商、職涯顧問或制式建議。不恐嚇、不絕對預言、不使用醫療或投資保證語氣。
+${TAROT_READING_STYLE_RULES}
 ${topicGuidance}
 
-請把每張牌的牌組、正逆位、關鍵字與牌義真正融入解讀；不要只列牌名。若是三張牌，請把過去、現在、未來串成一條「現在狀態 → 宇宙提醒 → 行動建議」的脈絡。
+請把每張牌的牌組、正逆位、關鍵字與真正塔羅牌義融入解讀；不要只列牌名。若是三張牌，請把過去、現在、未來串成一條「狀態 → 牌義提醒 → 行動方向」的脈絡。
 
 輸出格式要求：
-- 請用以下固定段落標題，保留 emoji。
-- 每段最多 2 到 3 行，避免大段文字牆。
+- 必須用以下固定段落標題，保留 emoji。
+- 每段 2 到 4 句，避免大段文字牆。
 - 每段之間留空行。
-- 不要使用 Markdown 粗體，不要輸出 **。只有真的非常重要的一句話才可以用一句短句加強，但仍不要用 **。
-- 「🐾 深夜悄悄話」要最有情緒共鳴，適合截圖分享。
-- 最後一定要有「☁️ 溫暖收尾」，即使牌面沉重，也要保留希望感與陪伴感。
+- 不要使用 Markdown 粗體，不要輸出 **。
+- 免費版前三段會被顯示，請讓前三段本身就完整、好讀、有牌義。
 
-✨ 宇宙訊息
-🌙 情緒狀態
-💞 關係提醒
-🕯️ 七日走向
-🐾 深夜悄悄話
-☁️ 溫暖收尾`;
+🌙 宇宙偷偷話
+🔮 這張牌正在說什麼
+🐈 你現在的狀態
+✨ 接下來可以怎麼做
+🌌 給你的溫柔提醒
+🕯️ 7日能量提示
+💫 一句專屬祝福`;
 }
 
 // ── Premium 版（深層文學版，含「對方沒說出口的話」）────────────────────────
 
 function getPremiumSections(topic: TarotReadingTopic): string[] {
-  if (topic === "career") {
-    return [
-      "✨ 宇宙訊息",
-      "🌙 情緒狀態",
-      "💼 工作提醒",
-      "🕯️ 牌陣流動",
-      "🕯️ 七日走向",
-      "🐾 深夜悄悄話",
-      "☁️ 溫暖收尾"
-    ];
-  }
-
-  if (topic === "ambiguous") {
-    return [
-      "✨ 宇宙訊息",
-      "🌙 情緒狀態",
-      "💞 曖昧訊息",
-      "🕯️ 牌陣流動",
-      "🕯️ 七日走向",
-      "🐾 深夜悄悄話",
-      "☁️ 溫暖收尾"
-    ];
-  }
-
-  return [
-    "✨ 宇宙訊息",
-    "🌙 情緒狀態",
-    "💞 關係提醒",
-    "🕯️ 牌陣流動",
-    "🕯️ 七日走向",
-    "🐾 深夜悄悄話",
-    "☁️ 溫暖收尾"
-  ];
+  return [...TAROT_READING_SECTIONS];
 }
 
 function buildPremiumFallback(cards: TarotReadingCard[], topic: TarotReadingTopic, question: string) {
@@ -351,43 +318,39 @@ function buildPremiumFallback(cards: TarotReadingCard[], topic: TarotReadingTopi
     general: "那些說不清的累，宇宙其實都有聽見。\n今晚不用逞強，把心交還給自己一點點就好。"
   };
 
-  return `✨ 宇宙訊息
+  return `🌙 宇宙偷偷話
 
 ${questionLine}
 
 ${realStateSection[topic]}
 
-🌙 情緒狀態
+🔮 這張牌正在說什麼
+
+${cardNames} 不是在替你下結論，而是在指出此刻能量的方向。
+正位與逆位都不是獎懲，它們只是提醒你：哪裡正在流動，哪裡需要被溫柔調整。
+
+🐈 你現在的狀態
 
 ${innerSection[topic]}
 
-💞 ${topic === "career" ? "工作提醒" : topic === "ambiguous" ? "曖昧訊息" : "關係提醒"}
+✨ 接下來可以怎麼做
+
+先不要逼自己立刻變得很勇敢。
+請選一件能讓心回到身體裡的小事，把注意力從反覆猜測慢慢帶回來。
+
+🌌 給你的溫柔提醒
 
 ${unspokenSection[topic]}
 
-🕯️ 牌陣流動
-
-過去像一陣小回聲：那些不安不是突然來的。
-現在提醒你，把重心先放回自己。
-未來亮著一點微光，只要你做一個小選擇，故事就會開始鬆動。
-
-🕯️ 七日走向
+🕯️ 7日能量提示
 
 前 3 天，先離開反覆想像的房間。
 第 4、5 天，某個小訊號可能會變清楚。
 第 6、7 天，跟著事實走，不要只跟著害怕走。
 
-🐾 深夜悄悄話
+💫 一句專屬祝福
 
-偷偷說，宇宙不是要你今天就勇敢到滿分。
-它只是想讓你知道：
-你心裡那個小小的感覺，真的值得被好好對待。
-
-☁️ 溫暖收尾
-
-如果今天真的有點累，
-那就先休息一下也沒關係。
-你會慢慢變好的，宇宙有看見你 🍀`;
+願你在還沒有完全確定之前，也能溫柔地站在自己這一邊。`;
 }
 
 function buildPremiumPrompt(cards: TarotReadingCard[], topic: TarotReadingTopic, question: string) {
@@ -408,13 +371,11 @@ function buildPremiumPrompt(cards: TarotReadingCard[], topic: TarotReadingTopic,
 ${cardText}
 ${questionText}
 
-請使用繁體中文。語氣像「深夜會安慰人的朋友」加上一點塔羅占卜師的神秘感：溫柔、可愛、有陪伴感，像宇宙偷偷跟提問者說話。
-可以自然加入 ✨ 🌙 ☁️ 🐾 💫 🍀 🕯️，但不要過度浮誇。
-可以使用「其實呀」「偷偷說」「老實說」「你是不是也有一點這種感覺？」「沒關係啦」「慢慢來就好」這類聊天感句子，但不要太幼稚。
-不要寫成長篇文章、心理諮商、職涯分析或制式報告。不恐嚇、不絕對預言、不使用醫療或投資保證語氣。
+${TAROT_READING_STYLE_RULES}
+不要寫成心理諮商、職涯分析或制式報告。
 ${topicGuidance}
 
-「🐾 深夜悄悄話」是核心亮點，請寫得具體、有畫面感、能讓提問者感覺被深深看見，適合截圖分享，而不是泛泛的安慰。
+「🌌 給你的溫柔提醒」是核心亮點，請寫得具體、有畫面感、能讓提問者感覺被深深看見，適合截圖分享，而不是泛泛的安慰。
 
 請把每張牌的牌組、正逆位、關鍵字與牌義真正融入解讀；不要只列牌名，也不要把小阿爾克那寫得像大阿爾克那。每一張牌都要服務整體故事線。
 
@@ -425,11 +386,10 @@ ${topicGuidance}
 
 輸出格式要求：
 - 請用以下固定段落標題，保留 emoji。
-- 每段最多 2 到 3 行，避免大段文字牆。
+- 每段 2 到 4 句，避免大段文字牆。
 - 每段之間留空行。
-- 不要使用 Markdown 粗體，不要輸出 **。只有真的非常重要的一句話才可以用一句短句加強，但仍不要用 **。
-- 不要寫成分析報告，不要太像心理分析或職涯顧問。
-- 最後一定要有「☁️ 溫暖收尾」，即使牌面沉重，也要保留希望感、陪伴感、可以慢慢變好的感覺。
+- 不要使用 Markdown 粗體，不要輸出 **。
+- 最後一定要有「💫 一句專屬祝福」，即使牌面沉重，也要保留希望感、陪伴感、可以慢慢變好的感覺。
 
 ${sections}`;
 }
@@ -519,7 +479,7 @@ export async function POST(request: Request) {
         input: [
           {
             role: "system",
-            content: "你是宇宙偷偷話的塔羅解讀文字夥伴。你的任務是把牌面整理成溫柔、清楚、不恐嚇的繁體中文陪伴訊息。"
+            content: TAROT_READING_SYSTEM_PROMPT
           },
           {
             role: "user",
@@ -568,8 +528,7 @@ export async function POST(request: Request) {
       input: [
         {
           role: "system",
-          content:
-            "你是宇宙偷偷話的塔羅解讀文字夥伴。你的任務是把牌面整理成溫柔、精準、帶有深夜文學感的繁體中文陪伴訊息。語氣不煽情，但要有重量。"
+          content: TAROT_READING_SYSTEM_PROMPT
         },
         {
           role: "user",

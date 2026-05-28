@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TarotCardBack, TarotCardFace, type TarotCardFaceData } from "@/components/TarotCardFace";
+import { TarotRitualDraw } from "./TarotRitualDraw";
 
-type DrawStatus = "idle" | "drawing" | "revealed";
+type DrawStatus = "idle" | "drawing" | "selecting" | "revealing" | "revealed";
 type ReadingStatus = "idle" | "loading" | "done" | "error";
 type ReadingTopic = "love" | "career" | "general";
 type SpreadPosition = "past" | "present" | "future";
@@ -114,15 +115,18 @@ function isAdsByGoogleQueue(value: Window["adsbygoogle"]): value is AdsByGoogleQ
 }
 
 function ReadingContent({ text }: { text: string }) {
-  const blocks = text
-    .split(/\n{2,}/)
-    .map((block) => block.trim().replace(/\*\*/g, ""))
+  const blocks = parseReadingSections(text)
+    .map((section) => `${section.title}\n${section.body}`)
     .filter(Boolean);
 
   return (
     <div className="space-y-4">
       {blocks.map((block, index) => (
-        <article key={`${index}-${block.slice(0, 12)}`} className="rounded-2xl border border-white/10 bg-white/[0.055] p-4 shadow-[0_18px_54px_rgba(8,10,35,0.22)] sm:p-5">
+        <article
+          key={`${index}-${block.slice(0, 12)}`}
+          className="reading-fade-in rounded-2xl border border-white/10 bg-white/[0.055] p-4 shadow-[0_18px_54px_rgba(8,10,35,0.22)] sm:p-5"
+          style={{ animationDelay: `${index * 0.55}s` }}
+        >
           <p className="whitespace-pre-line text-left text-base leading-8 text-moon/84">{block}</p>
         </article>
       ))}
@@ -130,13 +134,55 @@ function ReadingContent({ text }: { text: string }) {
   );
 }
 
+function parseReadingSections(text: string) {
+  const knownTitles = [
+    "🌙 宇宙偷偷話",
+    "🔮 這張牌正在說什麼",
+    "🐈 你現在的狀態",
+    "✨ 接下來可以怎麼做",
+    "🌌 給你的溫柔提醒",
+    "🕯️ 7日能量提示",
+    "💫 一句專屬祝福",
+  ];
+  const lines = text
+    .split(/\n{2,}/)
+    .map((block) => block.trim().replace(/\*\*/g, ""))
+    .filter(Boolean);
+  const sections: { title: string; body: string }[] = [];
+
+  for (const block of lines) {
+    const title = knownTitles.find((item) => block.startsWith(item));
+    if (title) {
+      sections.push({ title, body: block.slice(title.length).trim() });
+    }
+  }
+
+  return sections.length ? sections : lines.map((block, index) => ({ title: index === 0 ? "🌙 宇宙偷偷話" : "", body: block }));
+}
+
+function ReadingSectionList({ text, limit }: { text: string; limit?: number }) {
+  const sections = parseReadingSections(text);
+  const visibleSections = typeof limit === "number" ? sections.slice(0, limit) : sections;
+
+  return (
+    <div className="space-y-4">
+      {visibleSections.map((section, index) => (
+        <article
+          key={`${section.title}-${index}`}
+          className="reading-fade-in rounded-3xl border border-white/10 bg-white/[0.055] p-4 shadow-[0_18px_54px_rgba(8,10,35,0.2)] sm:p-5"
+          style={{ animationDelay: `${index * 0.55}s` }}
+        >
+          {section.title ? <h4 className="text-lg font-semibold text-moon">{section.title}</h4> : null}
+          <p className="mt-3 whitespace-pre-line text-base leading-8 text-moon/80">{section.body}</p>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 function buildFreeSummary(cards: TarotCardFaceData[], fullReading: string) {
-  const firstLines = fullReading
-    .split(/\r?\n/)
-    .map((line) => line.trim().replace(/\*\*/g, ""))
-    .filter(Boolean)
-    .slice(0, 2)
-    .join(" ");
+  const sections = parseReadingSections(fullReading).slice(0, 3);
+  const firstLines = sections.map((section) => section.body).join(" ");
   const fallback = cards.map((card) => card.cosmicMessage).join(" ");
   const source = firstLines || fallback || "宇宙提醒你，把注意力收回自己身上，答案會慢慢變清楚。";
 
@@ -152,6 +198,8 @@ export function TarotDrawClient() {
   const [question, setQuestion] = useState("");
   const [selectedSpreadQuestion, setSelectedSpreadQuestion] = useState("");
   const [cards, setCards] = useState<TarotCardFaceData[]>([]);
+  const [pendingCards, setPendingCards] = useState<TarotCardFaceData[]>([]);
+  const [selectedCardIndex, setSelectedCardIndex] = useState<number | null>(null);
   const [status, setStatus] = useState<DrawStatus>("idle");
   const [readingStatus, setReadingStatus] = useState<ReadingStatus>("idle");
   const [fullReading, setFullReading] = useState("");
@@ -189,6 +237,8 @@ export function TarotDrawClient() {
     setReadingStatus("idle");
     setFullReading("");
     setError("");
+    setPendingCards([]);
+    setSelectedCardIndex(null);
     setAdUnlocked(false);
     setAdModalOpen(false);
     setAdCountdown(AD_COUNTDOWN_SECONDS);
@@ -267,17 +317,44 @@ export function TarotDrawClient() {
 
       window.setTimeout(() => {
         const revealedCards = data.cards ?? [];
-        setCards(revealedCards);
-        setStatus("revealed");
-        void requestFullReading(revealedCards).catch((err) => {
-          setReadingStatus("error");
-          setError(err instanceof Error ? err.message : "宇宙訊號有點微弱，請稍後再試一次。");
-        });
-      }, 1100);
+        setPendingCards(revealedCards);
+        setStatus("selecting");
+      }, 3200);
     } catch (err) {
       setStatus("idle");
       setError(err instanceof Error ? err.message : "宇宙訊號有點微弱，請稍後再試一次。");
     }
+  }
+
+  function revealCards(choiceIndex: number) {
+    if (!pendingCards.length) return;
+    setSelectedCardIndex(choiceIndex);
+    setCards(pendingCards);
+    setStatus("revealing");
+    window.setTimeout(() => {
+      setStatus("revealed");
+      void requestFullReading(pendingCards).catch((err) => {
+        setReadingStatus("error");
+        setError(err instanceof Error ? err.message : "宇宙訊號有點微弱，請稍後再試一次。");
+      });
+    }, 1500);
+  }
+
+  function skipRitual() {
+    const targetCards = pendingCards.length ? pendingCards : cards;
+    if (targetCards.length) {
+      setSelectedCardIndex(0);
+      setCards(targetCards);
+      setStatus("revealed");
+      if (!fullReading && readingStatus !== "loading") {
+        void requestFullReading(targetCards).catch((err) => {
+          setReadingStatus("error");
+          setError(err instanceof Error ? err.message : "宇宙訊號有點微弱，請稍後再試一次。");
+        });
+      }
+      return;
+    }
+    setStatus("idle");
   }
 
   function startAdUnlock() {
@@ -555,26 +632,31 @@ export function TarotDrawClient() {
       <button
         type="button"
         onClick={draw}
-        disabled={status === "drawing" || readingStatus === "loading"}
+        disabled={status === "drawing" || status === "selecting" || status === "revealing" || readingStatus === "loading"}
         className="relative z-10 mt-5 w-full rounded-full bg-moon px-6 py-3 font-medium text-midnight shadow-[0_0_24px_rgba(247,241,223,0.28)] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
-        {status === "drawing" ? "星光正在洗牌..." : "免費抽牌"}
+        {status === "drawing" ? "星光正在洗牌..." : "開始抽牌"}
       </button>
 
       {error ? <p className="relative z-10 mt-4 rounded-2xl border border-lavender/30 bg-nebula/20 p-4 text-sm text-moon">{error}</p> : null}
 
-      {status === "drawing" ? (
-        <div className="relative z-10 mt-7 rounded-3xl border border-lavender/20 bg-midnight/42 p-5 text-center shadow-glow">
-          <div className="cosmic-loader mx-auto" />
-          <p className="mt-4 text-lg font-medium text-moon">宇宙正在替你整理訊息...</p>
-          <p className="mt-2 text-sm text-moon/58">讓心安靜一下，牌面很快就會出現。</p>
-        </div>
+      {status === "drawing" || status === "selecting" || status === "revealing" ? (
+        <TarotRitualDraw
+          stage={status}
+          cardCount={cardCount}
+          selectedIndex={selectedCardIndex}
+          revealedCards={cards}
+          topic={topic}
+          onSelect={revealCards}
+          onSkip={skipRitual}
+        />
       ) : null}
 
-      <div className="relative z-10 mt-8 grid grid-cols-1 items-start gap-8 md:grid-cols-2 xl:grid-cols-3">
-        {status === "revealed" && cards.length
+      {status === "idle" || status === "revealed" ? (
+        <div className="relative z-10 mt-8 grid grid-cols-1 items-start gap-8 md:grid-cols-2 xl:grid-cols-3">
+          {status === "revealed" && cards.length
           ? cards.map((card, index) => (
-              <article key={`${card.id}-${index}`} className="tarot-card-shell mx-auto w-full max-w-[420px]">
+              <article key={`${card.id}-${index}`} className="reading-fade-in tarot-card-shell mx-auto w-full max-w-[420px]">
                 {card.position ? (
                   <p className="mb-3 rounded-full border border-moon/20 bg-midnight/54 px-4 py-2 text-center text-base font-medium text-moon shadow-glow">
                     第{index + 1}張：{card.position}
@@ -584,11 +666,12 @@ export function TarotDrawClient() {
               </article>
             ))
           : visibleBacks.map((_, index) => (
-              <div key={`back-${index}`} className={`tarot-card-shell mx-auto w-full max-w-[420px] ${status === "drawing" ? "tarot-shuffling" : ""}`}>
+              <div key={`back-${index}`} className="tarot-card-shell mx-auto w-full max-w-[420px]">
                 <TarotCardBack />
               </div>
             ))}
-      </div>
+        </div>
+      ) : null}
 
       {canShowReadings ? (
         <section className="relative z-10 mt-9 space-y-5">
@@ -596,19 +679,23 @@ export function TarotDrawClient() {
             <p className="text-sm tracking-[0.22em] text-lavender/70">免費版・部分結果</p>
             <h3 className="mt-2 text-2xl font-semibold text-moon">宇宙給你的簡短訊息</h3>
             <div className="mt-4 rounded-2xl border border-white/10 bg-white/6 p-4">
-              {readingStatus === "loading" ? <p className="text-base leading-8 text-moon/76">正在整理你的完整訊息，免費版會先顯示核心提醒...</p> : null}
-              <div className="space-y-4">
+              {readingStatus === "loading" ? <p className="text-base leading-8 text-moon/76">宇宙正在把牌義整理成你的深夜訊息...</p> : null}
+              <div className="reading-fade-in space-y-4">
                 <div>
                   <p className="text-sm tracking-[0.18em] text-lavender/70">抽到的牌</p>
                   <p className="mt-2 text-base leading-7 text-moon/84">
                     {cards.map((card) => `${card.position ? `${card.position}・` : ""}${card.name}（${card.orientationLabel}）`).join("、")}
                   </p>
                 </div>
-                <div>
-                  <p className="text-sm tracking-[0.18em] text-lavender/70">簡短宇宙訊息</p>
-                  <p className="mt-2 text-base leading-8 text-moon/84">{freeSummary.message}</p>
-                </div>
-                <p className="rounded-2xl border border-moon/15 bg-moon/8 p-3 text-base leading-7 text-moon">{freeSummary.reminder}</p>
+                {fullReading ? <ReadingSectionList text={fullReading} limit={3} /> : (
+                  <>
+                    <div>
+                      <p className="text-sm tracking-[0.18em] text-lavender/70">簡短宇宙訊息</p>
+                      <p className="mt-2 text-base leading-8 text-moon/84">{freeSummary.message}</p>
+                    </div>
+                    <p className="rounded-2xl border border-moon/15 bg-moon/8 p-3 text-base leading-7 text-moon">{freeSummary.reminder}</p>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -616,16 +703,16 @@ export function TarotDrawClient() {
           {!adUnlocked ? (
             <div className="cosmic-reading-card rounded-[1.75rem] border border-[#d8bd70]/24 bg-midnight/58 p-5 text-center shadow-glow sm:p-6">
               <p className="text-sm tracking-[0.22em] text-[#d8bd70]/78">Rewarded Ad</p>
-              <h3 className="mt-2 text-2xl font-semibold text-moon">觀看廣告免費解鎖完整版</h3>
+              <h3 className="mt-2 text-2xl font-semibold text-moon">解鎖完整解讀</h3>
               <p className="mx-auto mt-3 max-w-xl text-base leading-8 text-moon/72">
-                每日可免費解鎖一次。此版本先使用模擬廣告，未來可直接接 Google AdSense Rewarded Ads。
+                完整版會顯示接下來可以怎麼做、溫柔提醒、7日能量提示與一句專屬祝福。
               </p>
               <button
                 type="button"
                 onClick={startAdUnlock}
                 className="mt-5 w-full rounded-full bg-[#d8bd70] px-6 py-4 text-base font-semibold text-midnight shadow-[0_0_28px_rgba(216,189,112,0.28)] transition hover:bg-moon active:scale-95 sm:w-auto sm:min-w-[280px]"
               >
-                觀看廣告免費解鎖完整版
+                加入 LINE 接收完整宇宙訊息
               </button>
               {adNotice ? <p className="mt-4 text-sm leading-6 text-lavender/82">{adNotice}</p> : null}
             </div>
@@ -634,7 +721,7 @@ export function TarotDrawClient() {
               <p className="text-sm tracking-[0.22em] text-lavender/70">完整版・已解鎖</p>
               <h3 className="mt-2 text-2xl font-semibold text-moon">完整宇宙訊息</h3>
               <div className="mt-5">
-                <ReadingContent text={fullReading} />
+                <ReadingSectionList text={fullReading} />
               </div>
             </div>
           )}
