@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getDrawUsage, getAdminUserIds, LINE_DAILY_LIMIT, UNAUTH_DAILY_LIMIT } from "@/lib/rateLimit";
+import { verifyAdminIdToken } from "@/lib/verifyAdmin";
 
 function getRequestIp(request: Request): string {
   const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
@@ -19,12 +20,16 @@ export async function GET(request: Request) {
   const lineUserId = cookieStore.get("line_user_id")?.value ?? null;
   const ip = getRequestIp(request);
 
-  // Admins have unlimited draws
-  if (lineUserId && getAdminUserIds().includes(lineUserId)) {
+  // Admins have unlimited draws — check Firebase ID token first, then LINE user ID fallback
+  const idToken = request.headers.get("x-firebase-id-token");
+  const isAdminByToken = await verifyAdminIdToken(idToken);
+  const isAdminByLineId = Boolean(lineUserId && getAdminUserIds().includes(lineUserId));
+
+  if (isAdminByToken || isAdminByLineId) {
     return NextResponse.json({
       remaining: 999,
       limit: 999,
-      isLineUser: true,
+      isLineUser: Boolean(lineUserId),
       resetAt: "不限制",
     });
   }

@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { checkAndIncrementLimit, type RateLimitFeature } from "@/lib/rateLimit";
+import { verifyAdminIdToken } from "@/lib/verifyAdmin";
 import {
   TAROT_READING_SECTIONS,
   TAROT_READING_STYLE_RULES,
@@ -409,7 +410,6 @@ export async function POST(request: Request) {
     question?: unknown;
     readingMode?: unknown;
     anonymousId?: unknown;
-    adminEmail?: unknown;
   };
   const cards = normalizeCards(source.cards);
   const topic = isTopic(source.topic) ? source.topic : null;
@@ -417,7 +417,10 @@ export async function POST(request: Request) {
   const readingMode = isReadingMode(source.readingMode) ? source.readingMode : "premium";
   const anonymousId =
     typeof source.anonymousId === "string" ? source.anonymousId.slice(0, 128) : null;
-  const adminEmail = typeof source.adminEmail === "string" ? source.adminEmail.slice(0, 200) : null;
+
+  // Verify admin status via Firebase ID token (never trust frontend claims)
+  const idToken = request.headers.get("x-firebase-id-token");
+  const isAdmin = await verifyAdminIdToken(idToken);
 
   if (!cards) {
     return NextResponse.json({ error: "請提供 1 到 3 張有效牌卡。" }, { status: 400 });
@@ -434,20 +437,21 @@ export async function POST(request: Request) {
     const ip = getRequestIp(request);
     const feature: RateLimitFeature = cards.length === 1 ? "single_tarot" : "three_card";
 
-    try {
-      const limitResult = await checkAndIncrementLimit({
-        ip,
-        anonymousId,
-        lineUserId,
-        adminEmail,
-        feature,
-      });
-      if (!limitResult.allowed) {
-        return NextResponse.json({ error: limitResult.message }, { status: 429 });
+    if (!isAdmin) {
+      try {
+        const limitResult = await checkAndIncrementLimit({
+          ip,
+          anonymousId,
+          lineUserId,
+          feature,
+        });
+        if (!limitResult.allowed) {
+          return NextResponse.json({ error: limitResult.message }, { status: 429 });
+        }
+      } catch (err) {
+        // Firestore 不可用時 fail-open（不阻擋請求，記錄 log）
+        console.error("[rate-limit] checkAndIncrementLimit failed:", err);
       }
-    } catch (err) {
-      // Firestore 不可用時 fail-open（不阻擋請求，記錄 log）
-      console.error("[rate-limit] checkAndIncrementLimit failed:", err);
     }
 
     if (readingMode === "free") {

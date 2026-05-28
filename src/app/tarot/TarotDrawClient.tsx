@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TarotCardBack, TarotCardFace, type TarotCardFaceData } from "@/components/TarotCardFace";
 import { TarotRitualDraw } from "./TarotRitualDraw";
+import { useAuth } from "@/contexts/AuthContext";
 
 type DrawStatus = "idle" | "drawing" | "selecting" | "revealing" | "revealed";
 type ReadingStatus = "idle" | "loading" | "done" | "error";
@@ -197,6 +198,7 @@ function buildFreeSummary(cards: TarotCardFaceData[], fullReading: string) {
 }
 
 export function TarotDrawClient() {
+  const { isAdmin, getIdToken } = useAuth();
   const [mode, setMode] = useState<(typeof modes)[number]["key"]>("single_tarot");
   const [topic, setTopic] = useState<TarotTopicOption>("感情");
   const [question, setQuestion] = useState("");
@@ -251,16 +253,27 @@ export function TarotDrawClient() {
     if (lineLogin === "failed") setLineDeliveryMessage("LINE 登入失敗，請稍後再試。");
   }, []);
 
-  // Fetch remaining draw quota on mount
+  // Fetch remaining draw quota on mount and whenever auth state changes.
+  // Passes the Firebase ID token so the server can grant unlimited draws for admins.
   useEffect(() => {
     const anonId = getOrCreateAnonId();
-    void fetch(`/api/tarot/usage?anonymousId=${encodeURIComponent(anonId)}`)
-      .then(async (r) => {
+    void (async () => {
+      try {
+        const token = await getIdToken();
+        const headers: Record<string, string> = {};
+        if (token) headers["x-firebase-id-token"] = token;
+        const r = await fetch(
+          `/api/tarot/usage?anonymousId=${encodeURIComponent(anonId)}`,
+          { headers },
+        );
         const data = (await r.json().catch(() => ({}))) as { remaining?: number };
         if (typeof data.remaining === "number") setDrawsRemaining(data.remaining);
-      })
-      .catch(() => { /* fail open */ });
-  }, []);
+      } catch {
+        /* fail open */
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getIdToken]);
 
   function resetReading() {
     if (adTimerRef.current) clearInterval(adTimerRef.current);
@@ -310,9 +323,13 @@ export function TarotDrawClient() {
     setReadingStatus("loading");
     setFullReading("");
 
+    const token = await getIdToken();
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["x-firebase-id-token"] = token;
+
     const response = await fetch("/api/tarot-reading", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(buildReadingPayload(targetCards)),
     });
     const data = (await response.json().catch(() => ({}))) as { reading?: string; error?: string };
@@ -331,16 +348,20 @@ export function TarotDrawClient() {
 
   async function draw() {
     if (status === "drawing" || readingStatus === "loading") return;
-    if (drawsRemaining === 0) return; // already blocked, do nothing
+    if (!isAdmin && drawsRemaining === 0) return; // admins always allowed
 
     setStatus("drawing");
     setCards([]);
     resetReading();
 
     try {
+      const token = await getIdToken();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["x-firebase-id-token"] = token;
+
       const response = await fetch("/api/tarot/draw", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ mode, topic, question, anonymousId: getOrCreateAnonId() }),
       });
       const data = (await response.json().catch(() => ({}))) as {
@@ -681,11 +702,13 @@ export function TarotDrawClient() {
       <div className="relative z-10 mt-6">
         <p className="text-base font-medium text-moon">在心裡默想一個問題，或輸入你想問宇宙的事。</p>
         <p className="mt-1 text-sm text-moon/52">
-          {drawsRemaining === null
-            ? "免費抽牌每日 1 次，觀看廣告可免費解鎖完整版一次。"
-            : drawsRemaining === 0
-              ? "今天的免費抽牌次數已用完，加入 LINE 可每日抽 3 次，或明天再來。"
-              : `今日剩餘抽牌次數：${drawsRemaining} 次`}
+          {isAdmin
+            ? "管理員模式：無限制抽牌"
+            : drawsRemaining === null
+              ? "免費抽牌每日 1 次，觀看廣告可免費解鎖完整版一次。"
+              : drawsRemaining === 0
+                ? "今天的免費抽牌次數已用完，加入 LINE 可每日抽 3 次，或明天再來。"
+                : `今日剩餘抽牌次數：${drawsRemaining} 次`}
         </p>
       </div>
       <textarea
@@ -707,17 +730,17 @@ export function TarotDrawClient() {
           status === "selecting" ||
           status === "revealing" ||
           readingStatus === "loading" ||
-          drawsRemaining === 0
+          (!isAdmin && drawsRemaining === 0)
         }
         className="relative z-10 mt-5 w-full rounded-full bg-moon px-6 py-3 font-medium text-midnight shadow-[0_0_24px_rgba(247,241,223,0.28)] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
-        {status === "drawing" ? "星光正在洗牌..." : drawsRemaining === 0 ? "今日次數已用完" : "開始抽牌"}
+        {status === "drawing" ? "星光正在洗牌..." : (!isAdmin && drawsRemaining === 0) ? "今日次數已用完" : "開始抽牌"}
       </button>
 
       {error ? (
         <div className="relative z-10 mt-4 rounded-2xl border border-lavender/30 bg-nebula/20 p-4 text-sm text-moon">
           <p>{error}</p>
-          {drawsRemaining === 0 ? (
+          {!isAdmin && drawsRemaining === 0 ? (
             <p className="mt-2 text-moon/72">加入 LINE 官方帳號可每日免費抽 3 次。</p>
           ) : null}
         </div>

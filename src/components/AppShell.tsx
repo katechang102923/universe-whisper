@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { SiteNav } from "@/components/SiteNav";
+import { AdminFooterLink } from "@/components/AdminFooterLink";
 
 const footerLinks = [
   { href: "/tarot-cards", label: "塔羅牌介紹" },
@@ -27,6 +28,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <p className="mt-2 max-w-2xl leading-7">
                 本網站內容僅供娛樂與自我探索參考，不作為醫療、法律、投資等專業建議。
               </p>
+              <AdminFooterLink />
             </div>
             <nav className="flex flex-wrap gap-x-4 gap-y-2 md:justify-end">
               {footerLinks.map((item) => (
