@@ -1,5 +1,15 @@
+import type { Metadata } from "next";
 import { AppShell } from "@/components/AppShell";
 import { DailyFortuneClient } from "./DailyFortuneClient";
+
+export const metadata: Metadata = {
+  title: "今日運勢",
+  description: "查看十二星座今日整體、愛情、工作、幸運色與幸運數字。",
+  openGraph: {
+    title: "今日運勢 | 宇宙偷偷話 Universe Whisper",
+    description: "查看十二星座今日整體、愛情、工作、幸運色與幸運數字。",
+  },
+};
 
 export default function DailyPage() {
   return (

@@ -1,8 +1,18 @@
 import Image from "next/image";
 import Link from "next/link";
+import type { Metadata } from "next";
 import { AppShell } from "@/components/AppShell";
 import { FeatureCard } from "@/components/FeatureCard";
 import { LineCtaBanner } from "@/components/LineCtaBanner";
+
+export const metadata: Metadata = {
+  title: "宇宙偷偷話 Universe Whisper",
+  description: "深夜裡陪你抽一張塔羅牌，查看每日星座運勢，接收溫柔的宇宙訊息。",
+  openGraph: {
+    title: "宇宙偷偷話 Universe Whisper",
+    description: "深夜裡陪你抽一張塔羅牌，查看每日星座運勢，接收溫柔的宇宙訊息。",
+  },
+};
 
 const cosmicMessages = [
   "你已經在等一個答案很久了，今晚先讓心靜下來。",

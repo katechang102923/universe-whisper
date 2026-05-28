@@ -1,5 +1,15 @@
+import type { Metadata } from "next";
 import { AppShell } from "@/components/AppShell";
 import { TarotDrawClient } from "./TarotDrawClient";
+
+export const metadata: Metadata = {
+  title: "塔羅抽牌",
+  description: "免費抽一張或三張塔羅牌，觀看廣告解鎖完整宇宙訊息，作為娛樂與自我探索參考。",
+  openGraph: {
+    title: "塔羅抽牌 | 宇宙偷偷話 Universe Whisper",
+    description: "免費抽一張或三張塔羅牌，觀看廣告解鎖完整宇宙訊息。",
+  },
+};
 
 export default function TarotPage() {
   return (

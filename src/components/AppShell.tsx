@@ -1,9 +1,12 @@
 import Link from "next/link";
+import { SiteNav } from "@/components/SiteNav";
 
-const navItems = [
-  { href: "/", label: "首頁" },
-  { href: "/daily", label: "今日運勢" },
-  { href: "/tarot", label: "塔羅抽牌" }
+const footerLinks = [
+  { href: "/tarot-cards", label: "塔羅牌介紹" },
+  { href: "/privacy", label: "隱私政策" },
+  { href: "/terms", label: "服務條款" },
+  { href: "/contact", label: "聯絡我們" },
+  { href: "/disclaimer", label: "娛樂聲明" },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -14,19 +17,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Link href="/" className="text-sm font-semibold tracking-[0.18em] text-moon sm:text-base">
             宇宙偷偷話
           </Link>
-          <nav className="flex items-center gap-1 text-xs text-moon/76 sm:text-sm">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="rounded-full px-2.5 py-2 transition hover:bg-white/10 hover:text-moon sm:px-3"
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
+          <SiteNav />
         </header>
         {children}
+        <footer className="mt-auto border-t border-white/10 py-8 text-sm text-moon/62">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="font-semibold tracking-[0.18em] text-moon">宇宙偷偷話 Universe Whisper</p>
+              <p className="mt-2 max-w-2xl leading-7">
+                本網站內容僅供娛樂與自我探索參考，不作為醫療、法律、投資等專業建議。
+              </p>
+            </div>
+            <nav className="flex flex-wrap gap-x-4 gap-y-2 md:justify-end">
+              {footerLinks.map((item) => (
+                <Link key={item.href} href={item.href} className="transition hover:text-moon">
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+          </div>
+        </footer>
       </div>
     </main>
   );
