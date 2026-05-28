@@ -1,4 +1,3 @@
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { drawCards, type TarotTopic } from "@/lib/tarot";
 import { checkAndIncrementLimit, getTaipeiDate } from "@/lib/rateLimit";
@@ -45,11 +44,13 @@ export async function POST(request: Request) {
     topic?: unknown;
     question?: unknown;
     anonymousId?: unknown;
+    paidMode?: unknown;
   };
 
   const mode = (body.mode ?? "single_tarot") as TarotMode;
   const topic = normalizeTopic(body.topic);
   const anonymousId = typeof body.anonymousId === "string" ? body.anonymousId.slice(0, 128) : null;
+  const paidMode = body.paidMode === true;
 
   if (!modeToCardCount[mode]) {
     return NextResponse.json({ error: "不支援的抽牌模式。" }, { status: 400 });
@@ -60,15 +61,13 @@ export async function POST(request: Request) {
   const isAdmin = await verifyAdminIdToken(idToken);
 
   // ── Rate limit: 1/day for anon, 3/day for LINE users ─────────────────────
-  const cookieStore = await cookies();
-  const lineUserId = cookieStore.get("line_user_id")?.value ?? null;
   const ip = getRequestIp(request);
   const feature = mode === "three_card" ? "three_card" : "single_tarot";
 
-  if (!isAdmin) {
+  if (!isAdmin && !paidMode) {
     try {
       const limitResult = await checkAndIncrementLimit(
-        { ip, anonymousId, lineUserId, feature },
+        { ip, anonymousId, lineUserId: null, feature },
         "draw_limits",
       );
 

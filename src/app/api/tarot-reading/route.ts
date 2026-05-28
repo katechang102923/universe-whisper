@@ -1,5 +1,4 @@
 import OpenAI from "openai";
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { checkAndIncrementLimit, type RateLimitFeature } from "@/lib/rateLimit";
 import { verifyAdminIdToken } from "@/lib/verifyAdmin";
@@ -410,6 +409,7 @@ export async function POST(request: Request) {
     question?: unknown;
     readingMode?: unknown;
     anonymousId?: unknown;
+    paidMode?: unknown;
   };
   const cards = normalizeCards(source.cards);
   const topic = isTopic(source.topic) ? source.topic : null;
@@ -417,6 +417,7 @@ export async function POST(request: Request) {
   const readingMode = isReadingMode(source.readingMode) ? source.readingMode : "premium";
   const anonymousId =
     typeof source.anonymousId === "string" ? source.anonymousId.slice(0, 128) : null;
+  const paidMode = source.paidMode === true;
 
   // Verify admin status via Firebase ID token (never trust frontend claims)
   const idToken = request.headers.get("x-firebase-id-token");
@@ -432,17 +433,15 @@ export async function POST(request: Request) {
 
   // ── 免費版（Firestore 限流，AI API 呼叫前檢查）────────────────────────────
   if (readingMode === "free" || readingMode === "premium") {
-    const cookieStore = await cookies();
-    const lineUserId = cookieStore.get("line_user_id")?.value ?? null;
     const ip = getRequestIp(request);
     const feature: RateLimitFeature = cards.length === 1 ? "single_tarot" : "three_card";
 
-    if (!isAdmin) {
+    if (!isAdmin && !paidMode) {
       try {
         const limitResult = await checkAndIncrementLimit({
           ip,
           anonymousId,
-          lineUserId,
+          lineUserId: null,
           feature,
         });
         if (!limitResult.allowed) {

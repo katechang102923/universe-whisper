@@ -10,7 +10,7 @@ type ReadingStatus = "idle" | "loading" | "done" | "error";
 type ReadingTopic = "love" | "career" | "general";
 type SpreadPosition = "past" | "present" | "future";
 
-const AD_COUNTDOWN_SECONDS = 5;
+const AD_COUNTDOWN_SECONDS = 15;
 const ANON_ID_STORAGE_KEY = "cosmic_anon_id";
 const AD_UNLOCK_STORAGE_KEY = "cosmic_ad_unlock_date";
 const REWARDED_AD_TIMEOUT_MS = 3500;
@@ -211,10 +211,14 @@ export function TarotDrawClient() {
   const [fullReading, setFullReading] = useState("");
   const [error, setError] = useState("");
   const [adUnlocked, setAdUnlocked] = useState(false);
+  const [adUnlockUsedToday, setAdUnlockUsedToday] = useState(false);
+  const [paidUnlocked, setPaidUnlocked] = useState(false);
+  const [paidDrawMode, setPaidDrawMode] = useState(false);
   const [adModalOpen, setAdModalOpen] = useState(false);
   const [adCountdown, setAdCountdown] = useState(AD_COUNTDOWN_SECONDS);
   const [adNotice, setAdNotice] = useState("");
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [paymentPurpose, setPaymentPurpose] = useState<"draw" | "line">("draw");
   const [paymentStatus, setPaymentStatus] = useState<"idle" | "processing" | "success">("idle");
   const [lineDeliveryStatus, setLineDeliveryStatus] = useState<"idle" | "sending" | "softPause">("idle");
   const [lineDeliveryMessage, setLineDeliveryMessage] = useState("");
@@ -226,6 +230,9 @@ export function TarotDrawClient() {
   const cardCount = mode === "three_card" ? 3 : 1;
   const visibleBacks = useMemo(() => Array.from({ length: cardCount }), [cardCount]);
   const canShowReadings = status === "revealed" && cards.length > 0;
+  const hasFullAccess = isAdmin || adUnlocked || paidUnlocked;
+  const isOutOfFreeDraws = !isAdmin && drawsRemaining === 0;
+  const shouldShowPaidPlan = isOutOfFreeDraws && adUnlockUsedToday && !hasFullAccess;
   const currentSpreadGroup = spreadQuestionGroups[topic];
   const freeSummary = useMemo(() => buildFreeSummary(cards, fullReading), [cards, fullReading]);
 
@@ -235,6 +242,11 @@ export function TarotDrawClient() {
       if (paymentTimerRef.current) clearTimeout(paymentTimerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    setAdUnlocked((current) => current || isAdmin);
+    setAdUnlockUsedToday(hasUsedAdUnlockToday());
+  }, [isAdmin]);
 
   // Detect return from LINE Connect flow (?lineSent=1) and LINE Login (?lineLogin=...)
   useEffect(() => {
@@ -285,7 +297,10 @@ export function TarotDrawClient() {
     setError("");
     setPendingCards([]);
     setSelectedCardIndex(null);
-    setAdUnlocked(false);
+    setAdUnlocked(isAdmin);
+    setAdUnlockUsedToday(hasUsedAdUnlockToday());
+    setPaidUnlocked(false);
+    setPaidDrawMode(false);
     setAdModalOpen(false);
     setAdCountdown(AD_COUNTDOWN_SECONDS);
     setAdNotice("");
@@ -316,6 +331,7 @@ export function TarotDrawClient() {
       readingMode: "premium",
       question: question.trim() || undefined,
       anonymousId: getOrCreateAnonId(),
+      paidMode: paidDrawMode || paidUnlocked || isAdmin,
     };
   }
 
@@ -346,13 +362,17 @@ export function TarotDrawClient() {
     setReadingStatus("done");
   }
 
-  async function draw() {
+  async function draw(options: { paid?: boolean } = {}) {
     if (status === "drawing" || readingStatus === "loading") return;
-    if (!isAdmin && drawsRemaining === 0) return; // admins always allowed
+    const isPaidDraw = Boolean(options.paid);
 
     setStatus("drawing");
     setCards([]);
     resetReading();
+    if (isPaidDraw) {
+      setPaidDrawMode(true);
+      setPaidUnlocked(true);
+    }
 
     try {
       const token = await getIdToken();
@@ -362,7 +382,7 @@ export function TarotDrawClient() {
       const response = await fetch("/api/tarot/draw", {
         method: "POST",
         headers,
-        body: JSON.stringify({ mode, topic, question, anonymousId: getOrCreateAnonId() }),
+        body: JSON.stringify({ mode, topic, question, anonymousId: getOrCreateAnonId(), paidMode: isPaidDraw }),
       });
       const data = (await response.json().catch(() => ({}))) as {
         cards?: TarotCardFaceData[];
@@ -384,7 +404,9 @@ export function TarotDrawClient() {
         throw new Error(data.error || "抽牌失敗，請稍後再試。");
       }
 
-      setDrawsRemaining((prev) => (typeof prev === "number" && prev > 0 ? prev - 1 : prev));
+      if (!isAdmin && !isPaidDraw) {
+        setDrawsRemaining((prev) => (typeof prev === "number" && prev > 0 ? prev - 1 : prev));
+      }
 
       window.setTimeout(() => {
         const revealedCards = data.cards ?? [];
@@ -395,6 +417,14 @@ export function TarotDrawClient() {
       setStatus("idle");
       setError(err instanceof Error ? err.message : "宇宙訊號有點微弱，請稍後再試一次。");
     }
+  }
+
+  function handleDrawButtonClick() {
+    if (isOutOfFreeDraws) {
+      openPaidDrawModal();
+      return;
+    }
+    void draw();
   }
 
   function revealCards(choiceIndex: number) {
@@ -431,7 +461,7 @@ export function TarotDrawClient() {
   function startAdUnlock() {
     if (adUnlocked) return;
     if (hasUsedAdUnlockToday()) {
-      setAdNotice("今日免費廣告解鎖已使用完畢 ✨");
+      setAdNotice("今日免費廣告解鎖已使用完畢 ✨ 可使用 NT$49 再抽一次，直接查看完整訊息。");
       return;
     }
 
@@ -446,9 +476,16 @@ export function TarotDrawClient() {
   function completeRewardedAd(source: "google" | "fallback") {
     console.info("[rewarded-ad] Reward completed", { source });
     markAdUnlockUsedToday();
+    setAdUnlockUsedToday(true);
     setAdUnlocked(true);
     setAdModalOpen(false);
     setAdNotice("");
+  }
+
+  function openPaidDrawModal() {
+    setPaymentPurpose("draw");
+    setPaymentStatus("idle");
+    setPaymentModalOpen(true);
   }
 
   function startFallbackRewardedAd(reason?: unknown) {
@@ -563,6 +600,11 @@ export function TarotDrawClient() {
 
   async function sendLineResult() {
     if (!cards.length || lineDeliveryStatus === "sending") return;
+    if (!hasFullAccess) {
+      setLineDeliveryStatus("softPause");
+      setLineDeliveryMessage("請先觀看廣告解鎖，或使用 NT$49 再抽一次取得完整訊息。");
+      return;
+    }
 
     try {
       setLineDeliveryStatus("sending");
@@ -579,11 +621,12 @@ export function TarotDrawClient() {
   }
 
   function openPaymentModal() {
-    if (!adUnlocked) {
+    if (!hasFullAccess) {
       setLineDeliveryStatus("softPause");
-      setLineDeliveryMessage("請先觀看廣告解鎖完整版，再選擇是否傳送到 LINE 永久保存。");
+      setLineDeliveryMessage("請先觀看廣告解鎖，或使用 NT$49 再抽一次取得完整訊息。");
       return;
     }
+    setPaymentPurpose("line");
     setPaymentStatus("idle");
     setPaymentModalOpen(true);
   }
@@ -593,12 +636,18 @@ export function TarotDrawClient() {
     setPaymentStatus("processing");
     paymentTimerRef.current = window.setTimeout(() => {
       setPaymentStatus("success");
+      if (paymentPurpose === "draw") {
+        setPaymentModalOpen(false);
+        setPaidUnlocked(true);
+        void draw({ paid: true });
+        return;
+      }
       void sendPaidLineResult();
     }, 1000);
   }
 
   async function sendPaidLineResult() {
-    if (!cards.length || !fullReading || lineDeliveryStatus === "sending") return;
+    if (!cards.length || lineDeliveryStatus === "sending") return;
 
     try {
       setLineDeliveryStatus("sending");
@@ -707,7 +756,7 @@ export function TarotDrawClient() {
             : drawsRemaining === null
               ? "免費抽牌每日 1 次，觀看廣告可免費解鎖完整版一次。"
               : drawsRemaining === 0
-                ? "今天的免費抽牌次數已用完，加入 LINE 可每日抽 3 次，或明天再來。"
+                ? "今天的免費抽牌次數已用完，可使用 NT$49 再抽一次完整訊息。"
                 : `今日剩餘抽牌次數：${drawsRemaining} 次`}
         </p>
       </div>
@@ -724,24 +773,23 @@ export function TarotDrawClient() {
 
       <button
         type="button"
-        onClick={draw}
+        onClick={handleDrawButtonClick}
         disabled={
           status === "drawing" ||
           status === "selecting" ||
           status === "revealing" ||
-          readingStatus === "loading" ||
-          (!isAdmin && drawsRemaining === 0)
+          readingStatus === "loading"
         }
         className="relative z-10 mt-5 w-full rounded-full bg-moon px-6 py-3 font-medium text-midnight shadow-[0_0_24px_rgba(247,241,223,0.28)] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
-        {status === "drawing" ? "星光正在洗牌..." : (!isAdmin && drawsRemaining === 0) ? "今日次數已用完" : "開始抽牌"}
+        {status === "drawing" ? "星光正在洗牌..." : isOutOfFreeDraws ? "NT$49 再抽一次" : "開始抽牌"}
       </button>
 
       {error ? (
         <div className="relative z-10 mt-4 rounded-2xl border border-lavender/30 bg-nebula/20 p-4 text-sm text-moon">
           <p>{error}</p>
           {!isAdmin && drawsRemaining === 0 ? (
-            <p className="mt-2 text-moon/72">加入 LINE 官方帳號可每日免費抽 3 次。</p>
+            <p className="mt-2 text-moon/72">今日免費額度已用完，仍可使用 NT$49 再抽一次完整訊息。</p>
           ) : null}
         </div>
       ) : null}
@@ -806,19 +854,21 @@ export function TarotDrawClient() {
             </div>
           </div>
 
-          {!adUnlocked ? (
+          {!hasFullAccess ? (
             <div className="cosmic-reading-card rounded-[1.75rem] border border-[#d8bd70]/24 bg-midnight/58 p-5 text-center shadow-glow sm:p-6">
-              <p className="text-sm tracking-[0.22em] text-[#d8bd70]/78">Rewarded Ad</p>
-              <h3 className="mt-2 text-2xl font-semibold text-moon">解鎖完整解讀</h3>
+              <p className="text-sm tracking-[0.22em] text-[#d8bd70]/78">{shouldShowPaidPlan ? "Paid Tarot" : "Rewarded Ad"}</p>
+              <h3 className="mt-2 text-2xl font-semibold text-moon">{shouldShowPaidPlan ? "NT$49 / 次完整抽牌" : "解鎖完整解讀"}</h3>
               <p className="mx-auto mt-3 max-w-xl text-base leading-8 text-moon/72">
-                完整版會顯示接下來可以怎麼做、溫柔提醒、7日能量提示與一句專屬祝福。
+                {shouldShowPaidPlan
+                  ? "今日免費抽牌與廣告解鎖已使用完畢。可用 NT$49 再抽一次，直接查看完整內容並傳送到 LINE。"
+                  : "完整版會顯示接下來可以怎麼做、溫柔提醒、7日能量提示與一句專屬祝福。"}
               </p>
               <button
                 type="button"
-                onClick={startAdUnlock}
+                onClick={shouldShowPaidPlan ? openPaidDrawModal : startAdUnlock}
                 className="mt-5 w-full rounded-full bg-[#d8bd70] px-6 py-4 text-base font-semibold text-midnight shadow-[0_0_28px_rgba(216,189,112,0.28)] transition hover:bg-moon active:scale-95 sm:w-auto sm:min-w-[280px]"
               >
-                觀看廣告解鎖完整版
+                {shouldShowPaidPlan ? "NT$49 再抽一次" : "觀看廣告解鎖"}
               </button>
               {adNotice ? <p className="mt-4 text-sm leading-6 text-lavender/82">{adNotice}</p> : null}
             </div>
@@ -843,16 +893,22 @@ export function TarotDrawClient() {
             <p className="text-sm tracking-[0.22em]" style={{ color: "rgba(6, 199, 85, 0.82)" }}>LINE 傳送</p>
             <h3 className="mt-2 text-2xl font-semibold text-moon">傳送到 LINE 接收完整宇宙訊息</h3>
             <p className="mx-auto mt-3 max-w-xl text-base leading-8 text-moon/72">
-              把本次塔羅抽牌結果傳送到你的 LINE，隨時回顧宇宙訊息。
+              {hasFullAccess ? "把本次塔羅抽牌結果傳送到你的 LINE，隨時回顧宇宙訊息。" : "完整內容解鎖後，就可以把本次結果傳送到 LINE。"}
             </p>
             <button
               type="button"
-              onClick={sendLineResult}
+              onClick={hasFullAccess ? sendLineResult : (shouldShowPaidPlan ? openPaidDrawModal : startAdUnlock)}
               disabled={lineDeliveryStatus === "sending"}
               className="pointer-events-auto relative z-10 mt-5 w-full touch-manipulation rounded-full px-6 py-4 text-base font-semibold text-white transition hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:min-w-[280px]"
               style={{ background: "#06C755", boxShadow: "0 0 34px rgba(6,199,85,0.34)" }}
             >
-              {lineDeliveryStatus === "sending" ? "正在傳送到 LINE..." : "傳送到 LINE 接收完整宇宙訊息"}
+              {lineDeliveryStatus === "sending"
+                ? "正在傳送到 LINE..."
+                : hasFullAccess
+                  ? "傳送到 LINE 接收完整宇宙訊息"
+                  : shouldShowPaidPlan
+                    ? "NT$49 再抽一次"
+                    : "觀看廣告解鎖"}
             </button>
             {lineDeliveryMessage ? <p className="mt-4 text-sm leading-6 text-moon/70">{lineDeliveryMessage}</p> : null}
           </div>
@@ -874,10 +930,14 @@ export function TarotDrawClient() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-5 backdrop-blur-sm">
           <div className="cosmic-reading-card w-full max-w-md rounded-[1.75rem] border border-[#06C755]/24 bg-midnight p-6 text-center shadow-glow">
             <p className="text-sm tracking-[0.22em] text-[#06C755]/78">Fake Payment Mode</p>
-            <h3 className="mt-3 text-2xl font-semibold text-moon">LINE 永久保存</h3>
-            <p className="mt-3 text-base leading-7 text-moon/72">先使用模擬付款流程，之後可串接綠界正式金流。</p>
+            <h3 className="mt-3 text-2xl font-semibold text-moon">{paymentPurpose === "draw" ? "再抽一次完整訊息" : "LINE 永久保存"}</h3>
+            <p className="mt-3 text-base leading-7 text-moon/72">
+              {paymentPurpose === "draw"
+                ? "模擬付款成功後，會重新進入抽牌流程，並直接顯示完整內容與 LINE 傳送。"
+                : "先使用模擬付款流程，之後可串接綠界正式金流。"}
+            </p>
             <div className="mt-5 rounded-2xl border border-white/10 bg-white/6 p-4">
-              <p className="text-sm text-moon/58">保存費用</p>
+              <p className="text-sm text-moon/58">{paymentPurpose === "draw" ? "完整抽牌費用" : "保存費用"}</p>
               <p className="mt-1 text-3xl font-semibold text-moon">NT$ 49</p>
             </div>
             <div className="mt-5 flex flex-col gap-3 sm:flex-row">
@@ -894,7 +954,7 @@ export function TarotDrawClient() {
                 disabled={paymentStatus === "processing"}
                 className="flex-1 rounded-full bg-[#06C755] px-5 py-3 text-sm font-semibold text-white shadow-[0_0_28px_rgba(6,199,85,0.32)] transition hover:opacity-90 disabled:opacity-60"
               >
-                {paymentStatus === "processing" ? "付款確認中..." : paymentStatus === "success" ? "付款成功" : "模擬付款成功"}
+                {paymentStatus === "processing" ? "付款確認中..." : paymentStatus === "success" ? "付款成功" : paymentPurpose === "draw" ? "NT$49 再抽一次" : "模擬付款成功"}
               </button>
             </div>
           </div>

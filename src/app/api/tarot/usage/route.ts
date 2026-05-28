@@ -1,6 +1,5 @@
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { getDrawUsage, getAdminUserIds, LINE_DAILY_LIMIT, UNAUTH_DAILY_LIMIT } from "@/lib/rateLimit";
+import { getDrawUsage, UNAUTH_DAILY_LIMIT } from "@/lib/rateLimit";
 import { verifyAdminIdToken } from "@/lib/verifyAdmin";
 
 function getRequestIp(request: Request): string {
@@ -16,33 +15,29 @@ function getRequestIp(request: Request): string {
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const anonymousId = requestUrl.searchParams.get("anonymousId") ?? null;
-  const cookieStore = await cookies();
-  const lineUserId = cookieStore.get("line_user_id")?.value ?? null;
   const ip = getRequestIp(request);
 
-  // Admins have unlimited draws — check Firebase ID token first, then LINE user ID fallback
+  // Admins have unlimited draws — verified by Firebase Google login email.
   const idToken = request.headers.get("x-firebase-id-token");
   const isAdminByToken = await verifyAdminIdToken(idToken);
-  const isAdminByLineId = Boolean(lineUserId && getAdminUserIds().includes(lineUserId));
 
-  if (isAdminByToken || isAdminByLineId) {
+  if (isAdminByToken) {
     return NextResponse.json({
       remaining: 999,
       limit: 999,
-      isLineUser: Boolean(lineUserId),
+      isLineUser: false,
       resetAt: "不限制",
     });
   }
 
-  const limit = lineUserId ? LINE_DAILY_LIMIT : UNAUTH_DAILY_LIMIT;
-  const isLineUser = Boolean(lineUserId);
+  const limit = UNAUTH_DAILY_LIMIT;
 
   try {
-    const usage = await getDrawUsage({ ip, anonymousId, lineUserId }, "draw_limits");
+    const usage = await getDrawUsage({ ip, anonymousId, lineUserId: null }, "draw_limits");
     return NextResponse.json({
       remaining: usage.remaining,
       limit: usage.limit,
-      isLineUser,
+      isLineUser: false,
       resetAt: "明天 00:00 (台灣時間)",
     });
   } catch (err) {
@@ -51,7 +46,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       remaining: limit,
       limit,
-      isLineUser,
+      isLineUser: false,
       resetAt: "明天 00:00 (台灣時間)",
     });
   }
