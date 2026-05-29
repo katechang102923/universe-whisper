@@ -1303,12 +1303,9 @@ export function TarotDrawClient() {
                   <button
                     type="button"
                     onClick={() => void openFbShare()}
-                    disabled={readingStatus === "loading"}
-                    className="w-full rounded-full bg-[#d8bd70] px-6 py-4 text-base font-semibold text-midnight shadow-[0_0_28px_rgba(216,189,112,0.28)] transition hover:bg-moon active:scale-95 disabled:cursor-wait disabled:opacity-60 sm:w-auto sm:min-w-[280px]"
+                    className="w-full rounded-full bg-[#d8bd70] px-6 py-4 text-base font-semibold text-midnight shadow-[0_0_28px_rgba(216,189,112,0.28)] transition hover:bg-moon active:scale-95 sm:w-auto sm:min-w-[280px]"
                   >
-                    {readingStatus === "loading"
-                      ? "解讀準備中..."
-                      : "分享到 Facebook 解鎖完整版"}
+                    分享到 Facebook 解鎖完整版
                   </button>
                 )}
               </div>
