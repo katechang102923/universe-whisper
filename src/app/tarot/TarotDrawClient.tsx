@@ -851,21 +851,36 @@ export function TarotDrawClient() {
     setLineDeliveryStatus("creating");
     setLineDeliveryMessage("");
 
-    sessionStorage.setItem(
-      LINE_CONNECT_MESSAGE_KEY,
-      JSON.stringify({
-        message: buildLineMessage(),
-        createdAt: Date.now(),
-      }),
-    );
+    const message = buildLineMessage();
+    const linePayload = JSON.stringify({ message, createdAt: Date.now() });
 
+    // 1. Save locally — fast path for same-browser redirects (desktop, Android Chrome)
+    try { sessionStorage.setItem(LINE_CONNECT_MESSAGE_KEY, linePayload); } catch { /* ignore */ }
+    try { localStorage.setItem(LINE_CONNECT_MESSAGE_KEY, linePayload); } catch { /* ignore */ }
+
+    // 2. Save server-side — required for iOS cross-browser redirects
+    //    (Chrome → LINE app → Safari callback: localStorage is in a different browser)
+    let pendingId = "";
     try {
-      window.location.href = "/line/connect";
-    } catch (err) {
-      console.error("[line-connect] Failed to prepare LINE message:", err);
-      setLineDeliveryStatus("error");
-      setLineDeliveryMessage("LINE 訊息暫時準備失敗，請稍後再試。");
+      const r = await fetch("/api/line/pending", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message }),
+      });
+      if (r.ok) {
+        const data = (await r.json()) as { pendingId?: string };
+        pendingId = typeof data.pendingId === "string" ? data.pendingId : "";
+      }
+    } catch {
+      // Non-fatal: localStorage will be the fallback on desktop / Android
+      console.warn("[line-connect] pendingId creation failed; using local-only fallback");
     }
+
+    // Navigate to /line/connect; include pendingId so it survives cross-app OAuth
+    const connectUrl = pendingId
+      ? `/line/connect?pendingId=${encodeURIComponent(pendingId)}`
+      : "/line/connect";
+    window.location.href = connectUrl;
   }
 
   // ??? FB Share Unlock flow ?????????????????????????????????????????????????

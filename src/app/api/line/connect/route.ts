@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { pushLineTextMessage } from "@/lib/lineResults";
+import { getAdminDb } from "@/lib/firebaseAdmin";
 
 type VerifiedLineProfile = {
   userId: string;
@@ -170,16 +171,34 @@ function normalizeLineMessage(message: string) {
   return message.replace(/\r\n/g, "\n").trim().slice(0, 4800);
 }
 
+// Fetch message from the server-side pending store by pendingId.
+// Used as fallback when the client-side message is missing (cross-browser mobile).
+async function fetchPendingMessage(pendingId: string): Promise<string> {
+  try {
+    const db = getAdminDb();
+    const snap = await db.collection("linePendingMessages").doc(pendingId).get();
+    if (!snap.exists) return "";
+    const data = snap.data() as { message?: string; expiresAt?: string };
+    if (data.expiresAt && new Date(data.expiresAt) < new Date()) return "";
+    return typeof data.message === "string" ? data.message : "";
+  } catch (err) {
+    console.warn("[line/connect] fetchPendingMessage failed:", err);
+    return "";
+  }
+}
+
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as {
     message?: unknown;
+    pendingId?: unknown;
     code?: unknown;
     redirectUri?: unknown;
     idToken?: unknown;
     accessToken?: unknown;
   } | null;
 
-  const message = normalizeLineMessage(typeof body?.message === "string" ? body.message : "");
+  let message = normalizeLineMessage(typeof body?.message === "string" ? body.message : "");
+  const pendingId = typeof body?.pendingId === "string" ? body.pendingId.trim() : "";
   const code = typeof body?.code === "string" ? body.code.trim() : "";
   const redirectUri = typeof body?.redirectUri === "string" ? body.redirectUri.trim() : DESKTOP_REDIRECT_URI;
   const idToken = typeof body?.idToken === "string" ? body.idToken.trim() : "";
@@ -193,6 +212,7 @@ export async function POST(request: Request) {
 
   console.info("[line/connect] Request", {
     hasMessage: Boolean(message),
+    hasPendingId: Boolean(pendingId),
     messageLength: message.length,
     hasCode: Boolean(code),
     hasRedirectUri: Boolean(redirectUri),
@@ -200,6 +220,13 @@ export async function POST(request: Request) {
     hasAccessToken: Boolean(accessToken),
     envStatus,
   });
+
+  // If local message is missing, try fetching from server-side pending store.
+  // This handles iOS cross-browser case: Chrome → LINE app → Safari (different localStorage).
+  if (!message && pendingId) {
+    console.info("[line/connect] Local message missing; fetching via pendingId", { pendingId });
+    message = normalizeLineMessage(await fetchPendingMessage(pendingId));
+  }
 
   if (!message || (!code && !idToken && !accessToken)) {
     return NextResponse.json({ ok: false, error: "缺少 LINE 登入資料或本次抽牌訊息。" }, { status: 400 });
@@ -213,6 +240,7 @@ export async function POST(request: Request) {
       hasUserId: Boolean(profile.userId),
       displayName: profile.displayName,
       messageLength: message.length,
+      usedPendingId: !body?.message && Boolean(pendingId),
     });
 
     return NextResponse.json({
