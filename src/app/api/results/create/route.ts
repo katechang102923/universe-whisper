@@ -52,7 +52,7 @@ export async function POST(request: Request) {
 
   const resultId = crypto.randomUUID();
   const siteUrl = getSiteUrl(request);
-  const resultUrl = `${siteUrl}/tarot?result=${encodeURIComponent(resultId)}`;
+  const resultUrl = `${siteUrl}/share/${resultId}`;
   const normalizedCards = normalizeCards(body.cards);
   console.info("[results/create] Request", {
     resultId,
@@ -94,11 +94,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ok: false,
-        error: errorMessage.startsWith("Missing Firebase Admin")
-          ? errorMessage
-          : errorMessage.startsWith("Firebase Admin initialization failed")
-            ? errorMessage
-            : "宇宙訊息暫時存不起來，請稍後再試。",
+        error: "宇宙訊息暫時存不起來，請稍後再試。",
         envStatus,
       },
       { status: 500 },

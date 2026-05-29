@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
 
 declare global {
   interface Window {
@@ -19,16 +18,15 @@ declare global {
 
 type ConnectStatus = "booting" | "login" | "sending" | "done" | "error";
 
-const SENT_RESULT_STORAGE_PREFIX = "line-connect-sent:";
-const DESKTOP_RESULT_STORAGE_KEY = "line-connect-desktop-result-id";
+const LINE_CONNECT_MESSAGE_KEY = "line-connect-message-payload";
 const DESKTOP_REDIRECT_URI = "https://universe-whisper.vercel.app/line/connect";
 
 const statusText: Record<ConnectStatus, string> = {
-  booting: "正在連接宇宙訊息...",
+  booting: "正在準備 LINE 訊息...",
   login: "正在登入 LINE...",
-  sending: "正在把訊息送到 LINE...",
+  sending: "正在傳送到 LINE...",
   done: "已傳送到 LINE",
-  error: "連接失敗",
+  error: "LINE 傳送失敗",
 };
 
 function loadLiffSdk() {
@@ -52,164 +50,101 @@ function loadLiffSdk() {
   });
 }
 
-function extractResultId(searchParams: URLSearchParams) {
-  const directResultId = searchParams.get("resultId");
-  if (directResultId) {
-    return { resultId: directResultId, source: "resultId" };
-  }
-
-  const liffState = searchParams.get("liff.state");
-  if (!liffState) {
-    return { resultId: "", source: "missing" };
-  }
-
-  try {
-    const decodedState = decodeURIComponent(liffState);
-    const normalizedState = decodedState.startsWith("?") ? decodedState.slice(1) : decodedState;
-    const stateParams = new URLSearchParams(normalizedState);
-    return { resultId: stateParams.get("resultId") ?? "", source: "liff.state" };
-  } catch (error) {
-    console.error("[line-connect-client] connectFailed parseLiffState", { liffState, error });
-    return { resultId: "", source: "liff.state-parse-error" };
-  }
-}
-
 function isLineInAppBrowser() {
   return /Line\//i.test(window.navigator.userAgent);
 }
 
-function getCurrentSearchParams() {
-  return new URLSearchParams(window.location.search);
-}
-
-function summarizeParams(searchParams: URLSearchParams) {
-  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-
-  return {
-    resultId: searchParams.get("resultId"),
-    liffState: searchParams.get("liff.state"),
-    hasCode: Boolean(searchParams.get("code")),
-    hasState: Boolean(searchParams.get("state")),
-    hasIdTokenParam: Boolean(searchParams.get("id_token")),
-    hasHashIdToken: Boolean(hashParams.get("id_token")),
-  };
-}
-
-function getCleanRedirectUri(resultId: string) {
-  const url = new URL(window.location.href);
-  url.search = new URLSearchParams({ resultId }).toString();
-  url.hash = "";
-  return url.toString();
-}
-
-function saveDesktopResultId(resultId: string) {
+function getStoredMessage() {
   try {
-    window.sessionStorage.setItem(DESKTOP_RESULT_STORAGE_KEY, resultId);
-  } catch {
-    // sessionStorage can be unavailable in some browser modes.
-  }
-}
-
-function getDesktopResultId() {
-  try {
-    return window.sessionStorage.getItem(DESKTOP_RESULT_STORAGE_KEY) ?? "";
+    const raw = sessionStorage.getItem(LINE_CONNECT_MESSAGE_KEY);
+    if (!raw) return "";
+    const payload = JSON.parse(raw) as { message?: unknown; createdAt?: unknown };
+    const createdAt = typeof payload.createdAt === "number" ? payload.createdAt : 0;
+    if (createdAt && Date.now() - createdAt > 15 * 60 * 1000) return "";
+    return typeof payload.message === "string" ? payload.message.trim() : "";
   } catch {
     return "";
   }
 }
 
-function clearDesktopResultId() {
+function clearStoredMessage() {
   try {
-    window.sessionStorage.removeItem(DESKTOP_RESULT_STORAGE_KEY);
+    sessionStorage.removeItem(LINE_CONNECT_MESSAGE_KEY);
   } catch {
     // sessionStorage can be unavailable in some browser modes.
   }
 }
 
-function wasResultSent(resultId: string) {
-  try {
-    return window.sessionStorage.getItem(`${SENT_RESULT_STORAGE_PREFIX}${resultId}`) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function markResultSent(resultId: string) {
-  try {
-    window.sessionStorage.setItem(`${SENT_RESULT_STORAGE_PREFIX}${resultId}`, "1");
-  } catch {
-    // sessionStorage can be unavailable in some in-app browser modes.
-  }
+function getCleanRedirectUri() {
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.hash = "";
+  return url.toString();
 }
 
 export function LineConnectClient() {
-  const searchParams = useSearchParams();
   const [status, setStatus] = useState<ConnectStatus>("booting");
   const [message, setMessage] = useState("");
   const postingRef = useRef(false);
   const completedRef = useRef(false);
-  const closeOrRedirectTimerRef = useRef<number | null>(null);
+  const closeTimerRef = useRef<number | null>(null);
 
-  function finishAfterSuccess(resultId: string) {
-    if (closeOrRedirectTimerRef.current) return;
+  function finishAfterSuccess() {
+    if (closeTimerRef.current) return;
 
-    closeOrRedirectTimerRef.current = window.setTimeout(() => {
+    closeTimerRef.current = window.setTimeout(() => {
       if (window.liff?.isInClient()) {
-        console.info("[line-connect-client] connectSuccess closeWindow", { resultId });
         window.liff.closeWindow();
-        return;
       }
-
-      const redirectUrl = `/tarot?lineSent=1&resultId=${encodeURIComponent(resultId)}`;
-      console.info("[line-connect-client] connectSuccess redirect", { resultId, redirectUrl });
-      window.location.replace(redirectUrl);
     }, 1200);
   }
 
-  async function postDesktopConnect(resultId: string, code: string) {
-    if (postingRef.current) {
-      console.info("[line-connect-client] postingConnect skippedDuplicate", { resultId, mode: "desktop-oauth" });
+  async function postConnect(params: {
+    code?: string;
+    idToken?: string | null;
+    accessToken?: string | null;
+    mode: string;
+  }) {
+    if (postingRef.current || completedRef.current) return;
+
+    const lineMessage = getStoredMessage();
+    if (!lineMessage) {
+      setStatus("error");
+      setMessage("找不到本次抽牌訊息，請回原本頁面重新按 LINE 看我的結果。");
       return;
     }
 
     setStatus("sending");
     postingRef.current = true;
-    console.info("[line-connect-client] postingConnect", {
-      resultId,
-      hasCode: Boolean(code),
-      redirectUri: DESKTOP_REDIRECT_URI,
-      mode: "desktop-oauth",
-    });
 
     try {
       const response = await fetch("/api/line/connect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resultId, code, redirectUri: DESKTOP_REDIRECT_URI }),
+        body: JSON.stringify({
+          message: lineMessage,
+          code: params.code ?? "",
+          redirectUri: DESKTOP_REDIRECT_URI,
+          idToken: params.idToken ?? "",
+          accessToken: params.accessToken ?? "",
+        }),
       });
       const data = (await response.json().catch(() => ({}))) as { error?: string; pushStatus?: string };
 
       if (!response.ok) {
-        console.error("[line-connect-client] connectFailed", {
-          resultId,
-          status: response.status,
-          error: data.error,
-          mode: "desktop-oauth",
-        });
         throw new Error(data.error || "LINE connect failed.");
       }
 
       completedRef.current = true;
-      markResultSent(resultId);
-      clearDesktopResultId();
-      console.info("[line-connect-client] connectSuccess", { resultId, pushStatus: data.pushStatus, mode: "desktop-oauth" });
+      clearStoredMessage();
       setStatus("done");
-      setMessage("已傳送到 LINE，請打開 LINE 查看。");
+      setMessage("本次抽牌結果已送到官方帳號聊天室。");
+      finishAfterSuccess();
     } catch (error) {
-      console.error("[line-connect-client] connectFailed", { error, mode: "desktop-oauth" });
+      console.error("[line-connect-client] connectFailed", { error, mode: params.mode });
       setStatus("error");
-      const errorMessage = error instanceof Error ? error.message : "LINE 連接失敗。";
-      setMessage(`送出前卡住了：${errorMessage}`);
+      const errorMessage = error instanceof Error ? error.message : "LINE 傳送失敗。";
+      setMessage(`傳送失敗：${errorMessage}`);
     } finally {
       postingRef.current = false;
     }
@@ -218,178 +153,74 @@ export function LineConnectClient() {
   useEffect(() => {
     let cancelled = false;
 
-    async function connectLine(trigger: string) {
-      const params = getCurrentSearchParams();
+    async function connectLine() {
+      const params = new URLSearchParams(window.location.search);
       const desktopCode = params.get("code") ?? "";
       const lineInAppBrowser = isLineInAppBrowser();
-      const extracted = extractResultId(params);
-      const resultId = lineInAppBrowser ? extracted.resultId : extracted.resultId || getDesktopResultId();
-      const source = lineInAppBrowser ? extracted.source : extracted.resultId ? extracted.source : "sessionStorage";
-      const receivedParams = summarizeParams(params);
-      const liffId = process.env.NEXT_PUBLIC_LINE_LIFF_ID;
-      console.info("[line-connect-client] gotParams", {
-        trigger,
-        resultId,
-        resultIdSource: source,
-        hasCode: Boolean(desktopCode),
-        lineInAppBrowser,
-        hasLiffId: Boolean(liffId),
-        currentPath: window.location.pathname,
-        currentSearch: window.location.search,
-        receivedParams,
-      });
 
-      if (!resultId) {
+      if (!getStoredMessage()) {
         setStatus("error");
-        setMessage(`缺少結果代碼，收到的參數：${JSON.stringify(receivedParams)}`);
+        setMessage("找不到本次抽牌訊息，請回原本頁面重新按 LINE 看我的結果。");
         return;
       }
 
       if (!lineInAppBrowser) {
-        if (completedRef.current || wasResultSent(resultId)) {
-          completedRef.current = true;
-          setStatus("done");
-          setMessage("已傳送到 LINE，請打開 LINE 查看。");
-          return;
-        }
-
         if (desktopCode) {
-          await postDesktopConnect(resultId, desktopCode);
+          await postConnect({ code: desktopCode, mode: "desktop-oauth" });
           return;
         }
 
-        saveDesktopResultId(resultId);
         setStatus("login");
-        console.info("[line-connect-client] gotParams desktopOAuthRedirect", { resultId, redirectUri: DESKTOP_REDIRECT_URI });
         window.location.href = "/api/line/connect/start";
         return;
       }
 
+      const liffId = process.env.NEXT_PUBLIC_LINE_LIFF_ID;
       if (!liffId) {
-        console.error("[line-connect-client] connectFailed missingLiffId");
         setStatus("error");
-        setMessage("LINE LIFF 尚未設定，請稍後再試。");
-        return;
-      }
-
-      if (completedRef.current || wasResultSent(resultId)) {
-        completedRef.current = true;
-        setStatus("done");
-        setMessage("已傳送到 LINE。");
-        finishAfterSuccess(resultId);
+        setMessage("LINE LIFF 尚未設定完成，請稍後再試。");
         return;
       }
 
       try {
         setStatus("booting");
         await loadLiffSdk();
-        console.info("[line-connect-client] gotParams liffSdkLoaded", { hasLiff: Boolean(window.liff) });
-
         if (!window.liff) throw new Error("LIFF SDK is unavailable.");
 
         await window.liff.init({ liffId });
-        const paramsAfterInit = getCurrentSearchParams();
-        const { resultId: resultIdAfterInit } = extractResultId(paramsAfterInit);
-        const activeResultId = resultIdAfterInit || resultId;
-        console.info("[line-connect-client] gotParams afterLiffInit", {
-          resultId: activeResultId,
-          isLoggedIn: window.liff.isLoggedIn(),
-          isInClient: window.liff.isInClient(),
-          receivedParams: summarizeParams(paramsAfterInit),
-        });
-
         if (cancelled) return;
 
         if (!window.liff.isLoggedIn()) {
           setStatus("login");
-          const redirectUri = getCleanRedirectUri(activeResultId);
-          console.info("[line-connect-client] gotParams callingLogin", { redirectUri });
-          window.liff.login({ redirectUri });
-          return;
-        }
-
-        if (postingRef.current) {
-          console.info("[line-connect-client] postingConnect skippedDuplicate", { resultId: activeResultId });
+          window.liff.login({ redirectUri: getCleanRedirectUri() });
           return;
         }
 
         const idToken = window.liff.getIDToken();
         const accessToken = window.liff.getAccessToken();
-        console.info("[line-connect-client] gotParams tokens", {
-          resultId: activeResultId,
-          hasIdToken: Boolean(idToken),
-          hasAccessToken: Boolean(accessToken),
-        });
-
         if (!idToken && !accessToken) {
           throw new Error("LIFF token is unavailable.");
         }
 
-        setStatus("sending");
-        postingRef.current = true;
-        console.info("[line-connect-client] postingConnect", {
-          resultId: activeResultId,
-          hasIdToken: Boolean(idToken),
-          hasAccessToken: Boolean(accessToken),
-        });
-
-        const response = await fetch("/api/line/connect", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ resultId: activeResultId, idToken, accessToken }),
-        });
-        const data = (await response.json().catch(() => ({}))) as { error?: string; pushStatus?: string };
-
-        if (!response.ok) {
-          console.error("[line-connect-client] connectFailed", {
-            resultId: activeResultId,
-            status: response.status,
-            error: data.error,
-          });
-          throw new Error(data.error || "LINE connect failed.");
-        }
-
-        completedRef.current = true;
-        markResultSent(activeResultId);
-        console.info("[line-connect-client] connectSuccess", { resultId: activeResultId, pushStatus: data.pushStatus });
-        setStatus("done");
-        setMessage("已傳送到 LINE。");
-        finishAfterSuccess(activeResultId);
+        await postConnect({ idToken, accessToken, mode: "liff" });
       } catch (error) {
         console.error("[line-connect-client] connectFailed", { error });
         setStatus("error");
-        const errorMessage = error instanceof Error ? error.message : "LINE 連接失敗。";
-        setMessage(`送出前卡住了：${errorMessage}`);
-      } finally {
-        postingRef.current = false;
+        const errorMessage = error instanceof Error ? error.message : "LINE 傳送失敗。";
+        setMessage(`傳送失敗：${errorMessage}`);
       }
     }
 
-    void connectLine("effect");
-
-    function handlePageShow() {
-      void connectLine("pageshow");
-    }
-
-    function handleVisibilityChange() {
-      if (document.visibilityState === "visible") {
-        void connectLine("visible");
-      }
-    }
-
-    window.addEventListener("pageshow", handlePageShow);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
+    void connectLine();
 
     return () => {
       cancelled = true;
-      window.removeEventListener("pageshow", handlePageShow);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      if (closeOrRedirectTimerRef.current) {
-        window.clearTimeout(closeOrRedirectTimerRef.current);
-        closeOrRedirectTimerRef.current = null;
+      if (closeTimerRef.current) {
+        window.clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
       }
     };
-  }, [searchParams]);
+  }, []);
 
   return (
     <main className="relative min-h-screen overflow-hidden px-5 py-10 text-moon">
@@ -405,8 +236,8 @@ export function LineConnectClient() {
           <p className="mx-auto mt-4 max-w-sm text-base leading-8 text-moon/72">
             {message ||
               (status === "done"
-                ? "訊息已送到 LINE。"
-                : "請稍等一下，正在替你把宇宙訊息送往 LINE。")}
+                ? "可以回 LINE 查看本次結果。"
+                : "請不要關閉這個頁面，正在把本次結果送到 LINE。")}
           </p>
 
           <div className="mt-7 flex justify-center gap-2">
@@ -414,13 +245,6 @@ export function LineConnectClient() {
             <span className="cosmic-reading-dot animation-delay-150" />
             <span className="cosmic-reading-dot animation-delay-300" />
           </div>
-
-          <a
-            href="/tarot"
-            className="mt-8 inline-flex rounded-full border border-moon/30 px-5 py-3 text-sm font-semibold text-moon transition hover:border-moon/60 hover:bg-white/10"
-          >
-            回到塔羅抽牌
-          </a>
         </div>
       </section>
     </main>

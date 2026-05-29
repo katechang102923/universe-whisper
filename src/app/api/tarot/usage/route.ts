@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getDrawUsage, UNAUTH_DAILY_LIMIT } from "@/lib/rateLimit";
+import { getDrawUsage, UNAUTH_DAILY_LIMIT, checkFbShareUnlock } from "@/lib/rateLimit";
 import { verifyAdminIdToken } from "@/lib/verifyAdmin";
 
 function getRequestIp(request: Request): string {
@@ -27,18 +27,23 @@ export async function GET(request: Request) {
       limit: 999,
       isLineUser: false,
       resetAt: "不限制",
+      fbShareUnlockUsed: false,
     });
   }
 
   const limit = UNAUTH_DAILY_LIMIT;
 
   try {
-    const usage = await getDrawUsage({ ip, anonymousId, lineUserId: null }, "draw_limits");
+    const [usage, fbShareUnlockUsed] = await Promise.all([
+      getDrawUsage({ ip, anonymousId, lineUserId: null }, "draw_limits"),
+      checkFbShareUnlock({ anonymousId }),
+    ]);
     return NextResponse.json({
       remaining: usage.remaining,
       limit: usage.limit,
       isLineUser: false,
       resetAt: "明天 00:00 (台灣時間)",
+      fbShareUnlockUsed,
     });
   } catch (err) {
     console.warn("[tarot/usage] Failed to read draw limits:", err);
@@ -48,6 +53,7 @@ export async function GET(request: Request) {
       limit,
       isLineUser: false,
       resetAt: "明天 00:00 (台灣時間)",
+      fbShareUnlockUsed: false,
     });
   }
 }

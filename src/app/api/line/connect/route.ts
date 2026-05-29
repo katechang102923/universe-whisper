@@ -1,7 +1,5 @@
-import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
-import { getAdminDb, getFirebaseAdminEnvStatus } from "@/lib/firebaseAdmin";
-import { getSiteUrl, LINE_RESULTS_COLLECTION, pushResultToLine } from "@/lib/lineResults";
+import { pushLineTextMessage } from "@/lib/lineResults";
 
 type VerifiedLineProfile = {
   userId: string;
@@ -140,7 +138,10 @@ async function verifyLineProfile(params: {
   accessToken: string;
 }): Promise<VerifiedLineProfile> {
   if (params.code) {
-    const tokenResponse = await exchangeCodeForAccessToken(params.code, params.redirectUri || DESKTOP_REDIRECT_URI);
+    const tokenResponse = await exchangeCodeForAccessToken(
+      params.code,
+      params.redirectUri || DESKTOP_REDIRECT_URI,
+    );
 
     if (tokenResponse.id_token) {
       await verifyIdToken(tokenResponse.id_token);
@@ -165,47 +166,34 @@ async function verifyLineProfile(params: {
   return verifyAccessToken(params.accessToken);
 }
 
-async function saveLineUser(profile: VerifiedLineProfile) {
-  await getAdminDb()
-    .collection("users")
-    .doc(profile.userId)
-    .set(
-      {
-        uid: profile.userId,
-        lineUserId: profile.userId,
-        displayName: profile.displayName,
-        photoURL: profile.pictureUrl ?? "",
-        plan: "free",
-        paymentStatus: "none",
-        updatedAt: FieldValue.serverTimestamp(),
-        createdAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true },
-    );
+function normalizeLineMessage(message: string) {
+  return message.replace(/\r\n/g, "\n").trim().slice(0, 4800);
 }
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as {
-    resultId?: unknown;
+    message?: unknown;
     code?: unknown;
     redirectUri?: unknown;
     idToken?: unknown;
     accessToken?: unknown;
   } | null;
 
-  const resultId = typeof body?.resultId === "string" ? body.resultId.trim() : "";
+  const message = normalizeLineMessage(typeof body?.message === "string" ? body.message : "");
   const code = typeof body?.code === "string" ? body.code.trim() : "";
   const redirectUri = typeof body?.redirectUri === "string" ? body.redirectUri.trim() : DESKTOP_REDIRECT_URI;
   const idToken = typeof body?.idToken === "string" ? body.idToken.trim() : "";
   const accessToken = typeof body?.accessToken === "string" ? body.accessToken.trim() : "";
+
   const envStatus = {
     hasLineLoginChannelId: Boolean(process.env.LINE_LOGIN_CHANNEL_ID),
     hasLineLoginChannelSecret: Boolean(process.env.LINE_LOGIN_CHANNEL_SECRET),
     hasLineChannelAccessToken: Boolean(process.env.LINE_CHANNEL_ACCESS_TOKEN),
-    ...getFirebaseAdminEnvStatus(),
   };
+
   console.info("[line/connect] Request", {
-    resultId,
+    hasMessage: Boolean(message),
+    messageLength: message.length,
     hasCode: Boolean(code),
     hasRedirectUri: Boolean(redirectUri),
     hasIdToken: Boolean(idToken),
@@ -213,53 +201,34 @@ export async function POST(request: Request) {
     envStatus,
   });
 
-  if (!resultId || (!code && !idToken && !accessToken)) {
-    return NextResponse.json({ ok: false, error: "缺少 LINE 登入資料或 resultId。" }, { status: 400 });
+  if (!message || (!code && !idToken && !accessToken)) {
+    return NextResponse.json({ ok: false, error: "缺少 LINE 登入資料或本次抽牌訊息。" }, { status: 400 });
   }
 
   try {
-    const db = getAdminDb();
-    const resultRef = db.collection(LINE_RESULTS_COLLECTION).doc(resultId);
-    const resultSnap = await resultRef.get();
-    console.info("[line/connect] Result lookup", { resultId, exists: resultSnap.exists });
-
-    if (!resultSnap.exists) {
-      return NextResponse.json({ ok: false, error: "找不到這次的宇宙訊息。" }, { status: 404 });
-    }
-
     const profile = await verifyLineProfile({ code, redirectUri, idToken, accessToken });
-    console.info("[line/connect] LINE profile verified", { resultId, hasUserId: Boolean(profile.userId), displayName: profile.displayName });
+    await pushLineTextMessage(profile.userId, message);
 
-    await saveLineUser(profile);
-    await resultRef.set(
-      {
-        lineUserId: profile.userId,
-        lineDisplayName: profile.displayName,
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true },
-    );
-
-    await pushResultToLine(resultId, profile.userId, getSiteUrl(request), profile.displayName);
-    console.info("[line/connect] Push result success", { resultId });
+    console.info("[line/connect] Push success", {
+      hasUserId: Boolean(profile.userId),
+      displayName: profile.displayName,
+      messageLength: message.length,
+    });
 
     return NextResponse.json({
       ok: true,
-      resultId,
       pushStatus: "sent",
       lineDisplayName: profile.displayName,
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "LINE connect failed.";
-    console.error("[line/connect] Failed:", { resultId, errorMessage, envStatus });
-    console.error("[line/connect] Failed raw error:", error);
+    console.error("[line/connect] Failed:", { errorMessage, envStatus });
     return NextResponse.json(
       {
         ok: false,
         pushStatus: "failed",
-        error: errorMessage,
-        userMessage: errorMessage.includes("LINE push failed")
-          ? "LINE 推送失敗，請確認你已加入宇宙偷偷話 LINE 好友後再試一次。"
+        error: errorMessage.includes("LINE push failed")
+          ? "LINE 推送失敗，請確認已加入官方帳號好友後再試一次。"
           : errorMessage,
       },
       { status: 500 },

@@ -1,6 +1,51 @@
 import { getAdminDb } from "./firebaseAdmin";
 
 export const UNAUTH_DAILY_LIMIT = 1;
+
+// ─── FB Share Unlock ──────────────────────────────────────────────────────────
+
+export async function checkFbShareUnlock({
+  anonymousId,
+}: {
+  anonymousId: string | null;
+}): Promise<boolean> {
+  if (!anonymousId) return false;
+  const today = getTaipeiDate();
+  const anonKey = encodeKey(anonymousId);
+  try {
+    const db = getAdminDb();
+    const snap = await db.collection("draw_limits").doc(today).get();
+    const data = (snap.data() ?? {}) as { fb_share_unlock?: Record<string, boolean> };
+    return data.fb_share_unlock?.[anonKey] === true;
+  } catch {
+    return false;
+  }
+}
+
+export async function markFbShareUnlock({
+  anonymousId,
+}: {
+  anonymousId: string | null;
+}): Promise<void> {
+  if (!anonymousId) return;
+  const today = getTaipeiDate();
+  const anonKey = encodeKey(anonymousId);
+  try {
+    const db = getAdminDb();
+    const docRef = db.collection("draw_limits").doc(today);
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(docRef);
+      const data = (snap.data() ?? {}) as { fb_share_unlock?: Record<string, boolean> };
+      const existing = { ...(data.fb_share_unlock ?? {}) };
+      existing[anonKey] = true;
+      tx.set(docRef, { fb_share_unlock: existing }, { merge: true });
+    });
+  } catch (err) {
+    console.error("[rateLimit] markFbShareUnlock failed:", err);
+    throw err;
+  }
+}
+
 export const LINE_DAILY_LIMIT = 3;
 export const ADMIN_EMAILS = ["ciut0000@gmail.com"];
 

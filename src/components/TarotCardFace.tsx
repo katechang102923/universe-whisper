@@ -2,6 +2,8 @@
 
 import Image from "next/image";
 import { useState } from "react";
+
+
 import type { TarotCardTopicMeaning, TarotSuit, TarotTopicKey } from "@/data/tarotCards";
 
 export type TarotCardFaceData = {
@@ -32,76 +34,27 @@ const positionDescriptions: Record<NonNullable<TarotCardFaceData["position"]>, s
 export function TarotCardBack({ compact = false }: { compact?: boolean }) {
   return (
     <div
-      className={`tarot-card-back flex aspect-[2/3] w-full ${
+      className={`tarot-card-back aspect-[2/3] w-full ${
         compact ? "max-w-[280px]" : "max-w-[420px]"
-      } flex-col items-center justify-center rounded-[28px] p-5 shadow-glow`}
+      } rounded-[28px] shadow-glow`}
     >
-      <div className="tarot-inner-frame flex h-full w-full flex-col items-center justify-center rounded-[1.1rem]">
-        {/* Q版貓咪臉 – solid-colour version so duplicate IDs never conflict */}
-        <svg
-          viewBox="0 0 80 92"
-          xmlns="http://www.w3.org/2000/svg"
-          className={compact ? "h-20 w-20" : "h-24 w-24"}
-          aria-hidden="true"
-        >
-          {/* Head */}
-          <circle cx="40" cy="48" r="28" fill="#16103a" />
-
-          {/* Left ear outer / inner */}
-          <polygon points="14,36 20,10 34,30" fill="#16103a" />
-          <polygon points="18,32 21,15 31,28" fill="#3d1a5c" />
-
-          {/* Right ear outer / inner */}
-          <polygon points="66,36 60,10 46,30" fill="#16103a" />
-          <polygon points="62,32 59,15 49,28" fill="#3d1a5c" />
-
-          {/* Forehead crescent moon mark */}
-          <path
-            d="M36 30 Q40 23 45 25 Q39 29 38 36 Q33 33 36 30Z"
-            fill="#d8bd70"
-            opacity="0.92"
-          />
-
-          {/* Left eye – solid amber + pupil + shine */}
-          <ellipse cx="30" cy="48" rx="8.5" ry="7"   fill="#d4960a" />
-          <ellipse cx="30" cy="49" rx="4"   ry="5.5" fill="#050814" />
-          <circle  cx="33" cy="44" r="2"             fill="white" opacity="0.85" />
-
-          {/* Right eye */}
-          <ellipse cx="50" cy="48" rx="8.5" ry="7"   fill="#d4960a" />
-          <ellipse cx="50" cy="49" rx="4"   ry="5.5" fill="#050814" />
-          <circle  cx="53" cy="44" r="2"             fill="white" opacity="0.85" />
-
-          {/* Nose */}
-          <path d="M37 58 L40 62 L43 58 Q40 55 37 58Z" fill="#cbb8ff" opacity="0.85" />
-
-          {/* Mouth */}
-          <path
-            d="M35 62 Q40 66 45 62"
-            fill="none"
-            stroke="#cbb8ff"
-            strokeWidth="1.2"
-            strokeLinecap="round"
-            opacity="0.65"
-          />
-
-          {/* Whiskers */}
-          <line x1="8"  y1="55" x2="28" y2="56" stroke="#cbb8ff" strokeWidth="1" opacity="0.48" />
-          <line x1="7"  y1="60" x2="28" y2="60" stroke="#cbb8ff" strokeWidth="1" opacity="0.38" />
-          <line x1="72" y1="55" x2="52" y2="56" stroke="#cbb8ff" strokeWidth="1" opacity="0.48" />
-          <line x1="73" y1="60" x2="52" y2="60" stroke="#cbb8ff" strokeWidth="1" opacity="0.38" />
-
-          {/* Corner sparkles */}
-          <text x="0"  y="16" fill="#d8bd70" fontSize="9" opacity="0.72">✦</text>
-          <text x="66" y="18" fill="#cbb8ff" fontSize="7" opacity="0.60">✦</text>
-        </svg>
-
-        <p className="mt-3 text-sm tracking-[0.28em] text-lavender/82">
-          <span className="mr-1 text-[#d8bd70]/65">✦</span>
-          COSMIC TAROT
-          <span className="ml-1 text-[#d8bd70]/65">✦</span>
-        </p>
-      </div>
+      {/* 首頁紫色月亮貓圖片作為牌背 */}
+      <Image
+        src="/images/hero/main-cosmic-cat.webp"
+        alt="宇宙偷偷話"
+        fill
+        sizes={compact ? "280px" : "(max-width: 768px) 86vw, 420px"}
+        className="rounded-[28px] object-cover object-center"
+        priority={false}
+      />
+      {/* 暗色漸層遮罩，保留神秘感 */}
+      <div className="absolute inset-0 rounded-[28px] bg-gradient-to-b from-midnight/10 via-transparent to-midnight/55" />
+      {/* 底部文字標籤 */}
+      <p className="absolute bottom-4 left-0 right-0 z-10 text-center text-sm tracking-[0.28em] text-lavender/82 drop-shadow-md">
+        <span className="mr-1 text-[#d8bd70]/75">✦</span>
+        COSMIC TAROT
+        <span className="ml-1 text-[#d8bd70]/75">✦</span>
+      </p>
     </div>
   );
 }
