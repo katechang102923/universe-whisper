@@ -5,155 +5,17 @@ import { TarotCardBack, TarotCardFace, type TarotCardFaceData } from "@/componen
 
 type RitualStage = "drawing" | "selecting" | "revealing";
 
-// ─── Responsive hook ───────────────────────────────────────────────────────────
-
-function useIsMobile(): boolean {
-  const [mobile, setMobile] = useState(false);
-  useEffect(() => {
-    const check = () => setMobile(window.innerWidth < 640);
-    check();
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
-  }, []);
-  return mobile;
-}
-
-// ─── Fan geometry ──────────────────────────────────────────────────────────────
-
-/** Evenly-spaced rotation angle for the i-th card in a fan. */
-function fanAngle(index: number, total: number, arcDeg: number): number {
-  if (total === 1) return 0;
-  return -arcDeg / 2 + (index / (total - 1)) * arcDeg;
-}
-
-// ─── FanCard ───────────────────────────────────────────────────────────────────
-
-interface FanCardProps {
-  index: number;
-  total: number;
-  arcDeg: number;
-  /** Card visual width in px (height = width × 1.5) */
-  cardWidth: number;
-  /**
-   * Invisible "stem" length in px below the card visual.
-   * The outer wrapper height = cardHeight + stemLength.
-   * transform-origin: bottom center pivots the wrapper at the pivot point
-   * (container's bottom), so the effective fan radius =
-   * cardHeight + stemLength.  A longer stem → more spread between cards.
-   */
-  stemLength: number;
-  /** How many px the picked card lifts (default 28). */
-  liftPx?: number;
-  isPicked: boolean;
-  disabled: boolean;
-  onClick: () => void;
-}
-
-/**
- * A single card in the fan spread.
- *
- * Structure:
- *   Outer div (w=cardWidth, h=cardHeight+stemLength)
- *     ├ position: absolute; bottom:0; left:50%  — sits at the container's pivot
- *     ├ transform-origin: bottom center          — rotates around the pivot
- *     └ button (position:absolute; top:0)        — only covers the card visual
- *         └ TarotCardBack                        — the actual visible card
- *
- * The invisible stem (bottom portion of outer div) pushes the effective
- * fan radius beyond the card height, giving visible spacing between cards.
- */
-function FanCard({
-  index, total, arcDeg, cardWidth, stemLength, liftPx = 28, isPicked, disabled, onClick,
-}: FanCardProps) {
-  const [arrived, setArrived] = useState(false);
-  const angle  = fanAngle(index, total, arcDeg);
-  const cardH  = Math.round(cardWidth * 1.5); // aspect 2:3
-  const totalH = cardH + stemLength;
-
-  // Staggered entrance — cards fan out left-to-right
-  useEffect(() => {
-    const t = window.setTimeout(() => setArrived(true), 55 + index * 48);
-    return () => window.clearTimeout(t);
-  }, [index]);
-
-  return (
-    /* ── Outer rotating wrapper ──────────────────────────────────────────── */
-    <div
-      style={{
-        position: "absolute",
-        bottom: 0,
-        left: "50%",
-        width: cardWidth,
-        height: totalH,
-        transformOrigin: "bottom center",
-        // Entrance: start slightly collapsed below pivot, then fan out
-        transform: arrived
-          ? `translateX(-50%) rotate(${angle}deg)`
-          : `translateX(-50%) rotate(${angle * 0.18}deg) scale(0.86)`,
-        opacity: arrived ? 1 : 0,
-        transition: [
-          `transform 0.58s cubic-bezier(0.2, 0.82, 0.22, 1) ${index * 0.048}s`,
-          `opacity 0.38s ease ${index * 0.048}s`,
-        ].join(", "),
-        // Picked cards always on top; otherwise left→right z-order (right = top)
-        zIndex: isPicked ? 60 : index + 1,
-      }}
-    >
-      {/* ── Card visual button — TOP of the wrapper only ─────────────────── */}
-      <button
-        type="button"
-        onClick={onClick}
-        disabled={disabled}
-        aria-label={`選擇第 ${index + 1} 張牌`}
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
-          ...(isPicked ? { transform: `translateY(-${liftPx}px)` } : {}),
-        }}
-        className={[
-          "rounded-[1.2rem] outline-none",
-          "transition-[transform,filter,opacity] duration-200",
-          "focus-visible:ring-2 focus-visible:ring-[#d8bd70]/70",
-          isPicked
-            ? "drop-shadow-[0_0_26px_rgba(216,189,112,1)]"
-            : disabled
-            ? "cursor-not-allowed opacity-20"
-            : "cursor-pointer hover:-translate-y-4 hover:drop-shadow-[0_0_14px_rgba(216,189,112,0.75)]",
-        ].join(" ")}
-      >
-        <div className="relative">
-          {isPicked && (
-            <div className="pointer-events-none absolute inset-0 z-10 rounded-[1.2rem] ring-2 ring-[#d8bd70] shadow-[0_0_22px_rgba(216,189,112,0.9)]" />
-          )}
-          <TarotCardBack compact />
-        </div>
-      </button>
-
-      {/* ── Invisible stem — bottom portion, no content, no pointer events ── */}
-      {/* This empty space is what extends the effective pivot radius.        */}
-    </div>
-  );
-}
-
 // ─── TarotShuffleAnimation ─────────────────────────────────────────────────────
 
 /**
- * Drop-in replacement for TarotRitualDraw.  Same props.
- *
  * drawing   → riffle shuffle (CSS keyframes in globals.css)
- * selecting → fan spread with stem-extended radius so cards are clearly
- *             separated as individual click targets
+ * selecting → 3×3 grid; user picks 1 or 3 cards
  * revealing → existing ritual-reveal-card flip CSS
  *
- * Fan parameters (desktop / mobile):
- *   Cards : 9   / 7
- *   Arc   : ±42° / ±30°
- *   Width : 88px / 64px
- *   Stem  : 130px / 80px
- *   Radius: 262px / 176px  (cardH + stem)
- *   Spacing between card centres: ≈ 24px / 15px at the card tip
+ * Grid parameters:
+ *   Desktop: card width ~140px, gap 16px, container max 460px
+ *   Mobile:  card width ~95px,  gap 12px, container max 320px
+ *   Touch area: card itself (≥ 88×132 px) — no invisible overlapping stems
  */
 export function TarotShuffleAnimation({
   stage,
@@ -172,60 +34,34 @@ export function TarotShuffleAnimation({
   onSelect: (index: number) => void;
   onSkip: () => void;
 }) {
-  const isMobile = useIsMobile();
-
-  // ─── Responsive fan parameters ───────────────────────────────────────────
-  //
-  // Mobile (< 640 px):
-  //   Single  : 9 cards  •  ±28° (56° total)  •  80 px wide  •  stem 130 px
-  //   3-card  : 12 cards •  ±28° (56° total)  •  80 px wide  •  stem 130 px
-  //   Radius  : 120 + 130 = 250 px  →  spacing ≈ 17 px (9) / 11 px (12)
-  //   Hit area: 80 × 120 px per card button
-  //   Lift    : 16 px when picked
-  //
-  // Desktop (≥ 640 px):
-  //   9 cards  •  ±42° (84° total)  •  88 px wide  •  stem 130 px
-  //   Radius  : 132 + 130 = 262 px  →  spacing ≈ 24 px
-  //   Lift    : 28 px when picked
-  //
-  const fanTotal = isMobile ? (cardCount === 3 ? 12 : 9) : 9;
-  const fanArc   = isMobile ? 56 : 84;   // total arc ° (±28° / ±42°)
-  const cardW    = isMobile ? 80 : 88;   // card width px
-  const stemH    = 130;                  // stem px (same both viewports)
-  const liftPx   = isMobile ? 16 : 28;  // pick-lift px
-  // Container height: pivot at bottom; tallest card (0°) must fit + breathing room
-  const fanH     = isMobile
-    ? Math.round(80 * 1.5) + 130 + 40   // 120+130+40 = 290 px
-    : Math.round(88 * 1.5) + 130 + 50;  // 132+130+50 = 312 px
-
-  // ─── Fan pick state ──────────────────────────────────────────────────────
-  const [pickedFanIndices, setPickedFanIndices] = useState<number[]>([]);
+  // ─── Grid pick state ─────────────────────────────────────────────────────
+  const [pickedIndices, setPickedIndices] = useState<number[]>([]);
   const selectCalledRef = useRef(false);
 
   useEffect(() => {
     if (stage === "selecting") {
-      setPickedFanIndices([]);
+      setPickedIndices([]);
       selectCalledRef.current = false;
     }
   }, [stage]);
 
-  function handleFanPick(fanIndex: number) {
+  function handleGridPick(idx: number) {
     if (selectCalledRef.current) return;
-    if (pickedFanIndices.includes(fanIndex)) return;
-    const next = [...pickedFanIndices, fanIndex];
-    setPickedFanIndices(next);
+    if (pickedIndices.includes(idx)) return;
+    const next = [...pickedIndices, idx];
+    setPickedIndices(next);
     if (next.length >= cardCount) {
       selectCalledRef.current = true;
-      window.setTimeout(() => onSelect(0), 720);
+      window.setTimeout(() => onSelect(0), 600);
     }
   }
 
   // ─── Derived text ────────────────────────────────────────────────────────
   const headingText =
-    stage === "drawing"   ? "星光正在洗牌"
+    stage === "drawing"    ? "星光正在洗牌"
     : stage === "selecting"
-      ? cardCount === 1   ? "請選一張牌"
-                          : `請選擇三張牌（${pickedFanIndices.length} / 3）`
+      ? cardCount === 1    ? "請選一張牌"
+                           : `請選擇三張牌（${pickedIndices.length} / 3）`
     : "牌面正在醒來";
 
   const subText =
@@ -282,7 +118,7 @@ export function TarotShuffleAnimation({
         <div className="relative z-10 mx-auto mt-8 h-[260px] max-w-[520px] sm:h-[300px]">
           {Array.from({ length: 6 }).map((_, i) => {
             const n = i + 1;
-            const isLeft = n % 2 === 1; // 1,3,5 → left; 2,4,6 → right
+            const isLeft = n % 2 === 1;
             return (
               <div key={i} className={`riffle-card riffle-card-${n} ${isLeft ? "riffle-card-left" : "riffle-card-right"}`}>
                 <TarotCardBack compact />
@@ -292,39 +128,40 @@ export function TarotShuffleAnimation({
         </div>
       )}
 
-      {/* ── Stage: selecting — fan spread ───────────────────────────────── */}
+      {/* ── Stage: selecting — 3×3 grid ─────────────────────────────────── */}
       {stage === "selecting" && (
-        /*
-         * The fan container sits relative to itself; all cards use
-         * `bottom:0; left:50%` so their invisible-stem bottom (= pivot)
-         * is pinned to the container's bottom-center.
-         * Cards fan upward from this pivot via rotate(angle).
-         * Container is wide enough so the section's overflow:hidden
-         * never clips the outermost cards.
-         */
-        <div
-          className="relative z-10 mx-auto mt-8"
-          style={{
-            width: "100%",
-            maxWidth: isMobile ? 380 : 920,
-            height: fanH,
-          }}
-          aria-label="扇形牌面，請選擇"
-        >
-          {Array.from({ length: fanTotal }).map((_, fanIdx) => (
-            <FanCard
-              key={fanIdx}
-              index={fanIdx}
-              total={fanTotal}
-              arcDeg={fanArc}
-              cardWidth={cardW}
-              stemLength={stemH}
-              liftPx={liftPx}
-              isPicked={pickedFanIndices.includes(fanIdx)}
-              disabled={pickedFanIndices.length >= cardCount}
-              onClick={() => handleFanPick(fanIdx)}
-            />
-          ))}
+        <div className="relative z-10 mx-auto mt-6 w-full max-w-[320px] sm:max-w-[460px]">
+          <div className="grid grid-cols-3 gap-3 sm:gap-4">
+            {Array.from({ length: 9 }).map((_, idx) => {
+              const isPicked = pickedIndices.includes(idx);
+              const isExhausted = pickedIndices.length >= cardCount && !isPicked;
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => handleGridPick(idx)}
+                  disabled={isExhausted}
+                  aria-label={`選擇第 ${idx + 1} 張牌`}
+                  className={[
+                    "relative rounded-[1.2rem] outline-none",
+                    "transition-all duration-200",
+                    "focus-visible:ring-2 focus-visible:ring-[#d8bd70]/70",
+                    isPicked
+                      ? "scale-[1.08] drop-shadow-[0_0_24px_rgba(216,189,112,1)] ring-2 ring-[#d8bd70]"
+                      : isExhausted
+                      ? "cursor-not-allowed opacity-30"
+                      : "cursor-pointer hover:scale-105 hover:drop-shadow-[0_0_14px_rgba(216,189,112,0.75)] active:scale-[1.08]",
+                  ].join(" ")}
+                  style={{ minHeight: 132 }}
+                >
+                  {isPicked && (
+                    <div className="pointer-events-none absolute inset-0 z-10 rounded-[1.2rem] shadow-[0_0_22px_rgba(216,189,112,0.9)]" />
+                  )}
+                  <TarotCardBack compact />
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 

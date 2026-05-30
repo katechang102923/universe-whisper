@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { AppShell } from "@/components/AppShell";
+import { PageNavActions } from "@/components/PageNavActions";
 
 export const metadata: Metadata = {
   title: "聯絡我們",
@@ -14,7 +15,8 @@ export const metadata: Metadata = {
 export default function ContactPage() {
   return (
     <AppShell>
-      <section className="mx-auto flex w-full max-w-3xl flex-1 items-center py-12">
+      <section className="mx-auto w-full max-w-3xl py-8 sm:py-12">
+        <PageNavActions className="mb-6" />
         <div className="cosmic-tool-panel w-full rounded-[2rem] p-6 text-center sm:p-10">
           <p className="text-xs uppercase tracking-[0.32em] text-aurora/80">contact</p>
           <h1 className="mt-3 text-4xl font-semibold text-moon">宇宙偷偷話 Universe Whisper</h1>

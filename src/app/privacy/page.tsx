@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AppShell } from "@/components/AppShell";
+import { PageNavActions } from "@/components/PageNavActions";
 
 export const metadata: Metadata = {
   title: "隱私政策",
@@ -14,6 +15,7 @@ export default function PrivacyPage() {
   return (
     <AppShell>
       <section className="mx-auto w-full max-w-4xl py-8 sm:py-12">
+        <PageNavActions className="mb-6" />
         <p className="text-xs uppercase tracking-[0.32em] text-aurora/80">privacy policy</p>
         <h1 className="mt-3 text-4xl font-semibold text-moon sm:text-5xl">隱私政策</h1>
 

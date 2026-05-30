@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AppShell } from "@/components/AppShell";
+import { PageNavActions } from "@/components/PageNavActions";
 
 export const metadata: Metadata = {
   title: "服務條款",
@@ -25,6 +26,7 @@ export default function TermsPage() {
   return (
     <AppShell>
       <section className="mx-auto w-full max-w-4xl py-8 sm:py-12">
+        <PageNavActions className="mb-6" />
         <p className="text-xs uppercase tracking-[0.32em] text-aurora/80">terms of service</p>
         <h1 className="mt-3 text-4xl font-semibold text-moon sm:text-5xl">服務條款</h1>
         <div className="cosmic-tool-panel mt-8 rounded-[1.75rem] p-5 sm:p-7">

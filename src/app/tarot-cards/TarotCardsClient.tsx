@@ -131,7 +131,7 @@ export function TarotCardsClient({ cards }: { cards: TarotCard[] }) {
             type="button"
             aria-label="關閉塔羅牌介紹"
             onClick={() => setSelectedCard(null)}
-            className="absolute right-4 z-[60] flex h-11 w-11 items-center justify-center rounded-full border border-white/14 bg-black/60 text-xl text-moon backdrop-blur-sm transition hover:bg-white/12 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+            className="fixed right-4 z-[70] flex h-11 w-11 items-center justify-center rounded-full border border-white/14 bg-black/70 text-xl text-moon backdrop-blur-sm transition hover:bg-white/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
             style={{ top: "calc(env(safe-area-inset-top, 0px) + 16px)" }}
           >
             ×
