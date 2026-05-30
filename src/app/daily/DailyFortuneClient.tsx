@@ -64,8 +64,6 @@ const ZODIAC_IMAGES: Record<ZodiacSlug, string> = {
 const LS_KEY = "universe-whisper-daily-zodiac-slug";
 
 // ── Client-side fallback generator ───────────────────────────────────────────
-// Same seeded-random logic as dailyHoroscope.ts so the deterministic
-// fallback is consistent.  Runs instantly; replaced by API data once loaded.
 
 function getTodayTaipei(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Taipei" }).format(new Date());
@@ -229,7 +227,6 @@ async function generateZodiacStoryImage(slug: ZodiacSlug, sign: HoroscopeSign, s
   const ff = "'PingFang TC','Microsoft JhengHei','Noto Sans TC',sans-serif";
   const siteUrl = siteUrlRaw.replace(/^https?:\/\//, "");
 
-  // Background
   const bg = ctx.createLinearGradient(0, 0, 0, H);
   bg.addColorStop(0, "#05071d"); bg.addColorStop(0.55, "#0d0b2a"); bg.addColorStop(1, "#1a0e2e");
   ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
@@ -262,7 +259,6 @@ async function generateZodiacStoryImage(slug: ZodiacSlug, sign: HoroscopeSign, s
   ctx.fillText(new Intl.DateTimeFormat("zh-TW", { timeZone: "Asia/Taipei", year: "numeric", month: "long", day: "numeric" }).format(new Date()), W / 2, cy); cy += 42;
   ctx.font = `700 44px ${ff}`; ctx.fillStyle = "#f7d987"; ctx.fillText(`${ZODIAC_SYMBOLS[slug]} ${sign.signName}`, W / 2, cy); cy += 18;
 
-  // Overall stars
   ctx.font = "32px serif";
   const starsStr = "★".repeat(sign.overallStars) + "☆".repeat(5 - sign.overallStars);
   const sw = ctx.measureText(starsStr).width;
@@ -271,7 +267,6 @@ async function generateZodiacStoryImage(slug: ZodiacSlug, sign: HoroscopeSign, s
   ctx.fillStyle = "rgba(255,255,255,0.22)"; ctx.fillText("☆".repeat(5 - sign.overallStars), sx + ctx.measureText("★".repeat(sign.overallStars)).width, cy + 36);
   cy += 60;
 
-  // Overall summary box
   const BX = 80, BW = 920, BPXY = 34, BPXX = 52;
   const otext = sign.summary.replace(/\*\*/g, "").trim();
   ctx.font = `400 29px ${ff}`;
@@ -295,7 +290,6 @@ async function generateZodiacStoryImage(slug: ZodiacSlug, sign: HoroscopeSign, s
   const otY = bby + 44 + 20; oLines.forEach((l, i) => ctx.fillText(l, W / 2, otY + i * LH29));
   cy += BH + 20;
 
-  // Aspect boxes
   const AW = 490, AH = 155, AGAPX = 20, AGAPY = 14, APX = 26, APY = 18;
   const AX0 = (W - AW * 2 - AGAPX) / 2;
   const aspects = [
@@ -328,7 +322,6 @@ async function generateZodiacStoryImage(slug: ZodiacSlug, sign: HoroscopeSign, s
   }
   cy += 2 * AH + AGAPY + 22;
 
-  // Lucky info (3 boxes)
   const LCW = 200, LCH = 76, LCG = 14;
   const lcTotalW = LCW * 3 + LCG * 2, lcX0 = (W - lcTotalW) / 2;
   const lcLabels = ["幸運色", "幸運數字", "幸運時段"];
@@ -344,7 +337,6 @@ async function generateZodiacStoryImage(slug: ZodiacSlug, sign: HoroscopeSign, s
   }
   cy += LCH + 30;
 
-  // QR + footer
   const QS = 130, QX = W - QS - 72, QY = cy;
   let qrImg: HTMLImageElement | null = null;
   try {
@@ -382,9 +374,7 @@ export function DailyFortuneClient() {
   const detailRef = useRef<HTMLDivElement>(null);
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "universe-whisper.vercel.app";
 
-  // ── Load API data on mount (background – UI never blocks on this) ──────────
   useEffect(() => {
-    // Restore previously selected sign
     const saved = window.localStorage.getItem(LS_KEY) as ZodiacSlug | null;
     if (saved && ZODIAC_ORDER.includes(saved)) setSelectedSlug(saved);
 
@@ -397,10 +387,9 @@ export function DailyFortuneClient() {
       .catch(() => { setApiError("今天星光訊號有點微弱，稍後再試。"); setApiLoading(false); });
   }, []);
 
-  // Scroll to detail when sign selected
   useEffect(() => {
     if (selectedSlug && detailRef.current) {
-      window.setTimeout(() => detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+      window.setTimeout(() => detailRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 80);
     }
   }, [selectedSlug]);
 
@@ -436,7 +425,6 @@ export function DailyFortuneClient() {
     }
   }
 
-  // ── Always resolve sign data: API data if loaded, instant local fallback otherwise ──
   const sign: HoroscopeSign | null = selectedSlug
     ? (apiData?.signs[selectedSlug] ?? clientFallbackSign(selectedSlug, todayStr))
     : null;
@@ -447,70 +435,78 @@ export function DailyFortuneClient() {
 
   return (
     <>
-      {/* ── Selector ── */}
-      <section className="mt-8 rounded-[1.75rem] border border-lavender/18 bg-midnight/38 p-4 shadow-glow sm:p-5">
-        <h2 className="text-lg font-semibold text-moon sm:text-xl">選擇你的星座</h2>
-        <p className="mt-0.5 text-xs leading-6 text-moon/52">
-          看看今天宇宙想提醒你什麼。
-        </p>
-
-        {/* 3 × 4 compact grid – no images */}
-        <div className="mt-4 grid grid-cols-3 gap-2">
-          {ZODIAC_ORDER.map((slug) => {
-            const isSelected = selectedSlug === slug;
-            return (
-              <button
-                key={slug}
-                type="button"
-                onClick={() => selectSign(slug)}
-                className={[
-                  "group flex flex-col items-center justify-center gap-0.5 rounded-xl border py-3 px-1 transition-all duration-200 active:scale-95",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d8bd70]/60",
-                  isSelected
-                    ? "border-[#d8bd70]/80 bg-[#d8bd70]/14 shadow-[0_0_14px_rgba(216,189,112,0.28)]"
-                    : "border-white/10 bg-midnight/50 hover:border-[#d8bd70]/36 hover:bg-white/5",
-                ].join(" ")}
+      {/*
+        ── Compact 12-sign selector ──────────────────────────────────────────
+        Desktop (sm+): 4 columns × 3 rows, height 52 px per button
+        Mobile       : 3 columns × 4 rows, height 48 px per button
+        This grid sits in the right column of page.tsx's 2-column layout.
+      */}
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+        {ZODIAC_ORDER.map((slug) => {
+          const active = selectedSlug === slug;
+          return (
+            <button
+              key={slug}
+              type="button"
+              onClick={() => selectSign(slug)}
+              className={[
+                // Layout & sizing
+                "flex h-12 flex-col items-center justify-center gap-0.5",
+                "rounded-xl border px-1 sm:h-[52px]",
+                // Interaction
+                "transition-all duration-200 active:scale-95",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d8bd70]/60",
+                // Colour state
+                active
+                  ? "border-[#d8bd70]/80 bg-[#d8bd70]/14 shadow-[0_0_14px_rgba(216,189,112,0.28)]"
+                  : "border-white/10 bg-midnight/50 hover:border-[#d8bd70]/36 hover:bg-white/5",
+              ].join(" ")}
+            >
+              {/* Zodiac symbol */}
+              <span
+                className={`text-[18px] leading-none sm:text-[20px] ${active ? "text-[#d8bd70]" : "text-moon/75"}`}
+                aria-hidden="true"
               >
-                <span
-                  className={`text-xl leading-none sm:text-2xl ${isSelected ? "text-[#d8bd70]" : "text-moon/75"}`}
-                  aria-hidden="true"
-                >
-                  {ZODIAC_SYMBOLS[slug]}
-                </span>
-                <span
-                  className={`text-[11px] font-medium leading-tight sm:text-xs ${isSelected ? "text-[#d8bd70]" : "text-moon/75"}`}
-                >
-                  {ZODIAC_LABELS[slug]}
-                </span>
-                <span className="hidden text-[9px] text-moon/32 sm:block">
-                  {ZODIAC_DATES[slug]}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </section>
+                {ZODIAC_SYMBOLS[slug]}
+              </span>
 
-      {/* ── No selection placeholder ── */}
+              {/* Chinese name — 13 px */}
+              <span
+                className={`text-[13px] font-medium leading-tight ${active ? "text-[#d8bd70]" : "text-moon/75"}`}
+              >
+                {ZODIAC_LABELS[slug]}
+              </span>
+
+              {/* Date range — 11 px, hidden on mobile */}
+              <span className="hidden text-[11px] text-moon/32 sm:block">
+                {ZODIAC_DATES[slug]}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── No-selection placeholder ── */}
       {!selectedSlug && (
-        <div className="mt-5 rounded-[1.75rem] border border-white/8 bg-midnight/28 px-6 py-10 text-center">
-          <p className="text-base text-moon/46">點選上方星座，查看今日宇宙訊息 ✦</p>
+        <div className="mt-4 rounded-[1.5rem] border border-white/8 bg-midnight/28 px-5 py-8 text-center">
+          <p className="text-sm text-moon/46">點選上方星座，查看今日宇宙訊息 ✦</p>
         </div>
       )}
 
-      {/* ── Fortune detail ─ always shown once a sign is selected ── */}
+      {/* ── Fortune detail (shown once a sign is selected) ── */}
       {selectedSlug && sign && (
-        <div ref={detailRef} className="mt-5 scroll-mt-4">
-          {/* Back button */}
+        <div ref={detailRef} className="mt-4 scroll-mt-4">
+
+          {/* Back link */}
           <button
             type="button"
             onClick={clearSign}
-            className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-white/14 bg-midnight/50 px-4 py-1.5 text-sm text-moon/65 transition hover:border-white/28 hover:text-moon"
+            className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-white/14 bg-midnight/50 px-4 py-1.5 text-sm text-moon/65 transition hover:border-white/28 hover:text-moon"
           >
-            ← 重新選擇星座
+            ← 重新選擇
           </button>
 
-          {/* API-fresh badge */}
+          {/* Loading / error hints (non-blocking) */}
           {apiLoading && (
             <p className="mb-2 text-xs text-lavender/50">正在取回今天最新訊息…</p>
           )}
@@ -519,15 +515,17 @@ export function DailyFortuneClient() {
           )}
 
           <section className="relative overflow-hidden rounded-[1.75rem] border border-lavender/22 bg-midnight/52 shadow-glow">
-            {/* Decorative bg zodiac image */}
+
+            {/* Faint zodiac image in background */}
             <div className="pointer-events-none absolute inset-y-4 right-[-8%] z-0 w-[68%] max-w-[440px] opacity-[0.07] blur-[1.5px] sm:right-0 sm:w-[38%]">
               <Image src={ZODIAC_IMAGES[selectedSlug]} alt="" fill sizes="440px" className="object-contain" aria-hidden="true" />
             </div>
 
             <div className="relative z-10 h-1 bg-gradient-to-r from-nebula/60 via-lavender/80 to-aurora/60" />
 
-            <div className="relative z-10 p-5 sm:p-7">
-              {/* Sign title */}
+            <div className="relative z-10 p-5 sm:p-6">
+
+              {/* Sign title row */}
               <div className="mb-4 flex items-center gap-3">
                 <span className="text-3xl text-[#d8bd70] sm:text-4xl" aria-hidden="true">
                   {ZODIAC_SYMBOLS[selectedSlug]}
@@ -552,9 +550,7 @@ export function DailyFortuneClient() {
                   ].map(({ label, stars, accent }, i) => (
                     <div
                       key={label}
-                      className={`flex items-center justify-between gap-4 ${
-                        i === 0 ? "border-b border-white/8 pb-2" : ""
-                      }`}
+                      className={`flex items-center justify-between gap-4 ${i === 0 ? "border-b border-white/8 pb-2" : ""}`}
                     >
                       <span className={`text-sm ${accent ? "font-semibold text-[#d8bd70]" : "text-moon/60"}`}>
                         {label}
@@ -565,7 +561,11 @@ export function DailyFortuneClient() {
                 </div>
               </div>
 
-              {/* Download button – right after star ratings */}
+              {/*
+                ── Download button for the share card ─────────────────────────
+                The canvas-generated 1080×1920 story image is the "分享小卡".
+                This button triggers it.
+              */}
               <div className="mb-4 flex flex-wrap items-center gap-2">
                 <button
                   type="button"
@@ -576,10 +576,12 @@ export function DailyFortuneClient() {
                   {downloadStatus === "working" ? "正在產生圖片…" : "⬇ 下載今日運勢圖"}
                 </button>
                 {downloadStatus === "done" && <p className="text-xs text-moon/55">圖片已下載 ✨</p>}
-                {downloadStatus === "error" && <p className="text-xs text-[#ffb4b4]">{downloadError || "產生失敗，請稍後再試。"}</p>}
+                {downloadStatus === "error" && (
+                  <p className="text-xs text-[#ffb4b4]">{downloadError || "產生失敗，請稍後再試。"}</p>
+                )}
               </div>
 
-              {/* Summary */}
+              {/* Today's summary */}
               <div className="mb-4 rounded-xl border border-lavender/14 bg-lavender/5 p-4">
                 <p className="text-[10px] tracking-[0.22em] text-lavender/55">今日提醒</p>
                 <p className="mt-2 text-sm leading-7 text-moon/80 sm:text-base">{sign.summary}</p>
@@ -589,14 +591,14 @@ export function DailyFortuneClient() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <CategoryCard label="愛情運" stars={sign.loveStars} text={sign.loveText} gradient="from-pink-300/20 to-lavender/16" />
                 <CategoryCard label="工作運" stars={sign.workStars} text={sign.workText} gradient="from-aurora/18 to-nebula/16" />
-                <CategoryCard label="財運" stars={sign.moneyStars} text={sign.moneyText} gradient="from-[#d8bd70]/20 to-moon/12" />
+                <CategoryCard label="財運"   stars={sign.moneyStars} text={sign.moneyText} gradient="from-[#d8bd70]/20 to-moon/12" />
                 <CategoryCard label="人際運" stars={sign.socialStars} text={sign.socialText} gradient="from-lavender/22 to-aurora/14" />
               </div>
 
               {/* Lucky info */}
               <div className="mt-4 flex flex-wrap gap-2">
                 {[
-                  { label: "幸運色", value: sign.luckyColor },
+                  { label: "幸運色",  value: sign.luckyColor },
                   { label: "幸運數字", value: sign.luckyNumber },
                   { label: "幸運時間", value: sign.luckyTime },
                 ].map(({ label, value }) => (
@@ -610,6 +612,7 @@ export function DailyFortuneClient() {
                   </div>
                 ))}
               </div>
+
             </div>
           </section>
         </div>

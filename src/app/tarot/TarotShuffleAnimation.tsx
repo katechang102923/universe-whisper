@@ -5,14 +5,30 @@ import { TarotCardBack, TarotCardFace, type TarotCardFaceData } from "@/componen
 
 type RitualStage = "drawing" | "selecting" | "revealing";
 
+// ─── Responsive helpers ────────────────────────────────────────────────────────
+
+/**
+ * Lightweight hook that tracks whether the viewport is below the `sm` breakpoint
+ * (< 640 px).  Used to switch fan parameters between mobile and desktop.
+ */
+function useIsMobile(): boolean {
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setMobile(window.innerWidth < 640);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+  return mobile;
+}
+
 // ─── Fan geometry ──────────────────────────────────────────────────────────────
 
-const FAN_TOTAL = 9;
-const FAN_ARC_DEG = 80; // total spread in degrees — safe on mobile (±40° each side)
+const FAN_TOTAL = 7; // fewer cards → less overlap → easier to tap
 
-/** Rotation angle for the i-th card in a fan of `total` cards */
-function fanAngle(index: number, total: number): number {
-  return -FAN_ARC_DEG / 2 + (index / (total - 1)) * FAN_ARC_DEG;
+/** Evenly-spaced rotation angle for the i-th card */
+function fanAngle(index: number, total: number, arcDeg: number): number {
+  return -arcDeg / 2 + (index / (total - 1)) * arcDeg;
 }
 
 // ─── FanCard ───────────────────────────────────────────────────────────────────
@@ -20,6 +36,8 @@ function fanAngle(index: number, total: number): number {
 interface FanCardProps {
   index: number;
   total: number;
+  arcDeg: number;
+  cardWidth: number; // px
   isPicked: boolean;
   disabled: boolean;
   onClick: () => void;
@@ -28,63 +46,63 @@ interface FanCardProps {
 /**
  * A single card in the fan spread.
  *
- * Layout approach:
- *   • Outer `div` — handles fan rotation via `transform-origin: bottom center`.
- *     Its bottom-center is pinned to the container's bottom-center so all cards
- *     share the same pivot point (like holding a hand of cards).
- *   • Inner `button` — handles the hover lift and pick-lift with Tailwind classes,
- *     independent of the parent rotation.
+ * Outer `div`  → fan rotation, transform-origin: bottom center
+ *               (all cards pivot from the same point — like holding a hand)
+ * Inner `button` → hover/pick lift, independent of the fan rotation
  */
-function FanCard({ index, total, isPicked, disabled, onClick }: FanCardProps) {
+function FanCard({ index, total, arcDeg, cardWidth, isPicked, disabled, onClick }: FanCardProps) {
   const [arrived, setArrived] = useState(false);
-  const angle = fanAngle(index, total);
+  const angle = fanAngle(index, total, arcDeg);
 
-  // Staggered entrance: cards fan out one by one from the center
+  // Staggered entrance: cards fan out one-by-one from the centre pile
   useEffect(() => {
-    const t = window.setTimeout(() => setArrived(true), 80 + index * 65);
+    const t = window.setTimeout(() => setArrived(true), 60 + index * 70);
     return () => window.clearTimeout(t);
   }, [index]);
 
+  // Slight initial angle so cards "unfurl" from a pile rather than
+  // appearing from below at already-spread angles.
+  const initAngle = angle * 0.15;
+
   return (
-    // Outer positioning wrapper — rotation pivot at card's bottom-center
+    // Outer wrapper — handles the fan rotation
     <div
       style={{
         position: "absolute",
         bottom: 0,
         left: "50%",
-        width: 82,
+        width: cardWidth,
         transformOrigin: "bottom center",
-        // Start collapsed/below → arrive at fan angle
         transform: arrived
           ? `translateX(-50%) rotate(${angle}deg)`
-          : `translateX(-50%) rotate(${angle * 0.15}deg) translateY(80px)`,
+          : `translateX(-50%) rotate(${initAngle}deg) translateY(76px)`,
         opacity: arrived ? 1 : 0,
-        transition: `transform 0.55s cubic-bezier(0.2, 0.82, 0.24, 1) ${index * 0.04}s,
-                     opacity 0.35s ease ${index * 0.04}s`,
-        zIndex: isPicked ? 20 : index + 1,
+        transition: `transform 0.58s cubic-bezier(0.2, 0.82, 0.24, 1) ${index * 0.05}s,
+                     opacity 0.38s ease ${index * 0.05}s`,
+        zIndex: isPicked ? 30 : index + 1,
       }}
     >
-      {/* Inner button — hover / pick lift lives here so it doesn't interfere with rotation */}
+      {/* Inner button — hover lift / pick lift */}
       <button
         type="button"
         onClick={onClick}
         disabled={disabled}
         aria-label={`選擇第 ${index + 1} 張牌`}
         className={[
-          "block w-full rounded-[1.1rem] outline-none",
+          "block w-full rounded-[1.2rem] outline-none",
           "transition-[transform,filter,opacity] duration-200",
           "focus-visible:ring-2 focus-visible:ring-[#d8bd70]/70",
           isPicked
-            ? "-translate-y-9 drop-shadow-[0_0_22px_rgba(216,189,112,1)]"
+            ? "-translate-y-10 drop-shadow-[0_0_24px_rgba(216,189,112,1)]"
             : disabled
             ? "cursor-not-allowed opacity-40"
-            : "hover:-translate-y-4 hover:drop-shadow-[0_0_12px_rgba(216,189,112,0.65)] cursor-pointer",
+            : "cursor-pointer hover:-translate-y-5 hover:drop-shadow-[0_0_14px_rgba(216,189,112,0.7)]",
         ].join(" ")}
       >
-        {/* Golden ring overlay when picked */}
         <div className="relative">
+          {/* Golden ring overlay when picked */}
           {isPicked && (
-            <div className="pointer-events-none absolute inset-0 z-10 rounded-[1.1rem] ring-2 ring-[#d8bd70] shadow-[0_0_18px_rgba(216,189,112,0.8)]" />
+            <div className="pointer-events-none absolute inset-0 z-10 rounded-[1.2rem] ring-2 ring-[#d8bd70] shadow-[0_0_20px_rgba(216,189,112,0.85)]" />
           )}
           <TarotCardBack compact />
         </div>
@@ -96,20 +114,16 @@ function FanCard({ index, total, isPicked, disabled, onClick }: FanCardProps) {
 // ─── TarotShuffleAnimation ─────────────────────────────────────────────────────
 
 /**
- * Drop-in replacement for `TarotRitualDraw`.
+ * Drop-in replacement for `TarotRitualDraw`.  Same props interface.
  *
- * Stages:
- *   drawing   — existing `ritual-shuffle-card` CSS (left/right stagger pile)
- *   selecting — fan spread: cards arc out, user taps 1 (single) or 3 (three-card)
- *   revealing — existing `ritual-reveal-card` flip CSS
- *
- * Props are identical to TarotRitualDraw so the swap in TarotDrawClient.tsx
- * requires only changing the import and JSX tag name.
+ * drawing   → riffle shuffle: deck splits into two piles then merges (CSS anim)
+ * selecting → fan spread: cards arc out, user taps 1 (single) or 3 (three-card)
+ * revealing → existing flip-reveal CSS
  */
 export function TarotShuffleAnimation({
   stage,
   cardCount,
-  selectedIndex: _selectedIndex, // kept for API compatibility; not used for display
+  selectedIndex: _selectedIndex,
   revealedCards,
   topic,
   onSelect,
@@ -123,12 +137,20 @@ export function TarotShuffleAnimation({
   onSelect: (index: number) => void;
   onSkip: () => void;
 }) {
+  const isMobile = useIsMobile();
+
+  // Responsive fan parameters ─────────────────────────────────────────────────
+  // Desktop: ±35 °, card 96 px wide (≈ 96×144 hit area)
+  // Mobile : ±28 °, card 72 px wide (≈ 72×108 hit area)
+  const fanArc = isMobile ? 56 : 70;   // total arc in degrees (±28° / ±35°)
+  const cardW  = isMobile ? 72 : 96;   // card width in px
+  const fanH   = isMobile ? 280 : 360; // container height in px
+
   // Fan pick state ─────────────────────────────────────────────────────────────
   const [pickedFanIndices, setPickedFanIndices] = useState<number[]>([]);
-  // Ref guard: prevents calling onSelect more than once even under React StrictMode
   const selectCalledRef = useRef(false);
 
-  // Reset fan state whenever we re-enter the selecting stage (new draw)
+  // Reset fan state whenever we re-enter the selecting stage
   useEffect(() => {
     if (stage === "selecting") {
       setPickedFanIndices([]);
@@ -143,17 +165,14 @@ export function TarotShuffleAnimation({
     const next = [...pickedFanIndices, fanIndex];
     setPickedFanIndices(next);
 
-    // Single mode: 1 pick; three-card mode: 3 picks
+    // 1 pick for single-card mode, 3 picks for three-card mode
     if (next.length >= cardCount) {
       selectCalledRef.current = true;
-      // Brief pause so the user sees the last pick light up before transitioning
-      window.setTimeout(() => onSelect(0), 680);
+      window.setTimeout(() => onSelect(0), 700);
     }
   }
 
-  // Derived display ────────────────────────────────────────────────────────────
-  const backs = Array.from({ length: Math.max(3, cardCount) });
-
+  // Derived display values ─────────────────────────────────────────────────────
   const headingText =
     stage === "drawing"
       ? "星光正在洗牌"
@@ -180,7 +199,7 @@ export function TarotShuffleAnimation({
   return (
     <section className="relative z-10 mt-7 overflow-hidden rounded-[2rem] border border-[#d8bd70]/24 bg-midnight/54 p-5 text-center shadow-glow sm:p-7">
 
-      {/* Floating gold dust particles */}
+      {/* Gold dust particles */}
       <div className="pointer-events-none absolute inset-0 opacity-70">
         <span className="ritual-dust left-[12%] top-[18%]" />
         <span className="ritual-dust left-[82%] top-[24%] [animation-delay:0.8s]" />
@@ -201,7 +220,6 @@ export function TarotShuffleAnimation({
         <p className="text-xs uppercase tracking-[0.3em] text-[#d8bd70]/78">cosmic ritual</p>
         <h3 className="mt-3 text-2xl font-semibold text-moon sm:text-3xl">{headingText}</h3>
 
-        {/* Drawing: pulsing ritual lines */}
         {stage === "drawing" && (
           <div className="mt-4 space-y-2">
             {ritualLines.map((line, i) => (
@@ -216,35 +234,45 @@ export function TarotShuffleAnimation({
           </div>
         )}
 
-        {/* Selecting: short instruction */}
         {subText && (
           <p className="mt-3 text-sm text-moon/56">{subText}</p>
         )}
       </div>
 
-      {/* ── Stage: drawing ── */}
+      {/* ── Stage: drawing — riffle shuffle ── */}
       {stage === "drawing" && (
         <div className="relative z-10 mx-auto mt-8 h-[260px] max-w-[520px] sm:h-[300px]">
-          {backs.slice(0, 6).map((_, i) => (
-            <div key={i} className={`ritual-shuffle-card ritual-shuffle-card-${i + 1}`}>
-              <TarotCardBack compact />
-            </div>
-          ))}
+          {/* Always show 6 cards during the shuffle, regardless of draw mode */}
+          {Array.from({ length: 6 }).map((_, i) => {
+            const cardNum = i + 1;
+            // Odd card numbers → left pile, even → right pile
+            const isLeft = cardNum % 2 === 1;
+            return (
+              <div
+                key={i}
+                className={`riffle-card riffle-card-${cardNum} ${isLeft ? "riffle-card-left" : "riffle-card-right"}`}
+              >
+                <TarotCardBack compact />
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {/* ── Stage: selecting (fan spread) ── */}
+      {/* ── Stage: selecting — fan spread ── */}
       {stage === "selecting" && (
         <div
-          className="relative z-10 mx-auto mt-8 max-w-[600px]"
-          style={{ height: 310 }}
-          aria-label="扇形牌面，請選擇一張"
+          className="relative z-10 mx-auto mt-8 w-full max-w-[680px]"
+          style={{ height: fanH }}
+          aria-label="扇形牌面，請選擇"
         >
           {Array.from({ length: FAN_TOTAL }).map((_, fanIdx) => (
             <FanCard
               key={fanIdx}
               index={fanIdx}
               total={FAN_TOTAL}
+              arcDeg={fanArc}
+              cardWidth={cardW}
               isPicked={pickedFanIndices.includes(fanIdx)}
               disabled={pickedFanIndices.length >= cardCount}
               onClick={() => handleFanPick(fanIdx)}
@@ -253,7 +281,7 @@ export function TarotShuffleAnimation({
         </div>
       )}
 
-      {/* ── Stage: revealing ── */}
+      {/* ── Stage: revealing — flip reveal ── */}
       {stage === "revealing" && (
         <div className="relative z-10 mt-8 grid grid-cols-1 items-start gap-8 md:grid-cols-2 xl:grid-cols-3">
           {(revealedCards.length ? revealedCards : [null]).map((card, i) => (
