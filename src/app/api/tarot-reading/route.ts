@@ -112,6 +112,7 @@ function getRequestIp(req: Request): string {
 }
 
 // ── 牌卡正規化 ────────────────────────────────────────────────────────────────
+// 容錯：接受 name / cardName / title 作為牌名來源；position / orientation 兩種欄位名
 
 function normalizeCards(cards: unknown): TarotReadingCard[] | null {
   if (!Array.isArray(cards) || cards.length === 0 || cards.length > 3) return null;
@@ -119,21 +120,49 @@ function normalizeCards(cards: unknown): TarotReadingCard[] | null {
   const normalized = cards.map((card) => {
     if (!card || typeof card !== "object") return null;
     const s = card as Record<string, unknown>;
-    if (typeof s.name !== "string" || !s.name.trim() || !isPosition(s.position)) return null;
+
+    // 容錯：支援 name / cardName / title 三種欄位名
+    const rawName =
+      (typeof s.name     === "string" && s.name.trim())     ||
+      (typeof s.cardName === "string" && s.cardName.trim()) ||
+      (typeof s.title    === "string" && s.title.trim())    ||
+      null;
+    if (!rawName) return null;
+
+    // 容錯：支援 position（"upright"/"reversed"）和 orientation（"正位"/"逆位"）
+    let pos: TarotReadingPosition;
+    if (isPosition(s.position)) {
+      pos = s.position;
+    } else if (typeof s.orientation === "string") {
+      pos = s.orientation === "正位" ? "upright" : "reversed";
+    } else {
+      return null;
+    }
+
+    // keywords：支援 string[] 或逗號分隔 string
+    let keywords: string[] | undefined;
+    if (Array.isArray(s.keywords)) {
+      keywords = (s.keywords as unknown[]).filter(
+        (k): k is string => typeof k === "string" && k.trim().length > 0
+      );
+    } else if (typeof s.keywords === "string" && s.keywords.trim()) {
+      keywords = s.keywords.split(/[,，、]/).map((k) => k.trim()).filter(Boolean);
+    }
+
     return {
-      name:           s.name.trim(),
+      name:           rawName,
       nameEn:         typeof s.nameEn  === "string" ? s.nameEn.trim()  : undefined,
       nameZh:         typeof s.nameZh  === "string" ? s.nameZh.trim()  : undefined,
       suit:           typeof s.suit    === "string" ? s.suit.trim()    : undefined,
-      position:       s.position as TarotReadingPosition,
+      position:       pos,
       spreadPosition: isSpreadPosition(s.spreadPosition) ? s.spreadPosition : undefined,
-      keywords:       Array.isArray(s.keywords)
-                        ? (s.keywords as unknown[]).filter((k): k is string =>
-                            typeof k === "string" && k.trim().length > 0)
-                        : undefined,
+      keywords,
       baseMeaning:    typeof s.baseMeaning  === "string" ? s.baseMeaning.trim()  : undefined,
       topicMeaning:   typeof s.topicMeaning === "string" ? s.topicMeaning.trim() : undefined,
-      meaning:        typeof s.meaning      === "string" ? s.meaning.trim()      : undefined,
+      meaning:
+        typeof s.meaning  === "string" ? s.meaning.trim()  :
+        typeof s.meanings === "string" ? s.meanings.trim() :
+        undefined,
     };
   });
 
@@ -308,16 +337,46 @@ function parseSingleCardJson(raw: string): SingleCardReading | null {
   }
 }
 
+/**
+ * 解析三張牌 JSON，容許部分欄位缺失並補上預設值。
+ * 只要 cards 陣列有至少 3 筆資料即視為可用。
+ */
 function parseThreeCardJson(raw: string): ThreeCardReading | null {
   try {
-    const json   = extractJsonString(raw);
+    const json = extractJsonString(raw);
     if (!json) return null;
-    const parsed = JSON.parse(json) as Partial<ThreeCardReading>;
-    if (parsed.spreadType !== "three") return null;
-    if (!Array.isArray(parsed.cards) || parsed.cards.length !== 3) return null;
-    if (!parsed.combinedReading || !parsed.next3To7Days) return null;
-    return parsed as ThreeCardReading;
-  } catch {
+    const p = JSON.parse(json) as Record<string, unknown>;
+
+    // cards 必須有 3 筆（核心結構）
+    if (!Array.isArray(p.cards) || p.cards.length < 3) {
+      console.warn("[tarot-reading] parseThreeCardJson: cards length <3, raw snippet:", raw.slice(0, 200));
+      return null;
+    }
+
+    const defaultPositions = ["目前狀態", "阻礙或盲點", "接下來的建議"];
+    const cards = (p.cards as unknown[]).slice(0, 3).map((c, i): ThreeCardEntry => {
+      const entry = (c && typeof c === "object" ? c : {}) as Record<string, unknown>;
+      return {
+        position:    typeof entry.position    === "string" ? entry.position    : defaultPositions[i]!,
+        cardName:    typeof entry.cardName    === "string" ? entry.cardName    : `第${i + 1}張牌`,
+        orientation: typeof entry.orientation === "string" ? entry.orientation : "正位",
+        message:     typeof entry.message     === "string" ? entry.message     : "這張牌的訊息正在凝聚中，請稍後再細細感受。",
+      };
+    }) as [ThreeCardEntry, ThreeCardEntry, ThreeCardEntry];
+
+    return {
+      spreadType:      "three",
+      category:        typeof p.category      === "string" ? p.category      : "生活綜合",
+      questionFocus:   typeof p.questionFocus === "string" ? p.questionFocus : "你的問題已收到，以下是這組牌的訊息。",
+      cards,
+      combinedReading: typeof p.combinedReading === "string" ? p.combinedReading : "這三張牌合在一起，指出了你目前最需要關注的方向，答案比你以為的更接近。",
+      next3To7Days:    typeof p.next3To7Days   === "string" ? p.next3To7Days   : "Day 1–2：先觀察當下的狀態，不急著行動\nDay 3–4：選一件可以執行的小事開始\nDay 5–7：把注意力收回來，整理自己的感受",
+      gentleReminder:  typeof p.gentleReminder === "string" ? p.gentleReminder : "答案就在你心裡，塔羅只是幫你照亮那個位置。",
+      blessing:        typeof p.blessing       === "string" ? p.blessing       : "願你在尋找答案的路上，也記得溫柔地陪著自己。",
+      safetyNote:      typeof p.safetyNote     === "string" && p.safetyNote ? p.safetyNote : undefined,
+    };
+  } catch (err) {
+    console.error("[tarot-reading] parseThreeCardJson failed:", err instanceof Error ? err.message : err);
     return null;
   }
 }
@@ -341,19 +400,35 @@ function formatSingleCardReading(r: SingleCardReading): string {
 }
 
 function formatThreeCardReading(r: ThreeCardReading): string {
-  const cardParts = r.cards.map(
-    (c, i) =>
-      `🃏 第${i + 1}張牌：${c.position}\n\n${c.cardName}（${c.orientation}）\n${c.message}`
+  // null-safe guard：任何欄位缺失都補上預設值，絕不 throw
+  const safe = {
+    category:        r.category        || "生活綜合",
+    questionFocus:   r.questionFocus   || "以下是這組牌對你問題的訊息。",
+    combinedReading: r.combinedReading || "這三張牌合在一起，指出你目前最需要關注的方向。",
+    next3To7Days:    r.next3To7Days    || "Day 1–2：先觀察當下狀態\nDay 3–4：選一件可執行的小事\nDay 5–7：整理自己的感受",
+    gentleReminder:  r.gentleReminder  || "答案就在你心裡，塔羅只是幫你照亮那個位置。",
+    blessing:        r.blessing        || "願你在尋找答案的路上，也記得溫柔地陪著自己。",
+  };
+
+  const cards = Array.isArray(r.cards) ? r.cards : [];
+  const cardParts = cards.map(
+    (c, i) => {
+      const pos = c?.position    || `第${i + 1}張`;
+      const name = c?.cardName   || `牌${i + 1}`;
+      const ori  = c?.orientation|| "正位";
+      const msg  = c?.message    || "這張牌的訊息正在凝聚中。";
+      return `🃏 第${i + 1}張牌：${pos}\n\n${name}（${ori}）\n${msg}`;
+    }
   );
 
   const parts: string[] = [
-    `🎯 本次問題焦點\n\n${r.category}`,
-    `🌙 宇宙偷偷話\n\n${r.questionFocus}`,
+    `🎯 本次問題焦點\n\n${safe.category}`,
+    `🌙 宇宙偷偷話\n\n${safe.questionFocus}`,
     ...cardParts,
-    `🔮 三張牌整合訊息\n\n${r.combinedReading}`,
-    `🕯️ 3～7 天行動建議\n\n${r.next3To7Days}`,
-    `🌌 給你的溫柔提醒\n\n${r.gentleReminder}`,
-    `💫 一句專屬祝福\n\n${r.blessing}`,
+    `🔮 三張牌整合訊息\n\n${safe.combinedReading}`,
+    `🕯️ 3～7 天行動建議\n\n${safe.next3To7Days}`,
+    `🌌 給你的溫柔提醒\n\n${safe.gentleReminder}`,
+    `💫 一句專屬祝福\n\n${safe.blessing}`,
   ];
   if (r.safetyNote) parts.push(`⚠️ 健康提醒\n\n${r.safetyNote}`);
   return parts.join("\n\n");
@@ -775,7 +850,10 @@ async function callSingleCard(
 
 // ═════════════════════════════════════════════════════════════════════════════
 // AI 呼叫 + JSON 解析 + 品質重試（三張牌）
+// 硬性限制：單次 AI 呼叫最多 22 秒；最多重試 1 次；超時直接返回 null
 // ═════════════════════════════════════════════════════════════════════════════
+
+const THREE_CARD_TIMEOUT_MS = 22000;
 
 async function callThreeCard(
   client: OpenAI,
@@ -788,7 +866,8 @@ async function callThreeCard(
 ): Promise<string | null> {
   const tryGenerate = async (antiHint: string): Promise<string | null> => {
     try {
-      const res = await client.responses.create({
+      // 用 Promise.race 強制 timeout，避免 AI 呼叫無限等待
+      const aiCall = client.responses.create({
         model,
         input: [
           { role: "system", content: TAROT_READING_SYSTEM_PROMPT },
@@ -796,146 +875,216 @@ async function callThreeCard(
         ],
         max_output_tokens: maxTokens,
       });
-      const raw = res.output_text?.trim();
+      const timeoutGuard = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("three_card_ai_timeout")), THREE_CARD_TIMEOUT_MS)
+      );
+
+      const res = await Promise.race([aiCall, timeoutGuard]);
+      const raw = (res as Awaited<typeof aiCall>).output_text?.trim() ?? "";
+
+      console.log("[tarot-reading] AI raw response first 300 chars:", raw.slice(0, 300));
+
       if (!raw) return null;
       const parsed = parseThreeCardJson(raw);
+      const parseSuccess = parsed !== null;
+      console.log("[tarot-reading] parse success:", parseSuccess);
       if (!parsed) return null;
       return formatThreeCardReading(parsed);
-    } catch {
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[tarot-reading] callThreeCard error:", msg);
       return null;
     }
   };
 
+  // 第一次嘗試
   const first = await tryGenerate("");
   if (!first) return null;
 
-  if (isGenericResponse(first, cards)) {
+  // 放寬品質檢查：只要至少一張牌名出現即可，不強制全部出現
+  // （三張牌 AI 可能把某些牌名寫成不同格式）
+  const anyCardMentioned = cards.some((c) => first.includes(c.name));
+  const tooManyBannedPhrases =
+    BANNED_GENERIC_PHRASES.filter((p) => first.includes(p)).length >= 3;
+
+  if (!anyCardMentioned || tooManyBannedPhrases) {
+    console.log("[tarot-reading] quality check failed, retrying once...");
     const retry = await tryGenerate(ANTI_SIMILARITY_HINT);
-    return retry ?? first;
+    return retry ?? first; // 重試失敗也返回 first，不返回 null
   }
 
   return first;
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// POST Handler（業務邏輯不改：限流 / admin / 付款）
+// POST Handler
+// 最外層 try/catch 確保任何情況都不 throw 502，永遠回傳 JSON
+// 業務邏輯不改：限流 / admin / 付款
 // ═════════════════════════════════════════════════════════════════════════════
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null);
+  const start = Date.now();
 
-  if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "請提供有效的解讀資料。" }, { status: 400 });
-  }
+  // ── 全域 try/catch：任何未預期錯誤都走 fallback，不 throw 502 ───────────────
+  try {
+    const body = await request.json().catch(() => null);
 
-  const source = body as {
-    cards?: unknown;
-    topic?: unknown;
-    question?: unknown;
-    readingMode?: unknown;
-    anonymousId?: unknown;
-    paidMode?: unknown;
-  };
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ error: "請提供有效的解讀資料。" }, { status: 400 });
+    }
 
-  const cards       = normalizeCards(source.cards);
-  const topic       = isTopic(source.topic) ? source.topic : null;
-  const question    = typeof source.question === "string" ? source.question.trim().slice(0, 600) : "";
-  const readingMode = isReadingMode(source.readingMode) ? source.readingMode : "premium";
-  const anonymousId = typeof source.anonymousId === "string" ? source.anonymousId.slice(0, 128) : null;
-  const paidMode    = source.paidMode === true;
+    const source = body as {
+      cards?: unknown;
+      topic?: unknown;
+      question?: unknown;
+      readingMode?: unknown;
+      anonymousId?: unknown;
+      paidMode?: unknown;
+    };
 
-  const idToken = request.headers.get("x-firebase-id-token");
-  const isAdmin = await verifyAdminIdToken(idToken);
+    const cards       = normalizeCards(source.cards);
+    const topic       = isTopic(source.topic) ? source.topic : null;
+    const question    = typeof source.question === "string" ? source.question.trim().slice(0, 600) : "";
+    const readingMode = isReadingMode(source.readingMode) ? source.readingMode : "premium";
+    const anonymousId = typeof source.anonymousId === "string" ? source.anonymousId.slice(0, 128) : null;
+    const paidMode    = source.paidMode === true;
 
-  if (!cards) {
-    return NextResponse.json({ error: "請提供 1 到 3 張有效牌卡。" }, { status: 400 });
-  }
-  if (!topic) {
-    return NextResponse.json({ error: "請提供有效的解讀主題。" }, { status: 400 });
-  }
+    const idToken = request.headers.get("x-firebase-id-token");
+    const isAdmin = await verifyAdminIdToken(idToken);
 
-  const isSingle = cards.length === 1;
+    if (!cards) {
+      return NextResponse.json({ error: "請提供 1 到 3 張有效牌卡。" }, { status: 400 });
+    }
+    if (!topic) {
+      return NextResponse.json({ error: "請提供有效的解讀主題。" }, { status: 400 });
+    }
 
-  // ── 免費版（靜態，Firestore 限流）────────────────────────────────────────────
-  if (readingMode === "free" || readingMode === "premium") {
-    const ip: string = getRequestIp(request);
-    const feature: RateLimitFeature = isSingle ? "single_tarot" : "three_card";
+    const isSingle   = cards.length === 1;
+    const spreadType = isSingle ? "single" : "three";
 
-    if (!isAdmin && !paidMode) {
-      try {
-        const limitResult = await checkAndIncrementLimit({
-          ip, anonymousId, lineUserId: null, feature,
-        });
-        if (!limitResult.allowed) {
-          return NextResponse.json({ error: limitResult.message }, { status: 429 });
+    // ── debug log ──────────────────────────────────────────────────────────────
+    console.log("[tarot-reading] spreadType:", spreadType);
+    console.log("[tarot-reading] cards length:", cards.length);
+    console.log("[tarot-reading] normalized cards:", cards.map((c) => c.name));
+    console.log("[tarot-reading] readingMode:", readingMode);
+    console.log("[tarot-reading] question:", question.slice(0, 80));
+
+    // ── 免費版（靜態，Firestore 限流）────────────────────────────────────────────
+    if (readingMode === "free" || readingMode === "premium") {
+      const ip: string = getRequestIp(request);
+      const feature: RateLimitFeature = isSingle ? "single_tarot" : "three_card";
+
+      if (!isAdmin && !paidMode) {
+        try {
+          const limitResult = await checkAndIncrementLimit({
+            ip, anonymousId, lineUserId: null, feature,
+          });
+          if (!limitResult.allowed) {
+            return NextResponse.json({ error: limitResult.message }, { status: 429 });
+          }
+        } catch (err) {
+          console.error("[rate-limit] checkAndIncrementLimit failed:", err);
         }
-      } catch (err) {
-        console.error("[rate-limit] checkAndIncrementLimit failed:", err);
+      }
+
+      if (readingMode === "free") {
+        return NextResponse.json({
+          readingMode,
+          reading: buildFreeReading(cards, topic, question),
+          success: true,
+          fallback: false,
+        });
       }
     }
 
-    if (readingMode === "free") {
+    const apiKey = process.env.OPENAI_API_KEY;
+    const model  = process.env.OPENAI_MODEL ?? DEFAULT_MODEL;
+
+    // ── 廣告解鎖版（standard 深度）──────────────────────────────────────────────
+    if (readingMode === "ad") {
+      if (!apiKey) {
+        console.log("[tarot-reading] fallback: no API key (ad)");
+        return NextResponse.json({
+          readingMode,
+          reading: isSingle
+            ? buildSingleCardFallback(cards[0], topic, question)
+            : buildThreeCardFallback(cards, topic, question),
+          success: true,
+          fallback: true,
+        });
+      }
+
+      const client = new OpenAI({ apiKey });
+
+      // 三張牌 token 限制在 1400（不超時），單張維持 1000
+      const reading = isSingle
+        ? await callSingleCard(client, model, cards[0], topic, question, "standard", 1000)
+        : await callThreeCard (client, model, cards,    topic, question, "standard", 1400);
+
+      const usedFallback = !reading;
+      console.log("[tarot-reading] fallback:", usedFallback);
+      console.log("[tarot-reading] total ms:", Date.now() - start);
+
       return NextResponse.json({
         readingMode,
-        reading: buildFreeReading(cards, topic, question),
+        reading: reading ?? (
+          isSingle
+            ? buildSingleCardFallback(cards[0], topic, question)
+            : buildThreeCardFallback(cards, topic, question)
+        ),
+        success: true,
+        fallback: usedFallback,
       });
     }
-  }
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  const model  = process.env.OPENAI_MODEL ?? DEFAULT_MODEL;
-
-  // ── 廣告解鎖版（standard 深度）──────────────────────────────────────────────
-  if (readingMode === "ad") {
+    // ── Premium 版（deep 深度）────────────────────────────────────────────────
     if (!apiKey) {
+      console.log("[tarot-reading] fallback: no API key (premium)");
       return NextResponse.json({
         readingMode,
         reading: isSingle
           ? buildSingleCardFallback(cards[0], topic, question)
           : buildThreeCardFallback(cards, topic, question),
-        preview: true,
+        success: true,
+        fallback: true,
       });
     }
 
     const client = new OpenAI({ apiKey });
 
+    // 三張牌 premium token 限制在 1600，單張 1400
     const reading = isSingle
-      ? await callSingleCard(client, model, cards[0], topic, question, "standard", 1000)
-      : await callThreeCard(client, model, cards,    topic, question, "standard", 2000);
+      ? await callSingleCard(client, model, cards[0], topic, question, "deep", 1400)
+      : await callThreeCard (client, model, cards,    topic, question, "deep", 1600);
 
-    if (!reading) {
-      return NextResponse.json({
-        readingMode,
-        reading: isSingle
-          ? buildSingleCardFallback(cards[0], topic, question)
-          : buildThreeCardFallback(cards, topic, question),
-        preview: true,
-      });
-    }
+    const usedFallback = !reading;
+    console.log("[tarot-reading] fallback:", usedFallback);
+    console.log("[tarot-reading] total ms:", Date.now() - start);
 
-    return NextResponse.json({ readingMode, reading });
-  }
-
-  // ── Premium 版（deep 深度）──────────────────────────────────────────────────
-  if (!apiKey) {
+    // ── 永遠回傳 200，永遠有 reading，不再回傳 502 ────────────────────────────
     return NextResponse.json({
       readingMode,
-      reading: isSingle
-        ? buildSingleCardFallback(cards[0], topic, question)
-        : buildThreeCardFallback(cards, topic, question),
-      preview: true,
+      reading: reading ?? (
+        isSingle
+          ? buildSingleCardFallback(cards[0], topic, question)
+          : buildThreeCardFallback(cards, topic, question)
+      ),
+      success: true,
+      fallback: usedFallback,
+    });
+
+  } catch (unexpectedErr) {
+    // 最後一道防線：任何未預期錯誤，記錄並回傳 200 + error 訊息
+    const errMsg = unexpectedErr instanceof Error ? unexpectedErr.message : String(unexpectedErr);
+    console.error("[tarot-reading] UNEXPECTED ERROR:", errMsg);
+    console.log("[tarot-reading] total ms:", Date.now() - start);
+
+    return NextResponse.json({
+      readingMode: "premium",
+      reading: "宇宙訊息暫時無法傳遞，請重新抽牌試試。這不是你的問題，是宇宙在整理訊號中 🌙",
+      success: false,
+      fallback: true,
+      error: process.env.NODE_ENV === "development" ? errMsg : undefined,
     });
   }
-
-  const client = new OpenAI({ apiKey });
-
-  const reading = isSingle
-    ? await callSingleCard(client, model, cards[0], topic, question, "deep", 1400)
-    : await callThreeCard(client, model, cards,    topic, question, "deep", 2800);
-
-  if (!reading) {
-    return NextResponse.json({ error: "宇宙訊息暫時沒有成形，請稍後再試。" }, { status: 502 });
-  }
-
-  return NextResponse.json({ readingMode, reading });
 }
