@@ -40,6 +40,20 @@ const spreadQuestionGroups = {
   },
 } satisfies Record<TarotTopicOption, { title: string; questions: readonly string[] }>;
 
+// 單張牌範例問題（依分類）
+const singleCardQuestions = {
+  愛情: ["他現在怎麼想？", "這段感情值得繼續嗎？", "我該主動靠近嗎？", "對方真正沒說出口的是什麼？"],
+  工作: ["我該不該換工作？", "目前方向適合我嗎？", "面試結果會順利嗎？", "我現在卡住的原因是什麼？"],
+  生活: ["今天宇宙想提醒我什麼？", "最近狀態低落的原因？", "我該怎麼調整節奏？", "接下來一週需要注意什麼？"],
+} satisfies Record<TarotTopicOption, readonly string[]>;
+
+// textarea placeholder 依分類切換
+const textareaPlaceholders = {
+  愛情: "例如：他現在怎麼想？這段關係下一步？我該主動靠近嗎？",
+  工作: "例如：我該不該換工作？目前方向適合我嗎？卡住的原因是什麼？",
+  生活: "例如：今天宇宙想提醒我什麼？最近狀態低落的原因？",
+} satisfies Record<TarotTopicOption, string>;
+
 function toReadingTopic(topic: TarotTopicOption): ReadingTopic {
   if (topic === "工作") return "career";
   if (topic === "愛情") return "love";
@@ -258,8 +272,12 @@ function parseThreeCardSections(text: string): ThreeCardParsedSections {
   return result;
 }
 
+// 單張牌完整版：不顯示「本次問題焦點」（category 已由分類按鈕表示）
+const SINGLE_CARD_HIDDEN_TITLES = new Set(["本次問題焦點"]);
+
 function ReadingSectionList({ text, limit }: { text: string; limit?: number }) {
-  const sections = parseReadingSectionsForDisplay(text);
+  const sections = parseReadingSectionsForDisplay(text)
+    .filter((s) => !SINGLE_CARD_HIDDEN_TITLES.has(s.title));
   const visibleSections = typeof limit === "number" ? sections.slice(0, limit) : sections;
 
   return (
@@ -337,7 +355,8 @@ type OverallSummaryParsed = {
 
 function parseOverallSummary(text: string): OverallSummaryParsed {
   if (!text) return { raw: "" };
-  const verdictM = text.match(/核心判斷[：:]\s*\n?([\s\S]*?)(?=\n\n?為什麼會這樣[：:]|$)/);
+  // 支援「整體答案」（新）和「核心判斷」（舊）兩種標籤
+  const verdictM = text.match(/(?:整體答案|核心判斷)[：:]\s*\n?([\s\S]*?)(?=\n\n?為什麼會這樣[：:]|$)/);
   const reasonM  = text.match(/為什麼會這樣[：:]\s*\n?([\s\S]*)$/);
   const verdict  = verdictM?.[1]?.trim();
   const reason   = reasonM?.[1]?.trim();
@@ -396,28 +415,7 @@ function ThreeCardReadingDisplay({
   return (
     <div className="space-y-4">
 
-      {/* 牌陣總結：最上方 highlight 卡片，分「核心判斷」+「為什麼會這樣」 */}
-      {s.overallSummary ? (() => {
-        const parsed = parseOverallSummary(s.overallSummary);
-        return (
-          <article
-            className="reading-fade-in rounded-2xl border border-[#d8bd70]/30 bg-gradient-to-br from-[#d8bd70]/10 to-midnight/60 p-5 shadow-[0_0_28px_rgba(216,189,112,0.10)]"
-            style={{ animationDelay: "0s" }}
-          >
-            <p className="mb-3 text-xs tracking-[0.22em] text-[#d8bd70]/75 uppercase">牌陣總結</p>
-            {parsed.verdict && parsed.reason ? (
-              <div className="space-y-3">
-                <p className="text-lg font-semibold leading-8 text-moon">{parsed.verdict}</p>
-                <p className="text-base leading-[1.85] text-moon/72">{parsed.reason}</p>
-              </div>
-            ) : (
-              <p className="text-lg font-medium leading-[1.85] text-moon">{parsed.raw}</p>
-            )}
-          </article>
-        );
-      })() : null}
-
-      {/* 逐張牌解讀：每張分三小段 */}
+      {/* ── 逐張牌解讀：每張分三小段（牌陣總結已移到行動建議之後）── */}
       {cardSections.map(({ data, card, idx }) => {
         if (!data.body) return null;
         const sub = parseCardSubsections(data.body);
@@ -483,7 +481,7 @@ function ThreeCardReadingDisplay({
         );
       })}
 
-      {/* 「三張牌整合訊息」已移除 — 內容已整合入牌陣總結的「為什麼會這樣」 */}
+      {/* 「三張牌整合訊息」已移除 — 內容已整合入牌陣總結 */}
 
       {/* 3～7 天行動建議：Day 1～2｜動詞 + 說明 */}
       {s.actionSteps ? (
@@ -504,21 +502,48 @@ function ThreeCardReadingDisplay({
         </article>
       ) : null}
 
-      {/* 溫柔提醒 */}
-      {s.reminder ? (
-        <article className={baseCard} style={{ animationDelay: "1.1s" }}>
-          <p className={baseTitle}>給你的溫柔提醒</p>
-          <p className={baseBody}>{s.reminder}</p>
-        </article>
-      ) : null}
+      {/* 牌陣總結：移到行動建議之後，閱讀完三張牌再看整體答案更自然 */}
+      {s.overallSummary ? (() => {
+        const parsed = parseOverallSummary(s.overallSummary);
+        return (
+          <article
+            className="reading-fade-in rounded-2xl border border-[#d8bd70]/30 bg-gradient-to-br from-[#d8bd70]/10 to-midnight/60 p-5 shadow-[0_0_28px_rgba(216,189,112,0.10)]"
+            style={{ animationDelay: "1.1s" }}
+          >
+            <p className="mb-3 text-xs tracking-[0.22em] text-[#d8bd70]/75 uppercase">牌陣總結</p>
+            {parsed.verdict && parsed.reason ? (
+              <div className="space-y-3">
+                <div>
+                  <p className="mb-1 text-xs font-semibold tracking-wide text-[#d8bd70]/65">整體答案</p>
+                  <p className="text-lg font-semibold leading-8 text-moon">{parsed.verdict}</p>
+                </div>
+                <div className="border-t border-white/10 pt-3">
+                  <p className="mb-1 text-xs font-semibold tracking-wide text-[#d8bd70]/65">為什麼會這樣</p>
+                  <p className="text-base leading-[1.85] text-moon/78">{parsed.reason}</p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-lg font-medium leading-[1.85] text-moon">{parsed.raw}</p>
+            )}
+          </article>
+        );
+      })() : null}
 
-      {/* 一句祝福 */}
-      {s.blessing ? (
+      {/* 心靈收束 / 宇宙給你的最後一句話 — 合併溫柔提醒 + 專屬祝福 */}
+      {(s.reminder || s.blessing) ? (
         <article
-          className="reading-fade-in rounded-2xl border border-lavender/20 bg-midnight/40 p-4 text-center"
+          className="reading-fade-in rounded-2xl border border-lavender/25 bg-gradient-to-br from-lavender/8 to-midnight/70 p-5"
           style={{ animationDelay: "1.3s" }}
         >
-          <p className="text-base italic leading-8 text-moon/80">{s.blessing}</p>
+          <p className="mb-3 text-xs tracking-[0.22em] text-lavender/65 uppercase">心靈收束</p>
+          {s.reminder ? (
+            <p className="text-base leading-[1.85] text-moon/82">{s.reminder}</p>
+          ) : null}
+          {s.blessing ? (
+            <p className={`text-base italic leading-8 text-moon/70 text-center ${s.reminder ? "mt-4 border-t border-white/8 pt-4" : ""}`}>
+              {s.blessing}
+            </p>
+          ) : null}
         </article>
       ) : null}
 
@@ -1510,6 +1535,25 @@ export function TarotDrawClient() {
         <span className="floating-star left-[74%] top-[82%] animation-delay-300" />
       </div>
 
+      {/* ✨ Operation guide ✨ */}
+      <div className="relative z-10 mb-6 rounded-2xl border border-white/8 bg-midnight/30 px-4 py-4">
+        <p className="mb-3 text-xs tracking-[0.2em] text-moon/45 uppercase">怎麼使用</p>
+        <ol className="space-y-2.5">
+          <li className="flex gap-3 text-sm text-moon/70">
+            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-lavender/40 text-xs text-lavender">1</span>
+            <span><span className="font-medium text-moon/90">選擇抽牌方式</span>　單張牌接收一句宇宙提醒；三張牌從過去、現在、未來看完整流動。</span>
+          </li>
+          <li className="flex gap-3 text-sm text-moon/70">
+            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-lavender/40 text-xs text-lavender">2</span>
+            <span><span className="font-medium text-moon/90">選擇想問的方向</span>　愛情、工作或生活，宇宙會依照你選的方向解讀。</span>
+          </li>
+          <li className="flex gap-3 text-sm text-moon/70">
+            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-lavender/40 text-xs text-lavender">3</span>
+            <span><span className="font-medium text-moon/90">輸入你的問題</span>　把想問的事寫下來，越具體，解讀越貼近你。</span>
+          </li>
+        </ol>
+      </div>
+
       {/* ?? Mode selector ?? */}
       <div className="relative z-10 grid gap-3 sm:grid-cols-2">
         {modes.map((item) => (
@@ -1583,6 +1627,29 @@ export function TarotDrawClient() {
         </div>
       ) : null}
 
+      {/* ✨ Single-card example questions ✨ */}
+      {mode === "single_tarot" ? (
+        <div className="relative z-10 mt-6 rounded-3xl border border-lavender/18 bg-midnight/38 p-4">
+          <p className="text-sm tracking-[0.22em] text-lavender/70">範例問題</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {singleCardQuestions[topic].map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setQuestion(item)}
+                className={`rounded-2xl border px-3 py-2 text-left text-sm leading-6 transition ${
+                  question === item
+                    ? "border-moon bg-moon text-midnight"
+                    : "border-white/12 bg-white/8 text-moon/78 hover:bg-white/12"
+                }`}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       {/* ?? Question input ?? */}
       <div className="relative z-10 mt-6">
         <p className="text-base font-medium text-moon">把想問的事交給宇宙</p>
@@ -1604,7 +1671,7 @@ export function TarotDrawClient() {
           setSelectedSpreadQuestion("");
         }}
         className="relative z-10 mt-3 min-h-32 w-full resize-none rounded-3xl border border-white/12 bg-midnight/58 p-4 text-base leading-7 text-moon outline-none transition placeholder:text-moon/40 focus:border-lavender"
-        placeholder="例如：他現在怎麼想？我該不該換工作？今天宇宙想提醒我什麼？"
+        placeholder={textareaPlaceholders[topic]}
       />
 
       {/* ?? Draw button ?? */}
