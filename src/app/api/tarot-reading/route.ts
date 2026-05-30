@@ -328,13 +328,18 @@ function extractJsonString(raw: string): string {
   return s.slice(start, end + 1);
 }
 
-function parseSingleCardJson(raw: string): SingleCardReading | null {
+/**
+ * forcedCategory：用使用者選擇的分類（愛情/工作/生活）覆蓋 AI 輸出的 category，
+ * 防止 AI 返回「生活綜合」等錯誤分類。
+ */
+function parseSingleCardJson(raw: string, forcedCategory?: string): SingleCardReading | null {
   try {
     const json   = extractJsonString(raw);
     if (!json) return null;
     const parsed = JSON.parse(json) as Partial<SingleCardReading>;
     if (parsed.spreadType !== "single") return null;
     if (!parsed.cardMessage || !parsed.oneLineConclusion || !parsed.todayAction) return null;
+    if (forcedCategory) parsed.category = forcedCategory;
     return parsed as SingleCardReading;
   } catch {
     return null;
@@ -343,9 +348,9 @@ function parseSingleCardJson(raw: string): SingleCardReading | null {
 
 /**
  * 解析三張牌 JSON，容許部分欄位缺失並補上預設值。
- * 只要 cards 陣列有至少 3 筆資料即視為可用。
+ * forcedCategory：用使用者選擇的分類覆蓋 AI 輸出的 category。
  */
-function parseThreeCardJson(raw: string): ThreeCardReading | null {
+function parseThreeCardJson(raw: string, forcedCategory?: string): ThreeCardReading | null {
   try {
     const json = extractJsonString(raw);
     if (!json) return null;
@@ -392,19 +397,21 @@ function parseThreeCardJson(raw: string): ThreeCardReading | null {
       actionSteps = ["Day 1–2：先觀察當下的狀態，不急著行動", "Day 3–4：選一件可以執行的小事開始", "Day 5–7：把注意力收回來，整理自己的感受"];
     }
 
-    return {
+    const result: ThreeCardReading = {
       spreadType:      "three",
-      category:        typeof p.category       === "string" ? p.category       : "生活綜合",
+      // forcedCategory 永遠優先（使用者選擇的分類），防止 AI 返回錯誤類別
+      category:        forcedCategory ?? (typeof p.category === "string" ? p.category : "生活綜合"),
       questionFocus:   typeof p.questionFocus  === "string" ? p.questionFocus  : "你的問題已收到，以下是這組牌的訊息。",
       overallSummary:  typeof p.overallSummary === "string" ? p.overallSummary : "這三張牌合在一起，指出了你目前最需要關注的方向，答案比你以為的更接近。",
       cards,
-      combinedReading: typeof p.combinedReading === "string" ? p.combinedReading : "這三張牌之間有一條清晰的脈絡，需要從三個面向一起看才能完整理解。",
+      combinedReading: typeof p.combinedReading === "string" ? p.combinedReading : "",
       actionSteps,
       next3To7Days:    actionSteps.join("\n"),
       gentleReminder:  typeof p.gentleReminder === "string" ? p.gentleReminder : "答案就在你心裡，塔羅只是幫你照亮那個位置。",
       blessing:        typeof p.blessing       === "string" ? p.blessing       : "願你在尋找答案的路上，也記得溫柔地陪著自己。",
       safetyNote:      typeof p.safetyNote     === "string" && p.safetyNote ? p.safetyNote : undefined,
     };
+    return result;
   } catch (err) {
     console.error("[tarot-reading] parseThreeCardJson failed:", err instanceof Error ? err.message : err);
     return null;
@@ -479,7 +486,7 @@ function formatThreeCardReading(r: ThreeCardReading): string {
   }
 
   parts.push(...cardParts);
-  parts.push(`🔮 三張牌整合訊息\n\n${safe.combinedReading}`);
+  // 「三張牌整合訊息」已移除（內容合併進「牌陣總結」的「為什麼會這樣」段落）
   parts.push(`🕯️ 3～7 天行動建議\n\n${actionStepsText}`);
   parts.push(`🌌 給你的溫柔提醒\n\n${safe.gentleReminder}`);
   parts.push(`💫 一句專屬祝福\n\n${safe.blessing}`);
@@ -605,7 +612,8 @@ function buildSingleCardFallback(
   question: string
 ): string {
   const focus      = detectQuestionFocus(question);
-  const focusLabel = getFocusLabel(focus);
+  // 永遠使用使用者選擇的分類，而非 detectQuestionFocus 的結果
+  const focusLabel = getTopicLabel(_topic);
   const ori        = card.position === "upright" ? "正位" : "逆位";
   const isUpright  = card.position === "upright";
   const kw         = card.keywords?.slice(0, 3).join("、") || "";
@@ -679,7 +687,8 @@ function buildThreeCardFallback(
   question: string
 ): string {
   const focus      = detectQuestionFocus(question);
-  const focusLabel = getFocusLabel(focus);
+  // 永遠使用使用者選擇的分類，而非 detectQuestionFocus 的結果
+  const focusLabel = getTopicLabel(_topic);
   const spreadLabels = getSpreadLabels();
 
   const defaultPositions = ["目前狀態", "阻礙或盲點", "接下來的建議"];
@@ -799,9 +808,9 @@ function buildFreeReading(
   question: string
 ): string {
   const focus      = detectQuestionFocus(question);
-  const focusLabel = getFocusLabel(focus);
   const isSingle   = cards.length === 1;
   const spreadLabels = getSpreadLabels();
+  // 永遠使用使用者選擇的分類（topic），不要用 detectQuestionFocus 的結果
   const topicLabel = getTopicLabel(topic);
 
   const cardLine = cards
@@ -832,7 +841,7 @@ function buildFreeReading(
 
   return `🎯 本次問題焦點
 
-${focusLabel}
+${topicLabel}
 
 🌙 宇宙偷偷話
 
@@ -923,7 +932,7 @@ ${antiSimilarityHint}
 【輸出 JSON 格式】
 {
   "spreadType": "single",
-  "category": "${focusLabel}",
+  "category": "${getTopicLabel(topic)}",
   "cardName": "${card.name}",
   "orientation": "${ori}",
   "questionFocus": "（${depthSpec.questionFocus}）",
@@ -1043,13 +1052,13 @@ ${antiSimilarityHint}
 【輸出 JSON 格式】
 {
   "spreadType": "three",
-  "category": "${focusLabel}",
+  "category": "${getTopicLabel(topic)}",
   "questionFocus": "（30～50字，說明使用者這次問題的核心）",
-  "overallSummary": "核心判斷：\\n（30～50字，一句話直接回答使用者問題，說出這組牌顯示的狀況，不要用「先整理自己」「方向會清楚」這種通用語）\\n\\n為什麼會這樣：\\n（50～100字，說明三張牌共同指向的原因，必須引用牌名）",
+  "overallSummary": "核心判斷：\\n（30～50字，一句話直接回答使用者問題，說出這組牌顯示的狀況，不要用「先整理自己」「方向會清楚」這種通用語）\\n\\n為什麼會這樣：\\n（80～150字，說明三張牌共同指向的原因，必須引用全部三張牌名：${cardNamesForHint}，說明三張牌之間的關係、使用者真正卡住的點、接下來應該前進/等待/調整/放下/重新評估哪一種方向，以及為什麼）",
   "cards": [
 ${positionSchema}
   ],
-  "combinedReading": "（${combSpec}，必須回答：①這三張牌共同指出的主要問題是什麼 ②使用者目前最需要先處理的是什麼 ③接下來應該前進/等待/調整/放下/重新評估哪一種 ④為什麼。必須同時提到三張牌名：${cardNamesForHint}。禁止模板句：「答案不是單一原因」「需要從三個面向一起看」）",
+  "combinedReading": "",
   "actionSteps": [
     "Day 1～2｜（2-4字動詞短語，例如「先釐清」「整理帳務」）\\n（50-70字，具體說明怎麼做）",
     "Day 3～4｜（2-4字動詞短語）\\n（50-70字，具體行動，不能和Day1-2重複）",
@@ -1086,7 +1095,8 @@ async function callSingleCard(
       });
       const raw = res.output_text?.trim();
       if (!raw) return null;
-      const parsed = parseSingleCardJson(raw);
+      // 強制使用使用者選擇的分類（topic），不讓 AI 覆蓋
+      const parsed = parseSingleCardJson(raw, getTopicLabel(topic));
       if (!parsed) return null;
       return formatSingleCardReading(parsed);
     } catch {
@@ -1144,7 +1154,8 @@ async function callThreeCard(
       console.log("[tarot-reading] AI raw response first 300 chars:", raw.slice(0, 300));
 
       if (!raw) return null;
-      const parsed = parseThreeCardJson(raw);
+      // 強制使用使用者選擇的分類（topic），不讓 AI 覆蓋
+      const parsed = parseThreeCardJson(raw, getTopicLabel(topic));
       const parseSuccess = parsed !== null;
       console.log("[tarot-reading] parse success:", parseSuccess);
       if (!parsed) return null;

@@ -483,13 +483,7 @@ function ThreeCardReadingDisplay({
         );
       })}
 
-      {/* 三張牌整合訊息 */}
-      {s.combined ? (
-        <article className={baseCard} style={{ animationDelay: "0.7s" }}>
-          <p className={baseTitle}>三張牌整合訊息</p>
-          <p className="mt-2 whitespace-pre-line text-base leading-[1.85] text-moon/80">{s.combined}</p>
-        </article>
-      ) : null}
+      {/* 「三張牌整合訊息」已移除 — 內容已整合入牌陣總結的「為什麼會這樣」 */}
 
       {/* 3～7 天行動建議：Day 1～2｜動詞 + 說明 */}
       {s.actionSteps ? (
@@ -544,37 +538,94 @@ function ThreeCardReadingDisplay({
 }
 
 function buildFreeSummary(cards: TarotCardFaceData[], fullReading: string) {
+  // 跳過「本次問題焦點」（只有類別標籤）和「一句話結論」，取有內容的段落
+  const SKIP_TITLES = new Set(["本次問題焦點", "一句話結論"]);
   const sections = fullReading.trim()
-    ? parseReadingSectionsForDisplay(fullReading).slice(0, 3)
+    ? parseReadingSectionsForDisplay(fullReading)
+        .filter((s) => !SKIP_TITLES.has(s.title) && s.body.length > 10)
+        .slice(0, 2)
     : [];
   const firstLines = sections.map((s) => s.body).join(" ");
-  const fallback = cards.map((c) => c.cosmicMessage).join(" ");
-  const source =
-    firstLines || fallback || "宇宙正在整理這次抽牌的核心訊息。";
+  const fallback = cards.map((c) => c.cosmicMessage).filter(Boolean).join(" ");
+  const source = firstLines || fallback || "宇宙正在整理這次抽牌的核心訊息。";
 
   return {
-    message: source.length > 96 ? `${source.slice(0, 96)}...` : source,
+    message: source.length > 100 ? `${source.slice(0, 98)}...` : source,
     reminder: "完整解讀請回網站分享 Facebook 解鎖。",
   };
+}
+
+/** 分類標籤，用於分享圖 */
+function getTopicShareLabel(topic: TarotTopicOption): string {
+  if (topic === "愛情") return "愛情訊息";
+  if (topic === "工作") return "工作訊息";
+  return "生活訊息";
+}
+
+/** 分類對應的分享圖吸引力標題 */
+function getShareTitle(topic: TarotTopicOption, card: TarotCardFaceData | undefined): string {
+  const cardDesc = card ? `${card.name}（${card.orientationLabel}）` : "";
+  if (topic === "愛情") {
+    const titles = [
+      "這張牌看見了你對這段關係真正的感受。",
+      "不是沒有感覺，而是有些話還沒說清楚。",
+      "關鍵不是誰主動，而是這段關係是否值得繼續消耗。",
+      "你不是放不下，而是還沒看清楚對方真正的態度。",
+    ];
+    return (cardDesc ? `${cardDesc}出現，提示你—— ` : "") +
+      (card ? titles[card.name.length % titles.length] : titles[0]);
+  }
+  if (topic === "工作") {
+    const titles = [
+      "你不是沒有能力，而是方向需要重新確認。",
+      "現在不是硬衝的時候，先看清真正卡住你的點。",
+      "機會有出現，但你需要先整理自己的籌碼。",
+      "這張牌提示你：停下來看清方向，比繼續衝更重要。",
+    ];
+    return (cardDesc ? `${cardDesc}出現，提示你—— ` : "") +
+      (card ? titles[card.name.length % titles.length] : titles[0]);
+  }
+  // 生活
+  const titles = [
+    "你正在轉變，只是還沒完全看清下一步。",
+    "現在的混亂，正在逼你看見真正重要的事。",
+    "這不是停滯，而是宇宙要你重新整理內在秩序。",
+    "這張牌提示你：最需要的不是答案，而是先停下來聽自己。",
+  ];
+  return (cardDesc ? `${cardDesc}出現，提示你—— ` : "") +
+    (card ? titles[card.name.length % titles.length] : titles[0]);
 }
 
 function buildStoryCopy(
   card: TarotCardFaceData | undefined,
   fullReading: string,
   freeSummary: { message: string; reminder: string },
+  topic?: TarotTopicOption,
 ) {
-  const sections = fullReading.trim() ? parseReadingSectionsForDisplay(fullReading) : [];
-  const resultText =
-    sections[0]?.body || card?.cosmicMessage || freeSummary.message || READING_FALLBACK_TEXT;
-  const adviceText =
-    sections[1]?.body ||
-    sections[2]?.body ||
-    freeSummary.reminder ||
-    "請回到心裡最安靜的位置，慢慢看見答案。";
+  const SKIP_TITLES = new Set(["本次問題焦點", "一句話結論"]);
+  const sections = fullReading.trim()
+    ? parseReadingSectionsForDisplay(fullReading).filter((s) => !SKIP_TITLES.has(s.title))
+    : [];
+
+  // 取「宇宙偷偷話」或「這張牌正在說什麼」段落作為分享主文
+  const mainSection = sections.find((s) =>
+    s.title.includes("宇宙偷偷話") || s.title.includes("這張牌正在說") || s.title.includes("牌陣總結")
+  );
+  const mainText = mainSection?.body || card?.cosmicMessage || freeSummary.message || READING_FALLBACK_TEXT;
+
+  // 使用分類標題 + 吸引力文案作為 resultText（分享圖主標）
+  const categoryLabel = topic ? getTopicShareLabel(topic) : "宇宙訊息";
+  const shareTitle    = getShareTitle(topic ?? "生活", card);
+  const resultText    = `${categoryLabel}\n${shareTitle}`;
+
+  // adviceText 用一句話結論或解鎖引導
+  const conclusionSection = sections.find((s) => s.title.includes("一句話結論"));
+  const teaser = "分享後解鎖完整訊息，看見這張牌真正想提醒你的事。";
+  const adviceText = conclusionSection?.body || mainText.slice(0, 60) + (mainText.length > 60 ? "…" : "") || teaser;
 
   return {
-    resultText: resultText.length > 118 ? `${resultText.slice(0, 116)}...` : resultText,
-    adviceText: adviceText.length > 82 ? `${adviceText.slice(0, 80)}...` : adviceText,
+    resultText: resultText.length > 130 ? `${resultText.slice(0, 128)}...` : resultText,
+    adviceText: adviceText.length > 85 ? `${adviceText.slice(0, 83)}...` : adviceText,
   };
 }
 
@@ -907,7 +958,7 @@ export function TarotDrawClient() {
   const isSingleResult = mode === "single_tarot" && cards.length === 1;
   const storyCard = isSingleResult ? cards[0] : undefined;
   const storyCopy = useMemo(
-    () => buildStoryCopy(storyCard, fullReading, freeSummary),
+    () => buildStoryCopy(storyCard, fullReading, freeSummary, topic),
     [storyCard, fullReading, freeSummary],
   );
   const siteUrl =
@@ -1692,53 +1743,63 @@ export function TarotDrawClient() {
             </div>
           ) : null}
 
-          {/* 2a. Three-card locked: show card names + freeSummary ONLY — no fullReading content */}
+          {/* 2a. Three-card locked: 每張牌名 + 短解 + freeSummary — NO fullReading content */}
           {!isSingleResult && !hasFullAccess ? (
             <div className="cosmic-reading-card rounded-[1.75rem] border border-lavender/20 bg-midnight/58 p-5 shadow-glow sm:p-6">
               <p className="text-sm tracking-[0.22em] text-lavender/70">宇宙先給你的提示</p>
               <h3 className="mt-2 text-2xl font-semibold text-moon">你這次抽到的三張牌</h3>
 
-              {/* Card list: position + name + orientation only, zero AI content */}
-              <ul className="mt-4 space-y-2">
-                {cards.map((card, idx) => (
-                  <li
-                    key={card.id}
-                    className="flex items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-3"
-                  >
-                    <span className="shrink-0 rounded-full border border-[#d8bd70]/35 bg-midnight/60 px-2.5 py-0.5 text-xs font-medium text-[#d8bd70]">
-                      第 {idx + 1} 張
-                    </span>
-                    {card.position && (
-                      <span className="text-sm text-moon/60">{card.position}</span>
-                    )}
-                    <span className="font-medium text-moon">{card.name}</span>
-                    <span
-                      className={`ml-auto shrink-0 rounded-full border px-2.5 py-0.5 text-xs ${
-                        card.orientation === "upright"
-                          ? "border-aurora/40 text-aurora"
-                          : "border-lavender/44 text-lavender"
-                      }`}
+              {/* 每張牌：位置 + 牌名 + 正逆位 + 短解（45~80字） */}
+              <ul className="mt-4 space-y-3">
+                {cards.map((card, idx) => {
+                  // 短解：取 cosmicMessage 前 75 字，或 keywords 組合
+                  const shortMsg = card.cosmicMessage
+                    ? (card.cosmicMessage.length > 78 ? `${card.cosmicMessage.slice(0, 75)}…` : card.cosmicMessage)
+                    : (card.keywords?.slice(0, 3).join("、") || "");
+                  return (
+                    <li
+                      key={card.id}
+                      className="rounded-2xl border border-white/8 bg-white/[0.04] p-4"
                     >
-                      {card.orientationLabel}
-                    </span>
-                  </li>
-                ))}
+                      {/* 牌 header */}
+                      <div className="flex items-center gap-2">
+                        <span className="shrink-0 rounded-full border border-[#d8bd70]/35 bg-midnight/60 px-2.5 py-0.5 text-xs font-medium text-[#d8bd70]">
+                          {card.position ?? `第 ${idx + 1} 張`}
+                        </span>
+                        <span className="font-semibold text-moon">{card.name}</span>
+                        <span
+                          className={`ml-auto shrink-0 rounded-full border px-2.5 py-0.5 text-xs ${
+                            card.orientation === "upright"
+                              ? "border-aurora/40 text-aurora"
+                              : "border-lavender/44 text-lavender"
+                          }`}
+                        >
+                          {card.orientationLabel}
+                        </span>
+                      </div>
+                      {/* 短解 */}
+                      {shortMsg ? (
+                        <p className="mt-2 text-sm leading-[1.75] text-moon/72">{shortMsg}</p>
+                      ) : null}
+                    </li>
+                  );
+                })}
               </ul>
 
-              {/* freeSummary — from card data, NOT from AI fullReading */}
+              {/* 免費版總結 80~120 字 — 只讀 cosmicMessage，不洩漏 AI fullReading */}
               <div className="mt-4 rounded-2xl border border-white/8 bg-white/[0.04] p-4">
                 {readingStatus === "loading" ? (
                   <p className="text-sm text-moon/50">宇宙正在把牌義整理成你的訊息...</p>
                 ) : (
                   <>
-                    <p className="text-sm tracking-[0.18em] text-lavender/70">簡短宇宙訊息</p>
-                    <p className="mt-2 text-base leading-8 text-moon/84">{freeSummary.message}</p>
+                    <p className="text-xs tracking-[0.18em] text-lavender/60 mb-2">宇宙給你的提示</p>
+                    <p className="text-base leading-[1.85] text-moon/84">{freeSummary.message}</p>
                   </>
                 )}
               </div>
 
               <p className="mt-4 text-sm leading-7 text-moon/55">
-                這是宇宙先給你的簡短提醒。分享 Facebook 後，可解鎖完整牌陣解讀、三張牌整合訊息與 3～7 天行動建議。
+                分享 Facebook 解鎖完整牌陣解讀，看見三張牌背後的原因、每張牌的完整訊息，以及接下來 3～7 天該怎麼做。
               </p>
             </div>
           ) : null}
@@ -1774,7 +1835,7 @@ export function TarotDrawClient() {
               <p className="mx-auto mt-3 max-w-xl text-base leading-8 text-moon/72">
                 {isSingleResult
                   ? "分享到 Facebook 後，就能解鎖本次完整解讀內容。"
-                  : "分享到 Facebook 後，就能解鎖完整牌陣解讀、三張牌整合訊息與 3～7 天行動建議。"}
+                  : "分享到 Facebook 後，解鎖完整牌陣解讀——每張牌的完整意義、核心判斷，以及 3～7 天行動建議。"}
               </p>
 
               <div className="mt-5">
