@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AppShell } from "@/components/AppShell";
+import { PageNavActions } from "@/components/PageNavActions";
 import { TarotDrawClient } from "./TarotDrawClient";
 
 export const metadata: Metadata = {
@@ -15,6 +16,7 @@ export default function TarotPage() {
   return (
     <AppShell>
       <section className="mx-auto w-full max-w-5xl py-8 sm:py-12">
+        <PageNavActions className="mb-6" />
         <div className="relative">
           <p className="text-xs uppercase tracking-[0.32em] text-aurora/80">
             cosmic tarot · 星夜牌陣

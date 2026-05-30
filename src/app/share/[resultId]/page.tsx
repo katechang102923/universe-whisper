@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
 import { AppShell } from "@/components/AppShell";
+import { PageNavActions } from "@/components/PageNavActions";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { LINE_RESULTS_COLLECTION, type LineResultData } from "@/lib/lineResults";
 
@@ -132,6 +133,7 @@ export default async function ShareResultPage({
   return (
     <AppShell>
       <section className="mx-auto w-full max-w-2xl py-8 sm:py-12">
+        <PageNavActions className="mb-6" />
         {/* Header */}
         <div className="flex items-center gap-3">
           <div className="relative h-10 w-10 overflow-hidden rounded-full">

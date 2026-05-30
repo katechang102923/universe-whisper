@@ -42,6 +42,8 @@ interface FanCardProps {
    * cardHeight + stemLength.  A longer stem → more spread between cards.
    */
   stemLength: number;
+  /** How many px the picked card lifts (default 28). */
+  liftPx?: number;
   isPicked: boolean;
   disabled: boolean;
   onClick: () => void;
@@ -61,7 +63,7 @@ interface FanCardProps {
  * fan radius beyond the card height, giving visible spacing between cards.
  */
 function FanCard({
-  index, total, arcDeg, cardWidth, stemLength, isPicked, disabled, onClick,
+  index, total, arcDeg, cardWidth, stemLength, liftPx = 28, isPicked, disabled, onClick,
 }: FanCardProps) {
   const [arrived, setArrived] = useState(false);
   const angle  = fanAngle(index, total, arcDeg);
@@ -103,14 +105,19 @@ function FanCard({
         onClick={onClick}
         disabled={disabled}
         aria-label={`選擇第 ${index + 1} 張牌`}
-        style={{ position: "absolute", top: 0, left: 0, right: 0 }}
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          ...(isPicked ? { transform: `translateY(-${liftPx}px)` } : {}),
+        }}
         className={[
           "rounded-[1.2rem] outline-none",
           "transition-[transform,filter,opacity] duration-200",
           "focus-visible:ring-2 focus-visible:ring-[#d8bd70]/70",
           isPicked
-            // Lift the card along its own axis (looks natural in the rotated frame)
-            ? "-translate-y-7 drop-shadow-[0_0_26px_rgba(216,189,112,1)]"
+            ? "drop-shadow-[0_0_26px_rgba(216,189,112,1)]"
             : disabled
             ? "cursor-not-allowed opacity-20"
             : "cursor-pointer hover:-translate-y-4 hover:drop-shadow-[0_0_14px_rgba(216,189,112,0.75)]",
@@ -168,15 +175,28 @@ export function TarotShuffleAnimation({
   const isMobile = useIsMobile();
 
   // ─── Responsive fan parameters ───────────────────────────────────────────
-  const fanTotal = isMobile ? 7  : 9;    // card count
-  const fanArc   = isMobile ? 60 : 84;   // total arc °  (±30 / ±42)
-  const cardW    = isMobile ? 64 : 88;   // card width px
-  const stemH    = isMobile ? 80 : 130;  // stem px  → radius = cardH + stem
-  // Container height: must hold the tallest card (at 0°) above pivot.
-  // tallest wrapper = cardW×1.5 + stem.  Add ~30px top breathing room.
+  //
+  // Mobile (< 640 px):
+  //   Single  : 9 cards  •  ±28° (56° total)  •  80 px wide  •  stem 130 px
+  //   3-card  : 12 cards •  ±28° (56° total)  •  80 px wide  •  stem 130 px
+  //   Radius  : 120 + 130 = 250 px  →  spacing ≈ 17 px (9) / 11 px (12)
+  //   Hit area: 80 × 120 px per card button
+  //   Lift    : 16 px when picked
+  //
+  // Desktop (≥ 640 px):
+  //   9 cards  •  ±42° (84° total)  •  88 px wide  •  stem 130 px
+  //   Radius  : 132 + 130 = 262 px  →  spacing ≈ 24 px
+  //   Lift    : 28 px when picked
+  //
+  const fanTotal = isMobile ? (cardCount === 3 ? 12 : 9) : 9;
+  const fanArc   = isMobile ? 56 : 84;   // total arc ° (±28° / ±42°)
+  const cardW    = isMobile ? 80 : 88;   // card width px
+  const stemH    = 130;                  // stem px (same both viewports)
+  const liftPx   = isMobile ? 16 : 28;  // pick-lift px
+  // Container height: pivot at bottom; tallest card (0°) must fit + breathing room
   const fanH     = isMobile
-    ? Math.round(64 * 1.5) + 80  + 50   // 96+80+50 = 226 → 280px
-    : Math.round(88 * 1.5) + 130 + 50;  // 132+130+50 = 312 → 360px
+    ? Math.round(80 * 1.5) + 130 + 40   // 120+130+40 = 290 px
+    : Math.round(88 * 1.5) + 130 + 50;  // 132+130+50 = 312 px
 
   // ─── Fan pick state ──────────────────────────────────────────────────────
   const [pickedFanIndices, setPickedFanIndices] = useState<number[]>([]);
@@ -299,6 +319,7 @@ export function TarotShuffleAnimation({
               arcDeg={fanArc}
               cardWidth={cardW}
               stemLength={stemH}
+              liftPx={liftPx}
               isPicked={pickedFanIndices.includes(fanIdx)}
               disabled={pickedFanIndices.length >= cardCount}
               onClick={() => handleFanPick(fanIdx)}

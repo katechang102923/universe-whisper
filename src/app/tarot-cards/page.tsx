@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AppShell } from "@/components/AppShell";
+import { PageNavActions } from "@/components/PageNavActions";
 import { tarotCards } from "@/data/tarotCards";
 import { TarotCardsClient } from "./TarotCardsClient";
 
@@ -32,6 +33,7 @@ export default function TarotCardsPage() {
   return (
     <AppShell>
       <section className="mx-auto w-full max-w-5xl py-8 sm:py-12">
+        <PageNavActions className="mb-6" />
         <p className="text-xs uppercase tracking-[0.32em] text-aurora/80">tarot guide · 宇宙牌義筆記</p>
         <h1 className="mt-3 text-4xl font-semibold text-moon sm:text-5xl">塔羅牌介紹</h1>
         <p className="mt-5 max-w-3xl text-base leading-8 text-moon/74 sm:text-lg">

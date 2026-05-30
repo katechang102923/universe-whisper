@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AppShell } from "@/components/AppShell";
+import { PageNavActions } from "@/components/PageNavActions";
 import { DailyFortuneClient } from "./DailyFortuneClient";
 
 export const metadata: Metadata = {
@@ -20,6 +21,7 @@ export default function DailyPage() {
   return (
     <AppShell>
       <section className="mx-auto w-full max-w-5xl py-8 sm:py-12">
+        <PageNavActions className="mb-6" />
         <DailyFortuneClient />
       </section>
     </AppShell>
