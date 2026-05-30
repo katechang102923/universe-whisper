@@ -49,8 +49,9 @@ type SingleCardReading = {
   category: string;
   cardName: string;
   orientation: string;
-  questionFocus: string;
-  cardMessage: string;
+  questionFocus: string;       // 宇宙偷偷話：直接回應使用者當下最在意的心情
+  cardMessage: string;         // 這張牌正在說什麼：只說牌義，不提問題
+  questionAnswer?: string;     // 針對你的問題：把牌義連回使用者原始問題
   oneLineConclusion: string;
   todayAction: string;
   gentleReminder: string;
@@ -292,6 +293,15 @@ const BANNED_GENERIC_PHRASES = [
   "身心需要補充能量",
   "宇宙提醒你慢下來",
   "先把自己放在第一位",
+  "你現在正在轉變",
+  "先整理自己",
+  "方向會慢慢清晰",
+  "明天的你會更懂",
+  "相信自己的光",
+  "宇宙正在提醒你",
+  "有些舊的模式在鬆動",
+  "新的方向還沒完全成形",
+  "先把心收回來",
 ];
 
 /**
@@ -314,6 +324,30 @@ const ANTI_SIMILARITY_HINT = `
 1. cardMessage / message 欄位必須明確引用牌名及正逆位含義。
 2. 禁止出現：「你需要好好休息」「你需要照顧自己」「身心需要補充能量」「宇宙提醒你慢下來」「先把自己放在第一位」。
 3. 根據這次實際抽到的牌，提供明顯不同的具體判斷。`;
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 去重工具（消除 AI 重複句）
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * 以句號/驚嘆號/問號/換行分句，去除完全相同的句子（保留第一次出現）。
+ * 只用於單張牌 cardMessage / questionAnswer，不影響任何傳送格式。
+ */
+function deduplicateSentences(text: string): string {
+  if (!text) return text;
+  // 分句：在句末標點後 + 空白或換行 處斷開，保留標點
+  const sentences = text.split(/(?<=[。！？\n])/).map((s) => s.trim()).filter(Boolean);
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const s of sentences) {
+    const key = s.replace(/\s/g, "");
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(s);
+    }
+  }
+  return result.join("").trim();
+}
 
 // ═════════════════════════════════════════════════════════════════════════════
 // JSON 解析
@@ -340,6 +374,9 @@ function parseSingleCardJson(raw: string, forcedCategory?: string): SingleCardRe
     if (parsed.spreadType !== "single") return null;
     if (!parsed.cardMessage || !parsed.oneLineConclusion || !parsed.todayAction) return null;
     if (forcedCategory) parsed.category = forcedCategory;
+    // 對 cardMessage / questionAnswer 做句子去重
+    if (parsed.cardMessage)    parsed.cardMessage    = deduplicateSentences(parsed.cardMessage);
+    if (parsed.questionAnswer) parsed.questionAnswer = deduplicateSentences(parsed.questionAnswer);
     return parsed as SingleCardReading;
   } catch {
     return null;
@@ -402,13 +439,13 @@ function parseThreeCardJson(raw: string, forcedCategory?: string): ThreeCardRead
       // forcedCategory 永遠優先（使用者選擇的分類），防止 AI 返回錯誤類別
       category:        forcedCategory ?? (typeof p.category === "string" ? p.category : "生活綜合"),
       questionFocus:   typeof p.questionFocus  === "string" ? p.questionFocus  : "你的問題已收到，以下是這組牌的訊息。",
-      overallSummary:  typeof p.overallSummary === "string" ? p.overallSummary : "這三張牌合在一起，指出了你目前最需要關注的方向，答案比你以為的更接近。",
+      overallSummary:  typeof p.overallSummary === "string" ? p.overallSummary : "整體答案：\n這組牌指出你目前面對的核心問題，以及下一步最需要關注的方向。\n\n為什麼會這樣：\n三張牌的脈絡顯示，你目前的困境有幾個面向交疊，需要先找出最核心的那個，再集中資源處理。",
       cards,
       combinedReading: typeof p.combinedReading === "string" ? p.combinedReading : "",
       actionSteps,
       next3To7Days:    actionSteps.join("\n"),
-      gentleReminder:  typeof p.gentleReminder === "string" ? p.gentleReminder : "答案就在你心裡，塔羅只是幫你照亮那個位置。",
-      blessing:        typeof p.blessing       === "string" ? p.blessing       : "願你在尋找答案的路上，也記得溫柔地陪著自己。",
+      gentleReminder:  typeof p.gentleReminder === "string" ? p.gentleReminder : "今晚先把最吵的念頭放下，從一件你能控制的小事開始行動。",
+      blessing:        typeof p.blessing       === "string" ? p.blessing       : "願你在尋找答案的路上，也能慢慢找回自己的節奏。",
       safetyNote:      typeof p.safetyNote     === "string" && p.safetyNote ? p.safetyNote : undefined,
     };
     return result;
@@ -427,11 +464,18 @@ function formatSingleCardReading(r: SingleCardReading): string {
     `🎯 本次問題焦點\n\n${r.category}`,
     `🔮 一句話結論\n\n${r.oneLineConclusion}`,
     `🌙 宇宙偷偷話\n\n${r.questionFocus}`,
-    `✨ 這張牌正在說什麼\n\n${r.cardName}（${r.orientation}）\n${r.cardMessage}`,
+    // cardMessage 只說牌義；格式與前端解析器相容（標題仍為「這張牌正在說什麼」）
+    `✨ 這張牌正在說什麼\n\n${r.cardName}（${r.orientation}）\n${deduplicateSentences(r.cardMessage)}`,
+  ];
+  // 若有 questionAnswer（針對你的問題），獨立成段
+  if (r.questionAnswer) {
+    parts.push(`🔍 針對你的問題\n\n${deduplicateSentences(r.questionAnswer)}`);
+  }
+  parts.push(
     `🐾 今天可以怎麼做\n\n${r.todayAction}`,
     `🌌 給你的溫柔提醒\n\n${r.gentleReminder}`,
     `💫 一句專屬祝福\n\n${r.blessing}`,
-  ];
+  );
   if (r.safetyNote) parts.push(`⚠️ 健康提醒\n\n${r.safetyNote}`);
   return parts.join("\n\n");
 }
@@ -443,8 +487,8 @@ function formatThreeCardReading(r: ThreeCardReading): string {
     questionFocus:   r.questionFocus   || "以下是這組牌對你問題的訊息。",
     overallSummary:  r.overallSummary  || "",
     combinedReading: r.combinedReading || "這三張牌之間有一條清晰的脈絡，需要從三個面向一起看才能完整理解。",
-    gentleReminder:  r.gentleReminder  || "答案就在你心裡，塔羅只是幫你照亮那個位置。",
-    blessing:        r.blessing        || "願你在尋找答案的路上，也記得溫柔地陪著自己。",
+    gentleReminder:  r.gentleReminder  || "今晚先把最吵的念頭放下，從一件你能控制的小事開始行動。",
+    blessing:        r.blessing        || "願你在尋找答案的路上，也能慢慢找回自己的節奏。",
   };
 
   const cardsArr = Array.isArray(r.cards) ? r.cards : [];
@@ -502,12 +546,12 @@ function formatThreeCardReading(r: ThreeCardReading): string {
 
 function getFallbackConclusion(focus: QuestionFocus): string {
   switch (focus.primary) {
-    case "finance":      return "近期財運偏穩健，比起衝刺大機會，更適合先整理支出、讓財務流動順暢。";
-    case "career":       return "工作上有調整的能量，方向比速度重要，先確認自己真正想走的路再行動。";
-    case "love":         return "感情狀態需要多一點耐心，真正的靠近不靠催促，先讓自己穩下來。";
-    case "relationship": return "人際關係正在轉化，保持適當距離同時也保留溝通的空間。";
-    case "health":       return "身心需要補充能量，這段時間先把休息和壓力管理放在第一位。";
-    default:             return "現在的狀態正在轉變，先整理自己，方向會慢慢清晰。";
+    case "finance":      return "近期財務有機會調整，但需要先把收支看清楚，而不是等待大機會自己出現。";
+    case "career":       return "工作上的卡關不是能力問題，而是還沒確認真正想走的方向——先把這件事說清楚，再決定下一步。";
+    case "love":         return "這段感情不是沒有可能，但需要觀察對方是否真的有靠近的行動，而不是只靠你一個人努力。";
+    case "relationship": return "人際的誤解需要有人先開口，溝通比沉默更能讓關係找到出路。";
+    case "health":       return "身體發出的訊號需要被認真對待，先找出是什麼讓你持續消耗，再談其他事。";
+    default:             return "目前的問題有解，但需要先把最核心的那個卡點找出來，集中資源處理它。";
   }
 }
 
@@ -572,28 +616,28 @@ function getFallbackNext3To7Days(focus: QuestionFocus): string {
 function getFallbackGentleReminder(focus: QuestionFocus): string {
   switch (focus.primary) {
     case "finance":
-      return `財運的門，不一定是大機會才算敲開。你每天做的小選擇，都在悄悄改變錢的流向。`;
+      return `這段時間最重要的不是立刻賺更多，而是先讓錢的流向變得清楚。當你開始知道錢去哪裡，財運才會慢慢穩下來。不是每個財務問題都需要大動作，有時候從一件小事開始整理，反而最有效。`;
     case "career":
-      return `工作上的累，有一部分是你把標準設得比別人高。宇宙不是叫你放棄，只是想讓你喘口氣後，看清楚下一步真正想走的方向 ☁️`;
+      return `你不需要今晚就把所有未來想清楚。先看清楚目前手上能掌握的資源，再決定下一步要往哪裡走。工作上的卡關，常常不是因為你不夠好，而是現在的位置和你真正想要的還有一段距離——知道這件事，就已經開始在改變了。`;
     case "love":
-      return `你不用把自己說得很漂亮，才值得被喜歡。真正想靠近你的人，會願意聽你慢慢講。`;
+      return `如果這段關係讓你心動，也讓你不安，今晚先不要急著逼自己選邊站。真正適合你的人，不會只讓你猜，而會慢慢讓你感覺安定。觀察對方的行動，比反覆揣測對方的心意，要清楚得多。`;
     case "relationship":
-      return `關係裡的誤解，很多時候不是壞心，只是大家都習慣不說出口。願意先邁一步，是勇氣，不是軟弱。`;
+      return `關係裡的誤解，很多時候不是壞心，只是大家都習慣不說出口。如果你覺得距離在拉大，先試著用一句話把你的感受說出來——不用說得完整，說真實的就好。`;
     case "health":
-      return `身體在照顧你，你也要學會照顧它。早一點睡、少滑一點手機——這些小事加起來，就是你給自己最好的療癒 🌿`;
+      return `身體給你的訊號，值得被認真對待。不一定要馬上改變所有習慣，先找出一個讓你持續消耗的來源，能減少一點是一點——這比同時改變很多事更容易撐下去。`;
     default:
-      return `今晚先把沒說出口的話，輕輕放在枕邊吧。你不用全部想通，明天的你會多懂一點點。`;
+      return `今晚先把最吵的念頭放下，不是所有事都需要今晚想清楚。從一件你能控制的小事開始行動，其他的事情會跟著慢慢清晰。`;
   }
 }
 
 function getFallbackBlessing(focus: QuestionFocus): string {
   switch (focus.primary) {
-    case "finance":      return `願你在整理財務的同時，也記得整理一下對自己的溫柔——你比你以為的更有能力讓事情慢慢變好。`;
-    case "career":       return `願你在還沒找到完美方向之前，也能相信：每一步的摸索，都是在為對的路鋪光。`;
-    case "love":         return `願你在還不確定的夜裡，也能先好好待在自己身邊——那是你給自己最好的禮物。`;
+    case "finance":      return `願你的每一份收入與支出，都慢慢走向安穩與自由。`;
+    case "career":       return `願你的努力被看見，也願你有勇氣選擇真正適合自己的路。`;
+    case "love":         return `願你喜歡的人，不只讓你心動，也能讓你安心。`;
     case "relationship": return `願你在面對複雜的關係時，也能記得：你值得被清楚、被溫柔地對待。`;
-    case "health":       return `願你在照顧所有人之前，先記得把自己的能量杯裝滿——你滿了，才能溢出給別人。`;
-    default:             return `願你在還不確定的夜裡，也能慢慢相信自己的光。`;
+    case "health":       return `願你慢慢學會把照顧自己當成一件重要的事，而不是做完所有事之後才剩下的選擇。`;
+    default:             return `願你在不確定裡，也能一步一步走回自己的節奏。`;
   }
 }
 
@@ -634,15 +678,32 @@ function buildSingleCardFallback(
       ? `${card.name}正位的能量是清晰前行的，它的出現說明此刻有具體的方向可以踩踏，只是你可能還在猶豫是否要踏出那一步。`
       : `${card.name}逆位出現，代表這個面向的能量正在受阻或被壓抑，需要先看清楚是什麼在阻礙流動，才能找到真正的出路。`);
 
-  const questionFocusText = question
-    ? `你問的是「${question}」——這正是你此刻最想確認的事，而 ${card.name}（${ori}）就是宇宙給你的回應。`
-    : `你把問題放在心裡，${card.name}（${ori}）接住了你此刻最需要被看見的部分。`;
+  // 宇宙偷偷話：直接回應使用者心情，不複述問題
+  const questionFocusText = (() => {
+    if (focus.primary === "love") return isUpright
+      ? "你其實不是不想靠近，只是害怕期待落空，又要自己一個人收拾。"
+      : "你一直在等對方給一個明確的訊號，但同時也在懷疑自己是不是等錯了。";
+    if (focus.primary === "career") return isUpright
+      ? "你知道自己想要什麼，只是不確定現在是不是對的時機。"
+      : "你其實比你以為的更清楚問題在哪裡，只是不想正面承認那個答案。";
+    if (focus.primary === "finance") return isUpright
+      ? "你一直覺得再努力一點就能解決，但真正缺的不是努力，而是把錢的流向看清楚。"
+      : "財務上的焦慮不是因為你能力不夠，而是有些選擇一直在迴避。";
+    if (focus.primary === "relationship") return isUpright
+      ? "你已經感覺到有些話需要說，只是不確定對方願不願意聽。"
+      : "這段關係裡，你一直在衡量值不值得開口——其實那個遲疑本身就是答案。";
+    return question
+      ? "你把這個問題帶進來，代表你已經想得夠久了，現在需要的不是繼續想，而是一個方向。"
+      : "你把問題放在心裡，這張牌接住了你此刻最需要被看見的部分。";
+  })();
 
-  const cardMessage =
-    `${card.name}（${ori}）${kw ? `，關鍵字是「${kw}」。` : "。"}` +
-    `${coreMeaning}` +
-    `這張牌出現在你這個問題裡，不是巧合——它正在提示你，目前的狀態需要你重新確認一件事：` +
-    getFallbackFocusMessage(focus, isUpright);
+  // cardMessage：只說牌義，不提問題
+  const cardMessage = deduplicateSentences(
+    `${card.name}（${ori}）${kw ? `，關鍵字「${kw}」。` : "。"}${coreMeaning}`
+  );
+
+  // questionAnswer：把牌義連回使用者問題，給具體方向
+  const questionAnswer = getFallbackFocusMessage(focus, isUpright);
 
   return formatSingleCardReading({
     spreadType:        "single",
@@ -651,6 +712,7 @@ function buildSingleCardFallback(
     orientation:       ori,
     questionFocus:     questionFocusText,
     cardMessage,
+    questionAnswer,
     oneLineConclusion: getFallbackConclusion(focus),
     todayAction:       getFallbackTodayAction(focus),
     gentleReminder:    getFallbackGentleReminder(focus),
@@ -763,17 +825,21 @@ function buildThreeCardFallback(
   });
 }
 
-/** Fallback 牌陣總結（overallSummary），兩段格式：核心判斷 + 為什麼會這樣 */
+/** Fallback 牌陣總結（overallSummary），兩段格式：整體答案 + 為什麼會這樣 */
 function getFallbackOverallSummary(focus: QuestionFocus, cardNamesStr: string): string {
   switch (focus.primary) {
     case "finance":
-      return `整體答案：\n近期財務不是沒有機會，而是你的精力正在被未整理的支出和壓力佔據，讓真正的機會進不來。\n\n為什麼會這樣：\n${cardNamesStr} 這三張牌的脈絡顯示，財務上的卡關，來自同時有太多事需要你做決定，卻沒有先把最核心的問題找出來。先釐清最大的支出漏洞，才能讓錢的流動感回來。`;
+      return `整體答案：\n近期財務不是沒有機會，但真正卡住的是你還沒看清楚「錢去哪裡了、哪裡可以省、哪裡可以增加」。先把這三件事找清楚，財務才能開始流動。\n\n為什麼會這樣：\n${cardNamesStr} 這三張牌的脈絡顯示，財務壓力有一部分來自舊的支出習慣或還沒解決的負擔，正在佔據你的財務空間。接下來的方向是先把收支看清楚，再做決定，不要在資訊不明的狀態下衝動行動。`;
     case "career":
-      return `整體答案：\n工作上的卡關不是能力問題，而是你對「接下來真正想走的方向」還沒有完全確認。\n\n為什麼會這樣：\n${cardNamesStr} 這三張牌顯示，你現在的狀態是在用舊有的方式應對一個需要重新選擇的處境。不是硬撐，不是倉促離職，而是先把「我真正想要的工作型態」說清楚，再決定下一步。`;
+      return `整體答案：\n工作上的卡關不是能力問題，而是你還沒確認「接下來真正想走的方向」——先把這件事說清楚，再決定要衝還是等。\n\n為什麼會這樣：\n${cardNamesStr} 這三張牌顯示，你目前的狀態是在用舊有方式應對一個需要重新選擇的處境。不是硬撐，不是倉促離職，而是先把「我真正想要的工作型態」說清楚，再決定下一步行動方向。`;
     case "love":
-      return `整體答案：\n感情上有流動的可能，但目前雙方都在等對方先有所行動，這種等待讓關係陷入停滯。\n\n為什麼會這樣：\n${cardNamesStr} 這三張牌反映出，感情裡的卡關往往不是因為沒有感覺，而是有些沒說清楚的事正在讓距離慢慢拉大。需要有人先把感受說出來。`;
+      return `整體答案：\n這段感情不是沒有可能，但目前需要觀察對方是否真的有靠近的行動，而不是只靠你一個人努力在維持。\n\n為什麼會這樣：\n${cardNamesStr} 這三張牌反映出，感情裡的停滯不是因為沒有感覺，而是有些話還沒說清楚，讓雙方距離慢慢拉大。接下來的方向：如果對方有穩定行動，可以給一次機會；如果持續讓你反覆焦慮，就需要開始把重心放回自己。`;
+    case "relationship":
+      return `整體答案：\n人際的誤解不會自己消失，需要有人先把話說清楚，溝通比沉默更能讓關係找到出路。\n\n為什麼會這樣：\n${cardNamesStr} 這三張牌顯示，目前的距離感來自雙方都在等對方先開口。接下來適合主動溝通，但不需要一次解決全部，先讓對方知道「你有感受到這件事」就夠了。`;
+    case "health":
+      return `整體答案：\n身體發出的訊號需要被認真對待，現在最重要的不是改變所有習慣，而是先找出最大的消耗來源。\n\n為什麼會這樣：\n${cardNamesStr} 這三張牌顯示，你目前的身心狀態有持續被消耗的跡象。接下來的方向：先把睡眠補回來，找出一個讓你持續耗損的習慣，從減少那件事開始調整。`;
     default:
-      return `整體答案：\n目前的狀態正在轉變，有些舊的模式在鬆動，但新的方向還沒完全成形。\n\n為什麼會這樣：\n${cardNamesStr} 這三張牌共同指向一個核心：你現在的困境不是單一原因，而是幾個面向疊在一起讓你動不了。最重要的是先找出哪一個是最核心的，集中資源處理它，其他的事情會跟著慢慢清晰。`;
+      return `整體答案：\n目前的問題有解，但需要先把最核心的那個卡點找出來，集中資源處理它，而不是試圖同時解決全部。\n\n為什麼會這樣：\n${cardNamesStr} 這三張牌共同指向一個核心：你現在的困境是幾個面向疊加讓你動不了。接下來的方向：選一件你能控制的事情開始行動，其他的事情會跟著慢慢清晰——不需要等到全部想通才能動。`;
   }
 }
 
@@ -832,7 +898,7 @@ function buildFreeReading(
     love:         `這次牌面落在${topicLabel}的主題裡：${cardLine}。\n感情的走向，這組牌看見的是：雙方之間還有空間，但需要更清楚的溝通，而不是繼續等待。`,
     relationship: `這次牌面落在${topicLabel}的主題裡：${cardLine}。\n人際關係的問題，這組牌提示你：先釐清誤解的來源，溝通會比沉默更有效。`,
     health:       `這次牌面落在${topicLabel}的主題裡：${cardLine}。\n身心狀態需要被照顧，這組牌提醒你：先把休息補回來，再談其他事。`,
-    general:      `這次牌面落在${topicLabel}的主題裡：${cardLine}。\n宇宙不是來替你宣布答案，而是把一盞小燈放在你心裡，讓你重新聽見自己。`,
+    general:      `這次牌面落在${topicLabel}的主題裡：${cardLine}。\n宇宙給你的方向不是一個大答案，而是提醒你先把最吵的那個問題找出來，從那裡開始行動。`,
   };
 
   const stateHint = isSingle
@@ -885,25 +951,41 @@ function buildSingleCardPrompt(
     ? `\n【短問題提示】此問題字數少（「${question}」），請先推測使用者最想確認的核心，在 questionFocus 和 oneLineConclusion 直接給出結論性回答，不要輸出通用療癒內容。`
     : "";
 
-  // Premium 解讀要有明顯價值感
+  const isUpright = card.position === "upright";
+  const directionHint = (() => {
+    if (focus.primary === "love") return isUpright
+      ? "（正向牌：可以給一次機會，但觀察對方行動，不要把全部期待壓上去）"
+      : "（逆向牌：先觀察對方是否真的有靠近行動；若持續讓你消耗，放手或拉開距離會更輕鬆）";
+    if (focus.primary === "career") return isUpright
+      ? "（正向牌：可以主動爭取、提出想法，適合讓別人看見你的能力）"
+      : "（逆向牌：先整理資源與備案，不要衝動離職或硬碰硬，再做決定）";
+    if (focus.primary === "finance") return isUpright
+      ? "（正向牌：可以小幅嘗試，但保留安全預算）"
+      : "（逆向牌：不適合衝動投資或大額花費，先守住現金流）";
+    if (focus.primary === "relationship") return isUpright
+      ? "（正向牌：可以主動溝通，把話說清楚）"
+      : "（逆向牌：先守住界線，不要急著討好所有人）";
+    return "";
+  })();
+
+  // 每個欄位的字數與職責規格
   const depthSpec = depth === "deep" ? {
-    questionFocus: "40～60字，說明使用者這次問題真正想確認的是什麼",
-    cardMessage:   "150～220字，必須包含：(1)這張牌名和正逆位的核心含義 (2)為什麼這張牌會對應使用者的問題 (3)這張牌正在提醒使用者注意什麼具體的地方",
-    todayAction:   "100～160字，提供2～3個具體可執行的行動，每個行動都要說清楚怎麼做，不要只給抽象建議",
-    gentleReminder:"70～120字，要和本次牌面與問題有關，不可以每次都是通用療癒語",
-    combinedReading:"",
+    questionFocus:   "30～50字，像朋友說話，直接回應使用者當下最在意的心情或擔憂，不要複述問題，不要說「你問的是…這張牌就是…」",
+    cardMessage:     "60～100字，只說這張牌（${card.name}，${ori}）本身的象徵與正逆位意義，不提使用者問題，不要說「這張牌出現在你這個問題裡」，牌名最多出現 1 次",
+    questionAnswer:  "80～120字，把牌義連回使用者的原始問題，明確說出：這組牌對這個問題的判斷是什麼、目前適合前進/等待/調整/觀察哪一種方向${directionHint}",
+    todayAction:     "80～140字，提供 2 個具體可執行的行動，每個說清楚怎麼做，不給「整理自己」這類抽象建議",
+    gentleReminder:  "50～90字，溫柔但具體，呼應本次牌面和問題，不可以用通用療癒語",
   } : {
-    questionFocus: "30～50字",
-    cardMessage:   "100～160字，必須引用牌名和正逆位含義，說明與問題的關係",
-    todayAction:   "80～120字，提供2個具體行動",
-    gentleReminder:"50～90字",
-    combinedReading:"",
+    questionFocus:   "20～40字，像朋友說話，直接回應使用者當下最在意的心情或擔憂",
+    cardMessage:     "50～80字，只說這張牌（${card.name}，${ori}）本身的象徵與正逆位意義，牌名最多出現 1 次，不提問題",
+    questionAnswer:  "60～100字，把牌義連回使用者問題，說出方向${directionHint}",
+    todayAction:     "60～100字，提供 1～2 個具體行動",
+    gentleReminder:  "40～70字，呼應本次牌面和問題",
   };
 
   return `請根據以下資料，以 JSON 格式解讀塔羅牌。只回傳純 JSON，不加說明文字。
 
 【重要提示】這是使用者分享 Facebook 後才能解鎖的完整版，內容必須有真正的解鎖價值。
-不可以過短、不可以像制式模板、不可以每個欄位只寫一句話打發。
 
 【抽牌模式】單張牌完整解讀
 【問題】${question || "（未填寫問題）"}
@@ -919,15 +1001,42 @@ ${topicGuidance}
 ${shortHint}
 ${antiSimilarityHint}
 
+【各欄位職責 — 嚴格遵守，不能越界】
+每個欄位只能負責自己的功能，同一意思在不同欄位只能說一次，不得重複。
+
+• questionFocus（宇宙偷偷話）：${depthSpec.questionFocus}
+  ✗ 禁止：「你問的是 XXX，而這張牌就是宇宙給你的回應」
+  ✓ 應該像：「你其實不是不想靠近，而是害怕自己又一次失望。」
+
+• cardMessage（這張牌正在說什麼）：${depthSpec.cardMessage}
+  ✗ 禁止：重複牌義、說「這張牌出現在你這個問題裡」、提到使用者問題
+  ✓ 應該像：「${card.name}${ori}代表……（純牌義，不提問題）」
+
+• questionAnswer（針對你的問題）：${depthSpec.questionAnswer}
+  ✓ 這裡才可以直接連回使用者問題，給出明確方向
+
+• oneLineConclusion：20～40字，直接回答使用者問題，不用「你現在的狀態」開頭。
+
+• todayAction：${depthSpec.todayAction}
+
+• gentleReminder：${depthSpec.gentleReminder}
+
+• blessing：20～40字，依本次分類（${getTopicLabel(topic)}）動態生成，不可每次都一樣。
+  愛情：「願你喜歡的人，不只讓你心動，也能讓你安心。」（範例，請自行生成不同版本）
+  工作：「願你的努力慢慢被看見，也願你有勇氣選擇真正適合你的路。」（範例）
+  財運：「願你的每一步財務決定，都走向更安穩的自由。」（範例）
+
+【嚴格禁止重複規則】
+1. 同一句話不得在不同欄位重複出現。
+2. 不得連續兩句表達相同意思（換個說法說同一件事也算違反）。
+3. 不得為了湊字數重複牌義。
+4. cardMessage 中牌名只能出現 1 次。
+5. 禁止出現：「援助正在靠近」重複兩次、「走出匱乏感」重複等任何句子重複。
+
 【解讀品質規範】
 1. 只根據這一張牌（${card.name} ${ori}）解讀，不引入其他牌的概念。
-2. cardMessage 必須明確引用牌名「${card.name}」的${ori}含義，說明為什麼這張牌對應使用者的問題，以及它在提醒什麼。禁止通用語。
-3. oneLineConclusion：20～40字，像命中要害的結論，直接回答使用者問題。
-4. questionFocus：${depthSpec.questionFocus}，說明問題的核心。
-5. cardMessage：${depthSpec.cardMessage}。
-6. todayAction：${depthSpec.todayAction}。
-7. gentleReminder：${depthSpec.gentleReminder}。
-8. blessing：20～40字，每次要有不同感，不要每次都一樣。
+2. oneLineConclusion 第一句直接回答使用者問題，不從牌義背景說起。
+3. questionAnswer 必須給明確方向：正位牌 → 可以怎麼做；逆位牌 → 要注意什麼、什麼不建議做。
 
 【輸出 JSON 格式】
 {
@@ -938,6 +1047,7 @@ ${antiSimilarityHint}
   "questionFocus": "（${depthSpec.questionFocus}）",
   "oneLineConclusion": "（20～40字，直接回答使用者問題的結論）",
   "cardMessage": "（${depthSpec.cardMessage}）",
+  "questionAnswer": "（${depthSpec.questionAnswer}）",
   "todayAction": "（${depthSpec.todayAction}）",
   "gentleReminder": "（${depthSpec.gentleReminder}）",
   "blessing": "（20～40字祝福語，每次不同）",
@@ -1018,21 +1128,19 @@ ${shortHint}
 ${antiSimilarityHint}
 
 【解讀品質規範 — 嚴格遵守】
-1. 每張牌的 message（${msgSpec}）必須說清楚四件事：
-   ①這張牌名（${cardNamesForHint}）和正逆位的核心含義是什麼
-   ②這張牌出現在這個位置（目前狀態/阻礙/建議）代表什麼
-   ③它如何直接對應使用者的問題
-   ④它在提醒使用者注意哪個具體的地方
+1. 每張牌的 message（${msgSpec}）必須用三小段格式：
+   「牌面重點：」→ 說明這張牌本身的核心牌義（引用牌名）
+   「對你的問題代表：」→ 直接回應使用者的問題，說清楚這張牌在這個位置代表什麼狀況或原因
+   「這張牌提醒你：」→ 給一個具體可行的提醒，說清楚要做什麼，不要用通用語
 
-2. overallSummary（${summSpec}）：
-   必須先給整組牌的核心判斷，直接回答使用者的問題。
-   禁止模板句：「答案不是單一原因，而是需要從三個面向一起看」
-   應該寫：這組牌整體在說什麼？使用者目前的情況是？下一步偏向前進/等待/調整/放下/觀察哪一種？
-
-3. combinedReading（${combSpec}）：
-   必須說明三張牌（${cardNamesForHint}）之間的關係和脈絡。
-   必須回答：①這三張牌合起來在說什麼？②使用者真正卡住的點是什麼？③接下來應該走哪個方向？
+2. overallSummary（格式固定為兩段）：
+   「整體答案：」→ 30～50字，直接回答使用者的問題。說出這組牌顯示的狀況。
+     範例（愛情）：「這段感情目前不是沒有機會，但需要你先觀察對方是否有實際靠近的行動，而不是只靠你一個人努力。」
+     範例（工作）：「工作上的卡關不是能力問題，而是你還沒確認真正想走的方向。先把這件事說清楚，再決定要衝還是等。」
+   「為什麼會這樣：」→ 80～150字，說明三張牌（${cardNamesForHint}）之間的關係，使用者真正卡住的點，以及接下來應該前進/等待/調整/放下/觀察哪一種方向。
    禁止模板句：「答案不是單一原因」「需要從三個面向一起看」
+
+3. combinedReading（${combSpec}）：留空字串即可（"combinedReading": ""），不需填寫。
 
 4. actionSteps（3個，每個${stepSpec}）：
    每個行動都要具體可執行，說清楚怎麼做，不要只給抽象建議。
@@ -1041,8 +1149,15 @@ ${antiSimilarityHint}
 
 5. gentleReminder（${remindSpec}）：
    要療癒，但必須呼應本次牌陣和問題，不可以每次都用一樣的通用療癒語。
+   依分類（${getTopicLabel(topic)}）調整語氣：
+   愛情→聚焦感情裡的安定感；工作→聚焦方向與價值；財運→聚焦財務清晰；生活→聚焦找回節奏。
 
-6. 三張牌整體字數目標：900～1400字。每張牌解讀要有明顯差異，不可以三張說一樣的話。
+6. blessing（20～40字）：依本次分類（${getTopicLabel(topic)}）和牌面動態生成，不可每次都一樣。
+   愛情類：「願你喜歡的人，不只讓你心動，也能讓你安心。」（此為範例，請根據本次牌面生成不同版本）
+   工作類：「願你的努力慢慢被看見，也願你有勇氣選擇真正適合自己的路。」（此為範例）
+   財運類：「願你的每一步財務決定，都走向更安穩的自由。」（此為範例）
+
+7. 三張牌整體字數目標：900～1400字。每張牌解讀要有明顯差異，不可以三張說一樣的話。
 
 【anti-repetition 規則】
 三張牌的 message 中，禁止讓不同牌出現相同的核心提醒。
