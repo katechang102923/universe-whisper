@@ -62,16 +62,20 @@ type ThreeCardEntry = {
   position: string;
   cardName: string;
   orientation: string;
-  message: string;
+  keywords?: string[];             // 3 個關鍵字（卡片快速摘要用）
+  shortSummary?: string;           // 一句話摘要（40-50 字，卡片顯示用）
+  message: string;                 // 完整解讀文字（完整解讀區塊用）
 };
 
 type ThreeCardReading = {
   spreadType: "three";
   category: string;
   questionFocus: string;
+  overallSummary: string;          // 牌陣總結（一兩句核心結論）
   cards: [ThreeCardEntry, ThreeCardEntry, ThreeCardEntry];
   combinedReading: string;
-  next3To7Days: string;
+  actionSteps: string[];           // 3～7 天具體行動（陣列，各1句）
+  next3To7Days: string;            // 保留供 fallback 使用
   gentleReminder: string;
   blessing: string;
   safetyNote?: string;
@@ -356,21 +360,47 @@ function parseThreeCardJson(raw: string): ThreeCardReading | null {
     const defaultPositions = ["目前狀態", "阻礙或盲點", "接下來的建議"];
     const cards = (p.cards as unknown[]).slice(0, 3).map((c, i): ThreeCardEntry => {
       const entry = (c && typeof c === "object" ? c : {}) as Record<string, unknown>;
+      // keywords 支援 string[] 或逗號分隔字串
+      let keywords: string[] | undefined;
+      if (Array.isArray(entry.keywords)) {
+        keywords = (entry.keywords as unknown[])
+          .filter((k): k is string => typeof k === "string")
+          .slice(0, 3);
+      } else if (typeof entry.keywords === "string") {
+        keywords = entry.keywords.split(/[,，、]/).map((k) => k.trim()).filter(Boolean).slice(0, 3);
+      }
       return {
-        position:    typeof entry.position    === "string" ? entry.position    : defaultPositions[i]!,
-        cardName:    typeof entry.cardName    === "string" ? entry.cardName    : `第${i + 1}張牌`,
-        orientation: typeof entry.orientation === "string" ? entry.orientation : "正位",
-        message:     typeof entry.message     === "string" ? entry.message     : "這張牌的訊息正在凝聚中，請稍後再細細感受。",
+        position:     typeof entry.position    === "string" ? entry.position    : defaultPositions[i]!,
+        cardName:     typeof entry.cardName    === "string" ? entry.cardName    : `第${i + 1}張牌`,
+        orientation:  typeof entry.orientation === "string" ? entry.orientation : "正位",
+        keywords,
+        shortSummary: typeof entry.shortSummary === "string" ? entry.shortSummary : undefined,
+        message:      typeof entry.message     === "string" ? entry.message     : "這張牌的訊息正在凝聚中，請稍後再細細感受。",
       };
     }) as [ThreeCardEntry, ThreeCardEntry, ThreeCardEntry];
 
+    // actionSteps 支援 string[] 或換行分隔字串
+    let actionSteps: string[] = [];
+    if (Array.isArray(p.actionSteps)) {
+      actionSteps = (p.actionSteps as unknown[])
+        .filter((s): s is string => typeof s === "string")
+        .slice(0, 5);
+    } else if (typeof p.actionSteps === "string") {
+      actionSteps = p.actionSteps.split(/\n|；/).map((s) => s.trim()).filter(Boolean).slice(0, 5);
+    }
+    if (!actionSteps.length) {
+      actionSteps = ["Day 1–2：先觀察當下的狀態，不急著行動", "Day 3–4：選一件可以執行的小事開始", "Day 5–7：把注意力收回來，整理自己的感受"];
+    }
+
     return {
       spreadType:      "three",
-      category:        typeof p.category      === "string" ? p.category      : "生活綜合",
-      questionFocus:   typeof p.questionFocus === "string" ? p.questionFocus : "你的問題已收到，以下是這組牌的訊息。",
+      category:        typeof p.category       === "string" ? p.category       : "生活綜合",
+      questionFocus:   typeof p.questionFocus  === "string" ? p.questionFocus  : "你的問題已收到，以下是這組牌的訊息。",
+      overallSummary:  typeof p.overallSummary === "string" ? p.overallSummary : "這三張牌合在一起，指出了你目前最需要關注的方向，答案比你以為的更接近。",
       cards,
-      combinedReading: typeof p.combinedReading === "string" ? p.combinedReading : "這三張牌合在一起，指出了你目前最需要關注的方向，答案比你以為的更接近。",
-      next3To7Days:    typeof p.next3To7Days   === "string" ? p.next3To7Days   : "Day 1–2：先觀察當下的狀態，不急著行動\nDay 3–4：選一件可以執行的小事開始\nDay 5–7：把注意力收回來，整理自己的感受",
+      combinedReading: typeof p.combinedReading === "string" ? p.combinedReading : "這三張牌之間有一條清晰的脈絡，需要從三個面向一起看才能完整理解。",
+      actionSteps,
+      next3To7Days:    actionSteps.join("\n"),
       gentleReminder:  typeof p.gentleReminder === "string" ? p.gentleReminder : "答案就在你心裡，塔羅只是幫你照亮那個位置。",
       blessing:        typeof p.blessing       === "string" ? p.blessing       : "願你在尋找答案的路上，也記得溫柔地陪著自己。",
       safetyNote:      typeof p.safetyNote     === "string" && p.safetyNote ? p.safetyNote : undefined,
@@ -400,37 +430,62 @@ function formatSingleCardReading(r: SingleCardReading): string {
 }
 
 function formatThreeCardReading(r: ThreeCardReading): string {
-  // null-safe guard：任何欄位缺失都補上預設值，絕不 throw
+  // null-safe：任何欄位缺失都補預設值，絕不 throw
   const safe = {
     category:        r.category        || "生活綜合",
     questionFocus:   r.questionFocus   || "以下是這組牌對你問題的訊息。",
-    combinedReading: r.combinedReading || "這三張牌合在一起，指出你目前最需要關注的方向。",
-    next3To7Days:    r.next3To7Days    || "Day 1–2：先觀察當下狀態\nDay 3–4：選一件可執行的小事\nDay 5–7：整理自己的感受",
+    overallSummary:  r.overallSummary  || "",
+    combinedReading: r.combinedReading || "這三張牌之間有一條清晰的脈絡，需要從三個面向一起看才能完整理解。",
     gentleReminder:  r.gentleReminder  || "答案就在你心裡，塔羅只是幫你照亮那個位置。",
     blessing:        r.blessing        || "願你在尋找答案的路上，也記得溫柔地陪著自己。",
   };
 
-  const cards = Array.isArray(r.cards) ? r.cards : [];
-  const cardParts = cards.map(
-    (c, i) => {
-      const pos = c?.position    || `第${i + 1}張`;
-      const name = c?.cardName   || `牌${i + 1}`;
-      const ori  = c?.orientation|| "正位";
-      const msg  = c?.message    || "這張牌的訊息正在凝聚中。";
-      return `🃏 第${i + 1}張牌：${pos}\n\n${name}（${ori}）\n${msg}`;
-    }
-  );
+  const cardsArr = Array.isArray(r.cards) ? r.cards : [];
+
+  // 卡片段落：每張牌包含 shortSummary（摘要）和 message（完整）
+  const cardParts = cardsArr.map((c, i) => {
+    const pos  = c?.position    || `第${i + 1}張`;
+    const name = c?.cardName    || `牌${i + 1}`;
+    const ori  = c?.orientation || "正位";
+    const msg  = c?.message     || "這張牌的訊息正在凝聚中。";
+    const kw   = Array.isArray(c?.keywords) && c.keywords.length
+      ? `關鍵字：${c.keywords.slice(0, 3).join("、")}`
+      : "";
+    const short = c?.shortSummary || "";
+    // 格式：CARD_SECTION 標記讓前端新版解析器可辨識
+    return [
+      `🃏 第${i + 1}張牌：${pos}`,
+      ``,
+      `${name}（${ori}）${kw ? `｜${kw}` : ""}`,
+      short ? `摘要：${short}` : "",
+      ``,
+      msg,
+    ].filter((l) => l !== "").join("\n");
+  });
+
+  // actionSteps 格式化
+  const actionStepsText = Array.isArray(r.actionSteps) && r.actionSteps.length
+    ? r.actionSteps.join("\n")
+    : (r.next3To7Days || "Day 1–2：先觀察當下狀態\nDay 3–4：選一件可執行的小事\nDay 5–7：整理自己的感受");
 
   const parts: string[] = [
     `🎯 本次問題焦點\n\n${safe.category}`,
     `🌙 宇宙偷偷話\n\n${safe.questionFocus}`,
-    ...cardParts,
-    `🔮 三張牌整合訊息\n\n${safe.combinedReading}`,
-    `🕯️ 3～7 天行動建議\n\n${safe.next3To7Days}`,
-    `🌌 給你的溫柔提醒\n\n${safe.gentleReminder}`,
-    `💫 一句專屬祝福\n\n${safe.blessing}`,
   ];
+
+  // 牌陣總結（若有）
+  if (safe.overallSummary) {
+    parts.push(`🌟 牌陣總結\n\n${safe.overallSummary}`);
+  }
+
+  parts.push(...cardParts);
+  parts.push(`🔮 三張牌整合訊息\n\n${safe.combinedReading}`);
+  parts.push(`🕯️ 3～7 天行動建議\n\n${actionStepsText}`);
+  parts.push(`🌌 給你的溫柔提醒\n\n${safe.gentleReminder}`);
+  parts.push(`💫 一句專屬祝福\n\n${safe.blessing}`);
+
   if (r.safetyNote) parts.push(`⚠️ 健康提醒\n\n${r.safetyNote}`);
+
   return parts.join("\n\n");
 }
 
@@ -574,13 +629,18 @@ function buildThreeCardFallback(
 
   const cardNamesStr = cards.map((c) => c.name).join("、");
 
+  const actionStepsText = getFallbackNext3To7Days(focus);
+  const actionSteps = actionStepsText.split("\n").map((s) => s.trim()).filter(Boolean);
+
   return formatThreeCardReading({
     spreadType:      "three",
     category:        focusLabel,
     questionFocus:   question ? `你的問題是：「${question}」` : "你把問題放在心裡，牌陣接住了此刻的能量。",
+    overallSummary:  getFallbackConclusion(focus),
     cards:           cardEntries as [ThreeCardEntry, ThreeCardEntry, ThreeCardEntry],
-    combinedReading: `${cardNamesStr} 這三張牌合在一起指出：${getFallbackConclusion(focus)}`,
-    next3To7Days:    getFallbackNext3To7Days(focus),
+    combinedReading: `${cardNamesStr} 這三張牌合在一起指出：答案不是單一原因，而是需要從三個面向一起看。`,
+    actionSteps,
+    next3To7Days:    actionStepsText,
     gentleReminder:  getFallbackGentleReminder(focus),
     blessing:        getFallbackBlessing(focus),
     safetyNote:      getHealthSafetyNote(focus),
@@ -757,11 +817,14 @@ function buildThreeCardPrompt(
     const defaultPos = defaultPositions[i] ?? `第${i + 1}張`;
     const posLabel   = card.spreadPosition ? spreadLabels[card.spreadPosition] : defaultPos;
     const ori        = card.position === "upright" ? "正位" : "逆位";
+    const cardKw     = card.keywords?.slice(0, 3).join("、") ?? "";
     return `    {
       "position": "${posLabel}",
       "cardName": "${card.name}",
       "orientation": "${ori}",
-      "message": "（2-4句，必須引用牌名「${card.name}」的${ori}含義，聚焦在「${posLabel}」這個位置的意義）"
+      "keywords": ["（關鍵字1）", "（關鍵字2）", "（關鍵字3）"],
+      "shortSummary": "（1句話摘要，最多40字，直接說這張牌在此位置對問題的核心提示${cardKw ? `，可用關鍵字：${cardKw}` : ""}）",
+      "message": "（${depthNote.includes("3-4") ? "3-4" : "2-3"}句完整解讀，必須引用牌名「${card.name}」的${ori}含義，聚焦「${posLabel}」位置的意義）"
     }`;
   }).join(",\n");
 
@@ -780,22 +843,25 @@ ${shortHint}
 ${antiSimilarityHint}
 
 【三張牌解讀規則】
-1. 每張牌的 message 必須明確引用該牌名（${cardNamesForHint}）及其正逆位含義。
-2. combinedReading 必須同時提到三張牌名，說明三張牌之間的關係和整體判斷。
-3. next3To7Days 必須用 Day1-2 / Day3-4 / Day5-7 分段，給出具體可執行的建議，不能只說「相信自己」「慢慢來」。
-4. ${depthNote}
-5. 三張牌的整體解讀深度必須明顯高於單張牌，要反映牌陣的完整脈絡與三牌關係。
+1. 每張牌的 shortSummary 是卡片快速摘要（40字內），message 是完整深度解讀（不重複 shortSummary）。
+2. 每張牌的 message 必須明確引用該牌名（${cardNamesForHint}）及其正逆位含義。
+3. overallSummary 是整組牌的核心結論（1-2句），先回答使用者問題，再加療癒語氣。
+4. combinedReading 說明三張牌之間的關係，必須同時提到三張牌名。
+5. actionSteps 是長度為3的陣列，格式 ["Day 1–2：具體行動", "Day 3–4：具體行動", "Day 5–7：具體行動"]，給出具體可執行的建議。
+6. ${depthNote}
+7. 三張牌整體解讀深度必須明顯高於單張牌，反映牌陣完整脈絡。
 
 【輸出 JSON 格式】
 {
   "spreadType": "three",
   "category": "（${focusLabel}）",
   "questionFocus": "（1句話說明這次解讀的核心問題）",
+  "overallSummary": "（1-2句，整組牌的核心結論，直接回答問題再加療癒語氣，不超過60字）",
   "cards": [
 ${positionSchema}
   ],
-  "combinedReading": "（${depth === "deep" ? "3-4" : "2-3"}句，整合三張牌的完整判斷，必須同時提到三張牌名）",
-  "next3To7Days": "（Day 1–2：具體行動\\nDay 3–4：具體行動\\nDay 5–7：具體行動）",
+  "combinedReading": "（${depth === "deep" ? "3-4" : "2-3"}句，三張牌之間的關係與整體判斷，必須同時提到三張牌名）",
+  "actionSteps": ["Day 1–2：具體行動", "Day 3–4：具體行動", "Day 5–7：具體行動"],
   "gentleReminder": "（1-2句溫柔收尾）",
   "blessing": "（1句祝福語）",
   "safetyNote": "（若問題涉及身體健康：如果症狀持續、惡化，或已經影響生活，建議尋求皮膚科或專業醫療協助。 否則為空字串）"

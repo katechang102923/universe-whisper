@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ShareStoryCard } from "@/components/ShareStoryCard";
-import { TarotCardBack, TarotCardFace, type TarotCardFaceData } from "@/components/TarotCardFace";
+import { TarotCardBack, TarotCardFace, TarotCardFaceCompact, type TarotCardFaceData } from "@/components/TarotCardFace";
 import { TarotShuffleAnimation } from "./TarotShuffleAnimation";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -98,7 +98,9 @@ function markFbShareUnlockLocalStorage() {
 type ReadingSection = { title: string; body: string };
 const READING_FALLBACK_TEXT = "宇宙正在整理訊息中。";
 
+// 所有可能的 section 標題（支援 emoji 前綴，用裸文字匹配）
 const READING_SECTION_TITLES = [
+  // 原有
   "宇宙偷偷話",
   "這張牌正在說什麼",
   "你現在的狀態",
@@ -106,7 +108,24 @@ const READING_SECTION_TITLES = [
   "給你的溫柔提醒",
   "7日能量提示",
   "一句專屬祝福",
+  // 新增（單張牌）
+  "本次問題焦點",
+  "一句話結論",
+  "今天可以怎麼做",
+  "健康提醒",
+  // 新增（三張牌）
+  "牌陣總結",
+  "第1張牌",
+  "第2張牌",
+  "第3張牌",
+  "三張牌整合訊息",
+  "3～7 天行動建議",
 ];
+
+/** 移除行首 emoji / 符號，取得純文字 */
+function stripLeadingSymbols(line: string): string {
+  return line.replace(/^[^\p{L}\p{N}\d]+/gu, "").trim();
+}
 
 function parseReadingSectionsForDisplay(text: string): ReadingSection[] {
   const cleaned = text.replace(/\*\*/g, "").trim();
@@ -126,13 +145,22 @@ function parseReadingSectionsForDisplay(text: string): ReadingSection[] {
     const line = rawLine.trim();
     if (!line) continue;
 
-    const title = READING_SECTION_TITLES.find(
-      (item) => line === item || line.startsWith(`${item} `),
-    );
+    const bare = stripLeadingSymbols(line);
 
-    if (title) {
+    // 找到匹配的 section 標題（支援 emoji 前綴和冒號後綴）
+    const matchedTitle = READING_SECTION_TITLES.find((item) => {
+      if (bare === item) return true;
+      if (bare.startsWith(`${item}：`) || bare.startsWith(`${item} `)) return true;
+      if (bare.startsWith(`${item}:`)) return true;
+      return false;
+    });
+
+    if (matchedTitle) {
       pushCurrent();
-      current = { title, body: line.slice(title.length).trim() };
+      // 標題後的文字（如「第1張牌：目前狀態」取「目前狀態」部分）
+      const afterTitle = bare.slice(matchedTitle.length).replace(/^[：: ]+/, "").trim();
+      const displayTitle = afterTitle ? `${matchedTitle}：${afterTitle}` : matchedTitle;
+      current = { title: displayTitle, body: "" };
       continue;
     }
 
@@ -149,6 +177,85 @@ function parseReadingSectionsForDisplay(text: string): ReadingSection[] {
   return sections.length
     ? sections
     : [{ title: "宇宙偷偷話", body: READING_FALLBACK_TEXT }];
+}
+
+// ── 三張牌解讀的結構化資料 ────────────────────────────────────────────────────
+
+type ThreeCardParsedSections = {
+  category: string;
+  questionFocus: string;
+  overallSummary: string;
+  card1: { subtitle: string; body: string };
+  card2: { subtitle: string; body: string };
+  card3: { subtitle: string; body: string };
+  combined: string;
+  actionSteps: string;
+  reminder: string;
+  blessing: string;
+  safetyNote: string;
+};
+
+function parseThreeCardSections(text: string): ThreeCardParsedSections {
+  const result: ThreeCardParsedSections = {
+    category: "", questionFocus: "", overallSummary: "",
+    card1: { subtitle: "", body: "" },
+    card2: { subtitle: "", body: "" },
+    card3: { subtitle: "", body: "" },
+    combined: "", actionSteps: "", reminder: "", blessing: "", safetyNote: "",
+  };
+  if (!text.trim()) return result;
+
+  type Key = "category" | "qfocus" | "summary" | "c1" | "c2" | "c3" | "combined" | "action" | "reminder" | "blessing" | "safety";
+  let current: Key | null = null;
+  const lines: string[] = [];
+
+  const flush = () => {
+    const body = lines.join("\n").trim();
+    lines.length = 0;
+    if (!current || !body) return;
+    if (current === "category")  result.category      = body;
+    if (current === "qfocus")    result.questionFocus  = body;
+    if (current === "summary")   result.overallSummary = body;
+    if (current === "c1")        result.card1.body      = body;
+    if (current === "c2")        result.card2.body      = body;
+    if (current === "c3")        result.card3.body      = body;
+    if (current === "combined")  result.combined        = body;
+    if (current === "action")    result.actionSteps     = body;
+    if (current === "reminder")  result.reminder        = body;
+    if (current === "blessing")  result.blessing        = body;
+    if (current === "safety")    result.safetyNote      = body;
+  };
+
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const bare = stripLeadingSymbols(line);
+
+    if (bare.startsWith("本次問題焦點"))              { flush(); current = "category"; }
+    else if (bare.startsWith("宇宙偷偷話"))           { flush(); current = "qfocus"; }
+    else if (bare.startsWith("牌陣總結"))             { flush(); current = "summary"; }
+    else if (bare.match(/^第[1一]張牌/))              {
+      flush(); current = "c1";
+      result.card1.subtitle = bare.replace(/^第[1一]張牌[：:：]?\s*/, "");
+    }
+    else if (bare.match(/^第[2二]張牌/))              {
+      flush(); current = "c2";
+      result.card2.subtitle = bare.replace(/^第[2二]張牌[：:：]?\s*/, "");
+    }
+    else if (bare.match(/^第[3三]張牌/))              {
+      flush(); current = "c3";
+      result.card3.subtitle = bare.replace(/^第[3三]張牌[：:：]?\s*/, "");
+    }
+    else if (bare.includes("三張牌整合"))             { flush(); current = "combined"; }
+    else if (bare.includes("行動建議") || bare.includes("3～7") || bare.includes("3~7")) { flush(); current = "action"; }
+    else if (bare.includes("溫柔提醒"))               { flush(); current = "reminder"; }
+    else if (bare.includes("專屬祝福") || bare.includes("一句祝福")) { flush(); current = "blessing"; }
+    else if (bare.includes("健康提醒"))               { flush(); current = "safety"; }
+    else if (current)                                  { lines.push(line); }
+  }
+  flush();
+
+  return result;
 }
 
 function ReadingSectionList({ text, limit }: { text: string; limit?: number }) {
@@ -171,6 +278,137 @@ function ReadingSectionList({ text, limit }: { text: string; limit?: number }) {
           </p>
         </article>
       ))}
+    </div>
+  );
+}
+
+// ── 三張牌完整解讀顯示元件 ───────────────────────────────────────────────────
+
+function ThreeCardReadingDisplay({
+  text,
+  cards: spreadCards,
+}: {
+  text: string;
+  cards: TarotCardFaceData[];
+}) {
+  const s = parseThreeCardSections(text);
+
+  const cardSections = [
+    { data: s.card1, card: spreadCards[0], idx: 0 },
+    { data: s.card2, card: spreadCards[1], idx: 1 },
+    { data: s.card3, card: spreadCards[2], idx: 2 },
+  ];
+
+  const baseCard =
+    "reading-fade-in rounded-2xl border border-white/10 bg-white/[0.055] p-4 shadow-[0_12px_36px_rgba(8,10,35,0.18)] sm:p-5";
+  const baseTitle = "mb-3 text-xs tracking-[0.22em] text-lavender/70 uppercase";
+  const baseBody  = "whitespace-pre-line text-base leading-8 text-moon/80";
+
+  return (
+    <div className="space-y-4">
+
+      {/* 牌陣總結：最上方 highlight 卡片 */}
+      {s.overallSummary ? (
+        <article
+          className="reading-fade-in rounded-2xl border border-[#d8bd70]/30 bg-gradient-to-br from-[#d8bd70]/10 to-midnight/60 p-5 shadow-[0_0_28px_rgba(216,189,112,0.10)]"
+          style={{ animationDelay: "0s" }}
+        >
+          <p className="mb-2 text-xs tracking-[0.22em] text-[#d8bd70]/75 uppercase">牌陣總結</p>
+          <p className="text-lg font-medium leading-8 text-moon">{s.overallSummary}</p>
+        </article>
+      ) : null}
+
+      {/* 逐張牌解讀 */}
+      {cardSections.map(({ data, card, idx }) =>
+        data.body ? (
+          <article
+            key={idx}
+            className={baseCard}
+            style={{ animationDelay: `${(idx + 1) * 0.2}s` }}
+          >
+            {/* 小標題：第N張牌 + 位置 + 牌名 */}
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-[#d8bd70]/35 bg-midnight/60 px-2.5 py-0.5 text-xs font-medium tracking-wide text-[#d8bd70]">
+                第 {idx + 1} 張
+              </span>
+              {(data.subtitle || card?.position) && (
+                <span className="text-sm text-moon/70">{data.subtitle || card?.position}</span>
+              )}
+              {card?.name && (
+                <span className="ml-auto text-sm font-medium text-moon/90">
+                  {card.name}
+                  <span
+                    className={`ml-1.5 rounded-full border px-2 py-0.5 text-xs ${
+                      card.orientation === "upright"
+                        ? "border-aurora/40 text-aurora"
+                        : "border-lavender/44 text-lavender"
+                    }`}
+                  >
+                    {card.orientationLabel}
+                  </span>
+                </span>
+              )}
+            </div>
+            <p className={baseBody}>{data.body}</p>
+          </article>
+        ) : null
+      )}
+
+      {/* 三張牌整合訊息 */}
+      {s.combined ? (
+        <article className={baseCard} style={{ animationDelay: "0.7s" }}>
+          <p className={baseTitle}>三張牌整合訊息</p>
+          <p className={baseBody}>{s.combined}</p>
+        </article>
+      ) : null}
+
+      {/* 3～7 天行動建議 */}
+      {s.actionSteps ? (
+        <article className={baseCard} style={{ animationDelay: "0.9s" }}>
+          <p className={baseTitle}>3～7 天行動建議</p>
+          <ul className="mt-1 space-y-2">
+            {s.actionSteps.split("\n").filter(Boolean).map((step, i) => (
+              <li
+                key={i}
+                className="flex gap-2 text-base leading-7 text-moon/80"
+              >
+                <span className="mt-[3px] shrink-0 text-[#d8bd70]">✦</span>
+                <span>{step.replace(/^[-•·✦＊\*]\s*/, "").replace(/^Day\s*\d[–-]\d[：:]\s*/, (m) => `${m.trim().replace(/[：:]$/, "")}：`)}</span>
+              </li>
+            ))}
+          </ul>
+        </article>
+      ) : null}
+
+      {/* 溫柔提醒 */}
+      {s.reminder ? (
+        <article className={baseCard} style={{ animationDelay: "1.1s" }}>
+          <p className={baseTitle}>給你的溫柔提醒</p>
+          <p className={baseBody}>{s.reminder}</p>
+        </article>
+      ) : null}
+
+      {/* 一句祝福 */}
+      {s.blessing ? (
+        <article
+          className="reading-fade-in rounded-2xl border border-lavender/20 bg-midnight/40 p-4 text-center"
+          style={{ animationDelay: "1.3s" }}
+        >
+          <p className="text-base italic leading-8 text-moon/80">{s.blessing}</p>
+        </article>
+      ) : null}
+
+      {/* 健康提醒 */}
+      {s.safetyNote ? (
+        <article
+          className="reading-fade-in rounded-2xl border border-amber-400/25 bg-amber-400/5 p-4"
+          style={{ animationDelay: "1.5s" }}
+        >
+          <p className="text-xs tracking-wide text-amber-400/70 uppercase mb-2">健康提醒</p>
+          <p className="text-sm leading-7 text-moon/70">{s.safetyNote}</p>
+        </article>
+      ) : null}
+
     </div>
   );
 }
@@ -1234,32 +1472,55 @@ export function TarotDrawClient() {
         />
       ) : null}
 
-      {/* ?? Card display ?? */}
+      {/* Card display */}
       {status === "idle" || status === "revealed" ? (
-        <div className="relative z-10 mt-8 grid grid-cols-1 items-start gap-8 md:grid-cols-2 xl:grid-cols-3">
-          {status === "revealed" && cards.length
-            ? cards.map((card, index) => (
-                <article
-                  key={`${card.id}-${index}`}
-                  className="reading-fade-in tarot-card-shell mx-auto w-full max-w-[420px]"
-                >
-                  {card.position ? (
-                    <p className="mb-3 rounded-full border border-moon/20 bg-midnight/54 px-4 py-2 text-center text-base font-medium text-moon shadow-glow">
-                      第 {index + 1} 張｜{card.position}
-                    </p>
-                  ) : null}
-                  <TarotCardFace card={card} topic={topic} />
-                </article>
-              ))
-            : visibleBacks.map((_, index) => (
-                <div
-                  key={`back-${index}`}
-                  className="tarot-card-shell mx-auto w-full max-w-[420px]"
-                >
-                  <TarotCardBack />
-                </div>
-              ))}
-        </div>
+        <>
+          {/* Single-card: original layout unchanged */}
+          {isSingleResult ? (
+            <div className="relative z-10 mt-8 grid grid-cols-1 items-start gap-8 md:grid-cols-2 xl:grid-cols-3">
+              {status === "revealed" && cards.length
+                ? cards.map((card, index) => (
+                    <article
+                      key={`${card.id}-${index}`}
+                      className="reading-fade-in tarot-card-shell mx-auto w-full max-w-[420px]"
+                    >
+                      {card.position ? (
+                        <p className="mb-3 rounded-full border border-moon/20 bg-midnight/54 px-4 py-2 text-center text-base font-medium text-moon shadow-glow">
+                          第 {index + 1} 張｜{card.position}
+                        </p>
+                      ) : null}
+                      <TarotCardFace card={card} topic={topic} />
+                    </article>
+                  ))
+                : visibleBacks.map((_, index) => (
+                    <div key={`back-${index}`} className="tarot-card-shell mx-auto w-full max-w-[420px]">
+                      <TarotCardBack />
+                    </div>
+                  ))}
+            </div>
+          ) : (
+            /* Three-card: compact cards, horizontal scroll on mobile, 3-col on desktop */
+            <div className="relative z-10 mt-8">
+              <p className="mb-2 text-center text-xs text-moon/38 sm:hidden">← 左右滑動查看三張牌 →</p>
+              <div className="flex gap-3 overflow-x-auto scroll-smooth pb-3 [scrollbar-width:none] [-webkit-overflow-scrolling:touch] sm:grid sm:grid-cols-3 sm:gap-5 sm:overflow-visible sm:pb-0">
+                {status === "revealed" && cards.length
+                  ? cards.map((card, index) => (
+                      <article
+                        key={`${card.id}-${index}`}
+                        className="reading-fade-in min-w-[72vw] flex-shrink-0 sm:min-w-0"
+                      >
+                        <TarotCardFaceCompact card={card} topic={topic} cardIndex={index} />
+                      </article>
+                    ))
+                  : visibleBacks.map((_, index) => (
+                      <div key={`back-${index}`} className="min-w-[72vw] flex-shrink-0 sm:min-w-0">
+                        <TarotCardBack compact />
+                      </div>
+                    ))}
+              </div>
+            </div>
+          )}
+        </>
       ) : null}
 
       {/* ????????????????????????????????????????????????????????????????????
@@ -1438,16 +1699,18 @@ export function TarotDrawClient() {
               ) : null}
             </div>
           ) : (
-            /* ?? 4. Full reading (when unlocked) ??no duplicate free section above ?? */
+            /* 4. Full reading (when unlocked) */
             <div className="cosmic-reading-card rounded-[1.75rem] border border-lavender/20 bg-midnight/58 p-5 shadow-glow sm:p-6">
               <p className="text-sm tracking-[0.22em] text-lavender/70">完整解讀</p>
               <h3 className="mt-2 text-2xl font-semibold text-moon">完整宇宙訊息</h3>
+              {/* 三張牌版專屬副標題 */}
+              {!isSingleResult && (
+                <p className="mt-1.5 text-sm leading-6 text-moon/50">
+                  三張牌會從背景、現在狀態與接下來的方向，替你整理出更完整的訊息。
+                </p>
+              )}
               <div className="mt-5">
                 {readingStatus === "loading" ? (
-                  /* Preview: show freeSummary while AI reading is in-flight.
-                     Replaces the old blank "宇宙正在整理…" spinner so the user
-                     sees meaningful content immediately.  ReadingSectionList
-                     below renders empty until fullReading is populated. */
                   <div className="mb-5">
                     <p className="mb-2 text-xs tracking-[0.18em] text-lavender/58">
                       完整版整理中…
@@ -1459,9 +1722,12 @@ export function TarotDrawClient() {
                     </div>
                   </div>
                 ) : null}
-                <ReadingSectionList text={fullReading} />
+                {/* 三張牌用專屬元件，單張牌用通用元件 */}
+                {!isSingleResult
+                  ? <ThreeCardReadingDisplay text={fullReading} cards={cards} />
+                  : <ReadingSectionList text={fullReading} />
+                }
               </div>
-
               {/* LINE action button inside full reading */}
               <div className="mt-6 border-t border-white/10 pt-5">
                 <p className="mb-3 text-sm text-moon/50">把本次完整結果傳送到 LINE 官方帳號聊天室。</p>
