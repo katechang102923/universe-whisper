@@ -1562,68 +1562,89 @@ export function TarotDrawClient() {
             </div>
           ) : null}
 
-          {/* ?? 2a. Partial reading ??shown ONLY when locked (3-card) ?? */}
+          {/* 2a. Three-card locked: show card names + freeSummary ONLY — no fullReading content */}
           {!isSingleResult && !hasFullAccess ? (
             <div className="cosmic-reading-card rounded-[1.75rem] border border-lavender/20 bg-midnight/58 p-5 shadow-glow sm:p-6">
-              <p className="text-sm tracking-[0.22em] text-lavender/70">部分解讀</p>
-              <h3 className="mt-2 text-2xl font-semibold text-moon">宇宙給你的簡短訊息</h3>
-              <div className="mt-4 rounded-2xl border border-white/10 bg-white/6 p-4">
+              <p className="text-sm tracking-[0.22em] text-lavender/70">宇宙先給你的提示</p>
+              <h3 className="mt-2 text-2xl font-semibold text-moon">你這次抽到的三張牌</h3>
+
+              {/* Card list: position + name + orientation only, zero AI content */}
+              <ul className="mt-4 space-y-2">
+                {cards.map((card, idx) => (
+                  <li
+                    key={card.id}
+                    className="flex items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-3"
+                  >
+                    <span className="shrink-0 rounded-full border border-[#d8bd70]/35 bg-midnight/60 px-2.5 py-0.5 text-xs font-medium text-[#d8bd70]">
+                      第 {idx + 1} 張
+                    </span>
+                    {card.position && (
+                      <span className="text-sm text-moon/60">{card.position}</span>
+                    )}
+                    <span className="font-medium text-moon">{card.name}</span>
+                    <span
+                      className={`ml-auto shrink-0 rounded-full border px-2.5 py-0.5 text-xs ${
+                        card.orientation === "upright"
+                          ? "border-aurora/40 text-aurora"
+                          : "border-lavender/44 text-lavender"
+                      }`}
+                    >
+                      {card.orientationLabel}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+
+              {/* freeSummary — from card data, NOT from AI fullReading */}
+              <div className="mt-4 rounded-2xl border border-white/8 bg-white/[0.04] p-4">
                 {readingStatus === "loading" ? (
-                  <p className="text-base leading-8 text-moon/76">
-                    宇宙正在把牌義整理成你的訊息...
-                  </p>
-                ) : null}
-                <div className="reading-fade-in space-y-4">
-                  <div>
-                    <p className="text-sm tracking-[0.18em] text-lavender/70">抽到的牌</p>
-                    <p className="mt-2 text-base leading-7 text-moon/84">
-                      {cards
-                        .map(
-                          (card) =>
-                            `${card.position ? `${card.position}｜` : ""}${card.name}（${card.orientationLabel}）`,
-                        )
-                        .join("、")}
+                  <p className="text-sm text-moon/50">宇宙正在把牌義整理成你的訊息...</p>
+                ) : (
+                  <>
+                    <p className="text-sm tracking-[0.18em] text-lavender/70">簡短宇宙訊息</p>
+                    <p className="mt-2 text-base leading-8 text-moon/84">{freeSummary.message}</p>
+                  </>
+                )}
+              </div>
+
+              <p className="mt-4 text-sm leading-7 text-moon/55">
+                這是宇宙先給你的簡短提醒。分享 Facebook 後，可解鎖完整牌陣解讀、三張牌整合訊息與 3～7 天行動建議。
+              </p>
+            </div>
+          ) : null}
+
+          {/* 2b. Single-card locked: show freeSummary only — no fullReading leaked */}
+          {isSingleResult && !hasFullAccess ? (
+            <div className="cosmic-reading-card rounded-[1.75rem] border border-lavender/20 bg-midnight/58 p-5 shadow-glow sm:p-6">
+              <p className="text-sm tracking-[0.22em] text-lavender/70">宇宙先給你的提示</p>
+              <div className="mt-4 rounded-2xl border border-white/8 bg-white/[0.04] p-4">
+                {readingStatus === "loading" ? (
+                  <p className="text-base leading-8 text-moon/76">宇宙正在把牌義整理成你的訊息...</p>
+                ) : (
+                  <>
+                    <p className="text-base leading-8 text-moon/84">{freeSummary.message}</p>
+                    <p className="mt-3 rounded-xl border border-moon/12 bg-moon/6 px-3 py-2 text-sm leading-7 text-moon/70">
+                      {freeSummary.reminder}
                     </p>
-                  </div>
-                  {fullReading ? (
-                    <ReadingSectionList text={fullReading} limit={3} />
-                  ) : (
-                    <>
-                      <div>
-                        <p className="text-sm tracking-[0.18em] text-lavender/70">
-                          簡短宇宙訊息
-                        </p>
-                        <p className="mt-2 text-base leading-8 text-moon/84">
-                          {freeSummary.message}
-                        </p>
-                      </div>
-                      <p className="rounded-2xl border border-moon/15 bg-moon/8 p-3 text-base leading-7 text-moon">
-                        {freeSummary.reminder}
-                      </p>
-                    </>
-                  )}
-                </div>
+                  </>
+                )}
               </div>
             </div>
           ) : null}
 
-          {/* ?? 2b. Single-card partial reading ??shown ONLY when locked ?? */}
-          {isSingleResult && !hasFullAccess && fullReading ? (
-            <div className="cosmic-reading-card rounded-[1.75rem] border border-lavender/20 bg-midnight/58 p-5 shadow-glow sm:p-6">
-              <p className="text-sm tracking-[0.22em] text-lavender/70">部分解讀</p>
-              <ReadingSectionList text={fullReading} limit={3} />
-            </div>
-          ) : null}
-
-          {/* ?? 3. Unlock / action section (when NOT fully unlocked) ?? */}
+          {/* 3. Unlock CTA — shown when NOT fully unlocked, mode-aware copy */}
           {!hasFullAccess ? (
             <div className="cosmic-reading-card rounded-[1.75rem] border border-[#d8bd70]/24 bg-midnight/58 p-5 shadow-glow sm:p-6">
 
-              {/* ?? Section A: FB unlock ??ALWAYS shown ?? */}
+              {/* Section A: FB unlock */}
               <p className="text-sm tracking-[0.22em] text-[#d8bd70]/78">分享解鎖</p>
-              <h3 className="mt-2 text-2xl font-semibold text-moon">解鎖完整解讀</h3>
+              <h3 className="mt-2 text-2xl font-semibold text-moon">
+                {isSingleResult ? "解鎖完整解讀" : "解鎖完整牌陣解讀"}
+              </h3>
               <p className="mx-auto mt-3 max-w-xl text-base leading-8 text-moon/72">
-                分享到 Facebook 後，就能解鎖本次完整解讀內容。
+                {isSingleResult
+                  ? "分享到 Facebook 後，就能解鎖本次完整解讀內容。"
+                  : "分享到 Facebook 後，就能解鎖完整牌陣解讀、三張牌整合訊息與 3～7 天行動建議。"}
               </p>
 
               <div className="mt-5">
@@ -1653,12 +1674,14 @@ export function TarotDrawClient() {
                     onClick={() => void openFbShare()}
                     className="w-full rounded-full bg-[#d8bd70] px-6 py-4 text-base font-semibold text-midnight shadow-[0_0_28px_rgba(216,189,112,0.28)] transition hover:bg-moon active:scale-95 sm:w-auto sm:min-w-[280px]"
                   >
-                    分享到 Facebook 解鎖完整版
+                    {isSingleResult
+                      ? "分享到 Facebook 解鎖完整版"
+                      : "分享 Facebook 解鎖完整牌陣解讀"}
                   </button>
                 )}
               </div>
 
-              {/* ?? Section B: LINE ??ALWAYS shown ?? */}
+              {/* Section B: LINE — completely unchanged */}
               <div className="mt-5 border-t border-white/10 pt-5">
                 <p className="mb-3 text-sm text-moon/50">把本次結果傳送到 LINE 官方帳號聊天室。</p>
                 <button
@@ -1679,7 +1702,7 @@ export function TarotDrawClient() {
                 ) : null}
               </div>
 
-              {/* ?? Section C: NT$49 ??ADDITIONAL, shown only when free draws + FB unlock both exhausted ?? */}
+              {/* Section C: NT$49 — only when both free draws + FB unlock exhausted */}
               {shouldShowPaidPlan ? (
                 <div className="mt-5 border-t border-white/10 pt-5">
                   <p className="text-sm tracking-[0.22em] text-moon/50">付費完整解讀</p>
