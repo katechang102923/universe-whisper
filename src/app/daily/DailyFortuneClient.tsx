@@ -368,6 +368,8 @@ export function DailyFortuneClient() {
   const [selectedSlug, setSelectedSlug] = useState<ZodiacSlug | null>(null);
   const [downloadStatus, setDownloadStatus] = useState<"idle" | "working" | "done" | "error">("idle");
   const [downloadError, setDownloadError] = useState("");
+  /** Tracks which slugs have already been loaded into the browser image cache. */
+  const [loadedSlugs, setLoadedSlugs] = useState<ReadonlySet<ZodiacSlug>>(new Set());
   const detailRef = useRef<HTMLDivElement>(null);
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "universe-whisper.vercel.app";
 
@@ -383,6 +385,23 @@ export function DailyFortuneClient() {
       .then((d) => { setApiData(d); setApiLoading(false); })
       .catch(() => { setApiError("今天星光訊號有點微弱，稍後再試。"); setApiLoading(false); });
   }, []);
+
+  // Preload all 12 zodiac images on mount so switching signs is instant.
+  // We use the browser's native Image object with the same raw webp paths that
+  // the <img> card below will display — cache hits are guaranteed.
+  useEffect(() => {
+    ZODIAC_ORDER.forEach((slug) => {
+      const img = new window.Image();
+      img.onload = () =>
+        setLoadedSlugs((prev) => {
+          if (prev.has(slug)) return prev;
+          const next = new Set(prev);
+          next.add(slug);
+          return next as ReadonlySet<ZodiacSlug>;
+        });
+      img.src = ZODIAC_IMAGES[slug];
+    });
+  }, []); // run once on mount
 
   // Mobile: scroll to detail when sign selected
   useEffect(() => {
@@ -506,16 +525,63 @@ export function DailyFortuneClient() {
           })}
         </div>
 
-        {/* Zodiac image card — shown when a sign is selected, below the selector grid */}
+        {/*
+          ── Zodiac image card ──────────────────────────────────────────────
+          Fixed 2:3 aspect-ratio container — height NEVER changes regardless
+          of which sign is selected or whether the image has loaded yet.
+
+          We use a plain <img> (not Next.js Image) so the src URL matches
+          exactly what the preload effect fetched, guaranteeing a cache hit.
+          A shimmer skeleton is shown until the browser reports onLoad.
+          ─────────────────────────────────────────────────────────────────── */}
         {selectedSlug && (
-          <div className="mt-4 overflow-hidden rounded-2xl border border-lavender/20 bg-midnight/40 shadow-glow" style={{ maxWidth: 300 }}>
-            <Image
+          <div
+            style={{
+              width: "min(100%, 300px)",
+              aspectRatio: "2 / 3",
+              maxHeight: 450,
+              marginTop: 24,
+              borderRadius: 24,
+              overflow: "hidden",
+              position: "relative",
+              flexShrink: 0,
+              background: "rgba(13,11,42,0.55)",
+              border: "1px solid rgba(203,184,255,0.22)",
+              boxShadow: "0 0 22px rgba(0,0,0,0.3)",
+            }}
+          >
+            {/* Shimmer skeleton — visible until image reports loaded */}
+            {!loadedSlugs.has(selectedSlug) && (
+              <div
+                className="absolute inset-0 animate-pulse"
+                style={{ background: "linear-gradient(135deg, rgba(203,184,255,0.06) 0%, rgba(216,189,112,0.08) 50%, rgba(203,184,255,0.06) 100%)" }}
+                aria-hidden="true"
+              />
+            )}
+
+            {/* The zodiac cat image — raw webp path matches the preload URL */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
               src={ZODIAC_IMAGES[selectedSlug]}
               alt={ZODIAC_LABELS[selectedSlug]}
-              width={300}
-              height={450}
-              className="w-full object-cover"
-              priority={false}
+              onLoad={() =>
+                setLoadedSlugs((prev) => {
+                  if (prev.has(selectedSlug)) return prev;
+                  const next = new Set(prev);
+                  next.add(selectedSlug);
+                  return next as ReadonlySet<ZodiacSlug>;
+                })
+              }
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                objectPosition: "center top",
+                opacity: loadedSlugs.has(selectedSlug) ? 1 : 0,
+                transition: "opacity 0.25s ease",
+              }}
             />
           </div>
         )}
