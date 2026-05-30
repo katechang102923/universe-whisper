@@ -641,6 +641,13 @@ export function TarotDrawClient() {
   }
 
   async function requestFullReading(targetCards: TarotCardFaceData[]) {
+    // ── PERF-C: AI reading API ────────────────────────────────────────────────
+    // This is almost always the dominant bottleneck (5–12 s depending on model).
+    // It is called from inside revealCards() → 1500 ms setTimeout, meaning the
+    // user already waited [draw_api_time + 3200ms animation + 1500ms flip]
+    // before this fetch even starts.  See revealCards() for that breakdown.
+    // ─────────────────────────────────────────────────────────────────────────
+    console.time("[perf] C3: tarot-reading API (total)");
     setReadingStatus("loading");
     setFullReading("");
 
@@ -648,11 +655,14 @@ export function TarotDrawClient() {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (token) headers["x-firebase-id-token"] = token;
 
+    console.time("[perf] C3a: fetch /api/tarot-reading (network+AI)");
     const response = await fetch("/api/tarot-reading", {
       method: "POST",
       headers,
       body: JSON.stringify(buildReadingPayload(targetCards)),
     });
+    console.timeEnd("[perf] C3a: fetch /api/tarot-reading (network+AI)");
+
     const data = (await response.json().catch(() => ({}))) as {
       reading?: string;
       error?: string;
@@ -660,14 +670,18 @@ export function TarotDrawClient() {
     console.log("[tarot-reading] result", data);
 
     if (response.status === 429) {
+      console.timeEnd("[perf] C3: tarot-reading API (total)");
       throw new Error(data.error || "解讀暫時無法產生，請稍後再試。");
     }
     if (!response.ok) {
+      console.timeEnd("[perf] C3: tarot-reading API (total)");
       throw new Error(data.error || "解讀暫時失敗，請稍後再試。");
     }
 
     setFullReading(data.reading?.trim() || READING_FALLBACK_TEXT);
     setReadingStatus("done");
+    console.timeEnd("[perf] C3: tarot-reading API (total)");
+    // ── End PERF-C ────────────────────────────────────────────────────────────
   }
 
   // Creates (or returns cached) a Firestore result record for LINE/FB sharing
@@ -708,6 +722,11 @@ export function TarotDrawClient() {
     if (status === "drawing" || readingStatus === "loading") return;
     const isPaidDraw = Boolean(options.paid);
 
+    // ── PERF-A: full draw-to-result timeline ─────────────────────────────────
+    console.time("[perf] A0: total draw-to-result");
+    console.time("[perf] A1: draw API (/api/tarot/draw)");
+    // ─────────────────────────────────────────────────────────────────────────
+
     setStatus("drawing");
     setCards([]);
     resetReading();
@@ -732,6 +751,8 @@ export function TarotDrawClient() {
           paidMode: isPaidDraw,
         }),
       });
+      console.timeEnd("[perf] A1: draw API (/api/tarot/draw)");
+
       const data = (await response.json().catch(() => ({}))) as {
         cards?: TarotCardFaceData[];
         error?: string;
@@ -743,10 +764,12 @@ export function TarotDrawClient() {
         setStatus("idle");
         setDrawsRemaining(0);
         setError(data.message || "今日免費抽牌已使用完畢。");
+        console.timeEnd("[perf] A0: total draw-to-result");
         return;
       }
 
       if (!response.ok) {
+        console.timeEnd("[perf] A0: total draw-to-result");
         throw new Error(data.error || "抽牌失敗，請稍後再試。");
       }
 
@@ -754,11 +777,15 @@ export function TarotDrawClient() {
         setDrawsRemaining((prev) => (typeof prev === "number" && prev > 0 ? prev - 1 : prev));
       }
 
+      // ── PERF note: 3200 ms fixed animation delay before "selecting" shows ──
+      console.log("[perf] A2: waiting 3200 ms shuffle animation…");
       window.setTimeout(() => {
+        console.log("[perf] A2: shuffle done → selecting stage");
         setPendingCards(data.cards ?? []);
         setStatus("selecting");
       }, 3200);
     } catch (err) {
+      console.timeEnd("[perf] A0: total draw-to-result");
       setStatus("idle");
       setError(
         err instanceof Error ? err.message : "解讀暫時失敗，請稍後再試。",
@@ -776,17 +803,42 @@ export function TarotDrawClient() {
 
   function revealCards(choiceIndex: number) {
     if (!pendingCards.length) return;
+
+    // ── PERF-B: from user card-pick → reading displayed ──────────────────────
+    // Timeline so far when this function is called:
+    //   [draw API]  +  3200 ms animation  +  [fan entrance animation]  +
+    //   [user deliberation time]
+    // After this function:
+    //   1500 ms flip animation  →  revealed state  →  requestFullReading (~5-12 s)
+    // ─────────────────────────────────────────────────────────────────────────
+    console.time("[perf] B0: card-pick → reading displayed");
+    console.time("[perf] B1: flip animation (1500 ms fixed)");
+
     setSelectedCardIndex(choiceIndex);
     setCards(pendingCards);
     setStatus("revealing");
+
     window.setTimeout(() => {
+      console.timeEnd("[perf] B1: flip animation (1500 ms fixed)");
+      console.log("[perf] B2: status=revealed, cards visible to user ← FIRST USEFUL PAINT");
       setStatus("revealed");
-      void requestFullReading(pendingCards).catch((err) => {
-        setReadingStatus("error");
-        setError(
-          err instanceof Error ? err.message : "解讀暫時失敗，請稍後再試。",
-        );
-      });
+
+      // ── Potential optimisation: requestFullReading() could be called
+      //    BEFORE this setTimeout to overlap the 1500 ms flip with the
+      //    API call — saves ~1.5 s off the reading wait time.
+      void requestFullReading(pendingCards)
+        .then(() => {
+          console.timeEnd("[perf] B0: card-pick → reading displayed");
+          console.timeEnd("[perf] A0: total draw-to-result");
+        })
+        .catch((err) => {
+          console.timeEnd("[perf] B0: card-pick → reading displayed");
+          console.timeEnd("[perf] A0: total draw-to-result");
+          setReadingStatus("error");
+          setError(
+            err instanceof Error ? err.message : "解讀暫時失敗，請稍後再試。",
+          );
+        });
     }, 1500);
   }
 

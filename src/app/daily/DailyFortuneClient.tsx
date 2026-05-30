@@ -506,7 +506,21 @@ export function DailyFortuneClient() {
           })}
         </div>
 
-        {/* API loading hint */}
+        {/* Zodiac image card — shown when a sign is selected, below the selector grid */}
+        {selectedSlug && (
+          <div className="mt-4 overflow-hidden rounded-2xl border border-lavender/20 bg-midnight/40 shadow-glow" style={{ maxWidth: 300 }}>
+            <Image
+              src={ZODIAC_IMAGES[selectedSlug]}
+              alt={ZODIAC_LABELS[selectedSlug]}
+              width={300}
+              height={450}
+              className="w-full object-cover"
+              priority={false}
+            />
+          </div>
+        )}
+
+        {/* API loading / error hint (non-blocking) */}
         {apiLoading && (
           <p className="mt-2 text-xs text-lavender/50">正在取回今天最新訊息…</p>
         )}
