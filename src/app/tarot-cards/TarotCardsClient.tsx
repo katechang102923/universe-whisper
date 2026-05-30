@@ -117,21 +117,34 @@ export function TarotCardsClient({ cards }: { cards: TarotCard[] }) {
             if (event.target === event.currentTarget) setSelectedCard(null);
           }}
         >
+          {/*
+            ── Close button ──────────────────────────────────────────────────
+            Intentionally placed OUTSIDE the scrollable <section> so that:
+              1. It never scrolls away with the modal content on mobile.
+              2. Its z-[60] puts it above the modal (overlay is z-50).
+              3. `position: absolute` inside `fixed inset-0` overlay = viewport-
+                 relative, matching `position: fixed` semantics.
+              4. `safe-area-inset-top` handles iPhone notch / Dynamic Island.
+              5. Touch target is 44 × 44 px (h-11 w-11 = 44px each side).
+            ─────────────────────────────────────────────────────────────────── */}
+          <button
+            type="button"
+            aria-label="關閉塔羅牌介紹"
+            onClick={() => setSelectedCard(null)}
+            className="absolute right-4 z-[60] flex h-11 w-11 items-center justify-center rounded-full border border-white/14 bg-black/60 text-xl text-moon backdrop-blur-sm transition hover:bg-white/12 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+            style={{ top: "calc(env(safe-area-inset-top, 0px) + 16px)" }}
+          >
+            ×
+          </button>
+
           <section className="relative max-h-[100svh] w-full overflow-y-auto border border-[#d8bd70]/36 bg-midnight shadow-[0_0_70px_rgba(216,189,112,0.22)] sm:max-h-[92vh] sm:max-w-5xl sm:rounded-[2.25rem]">
             <div className="pointer-events-none absolute inset-0 star-field opacity-30" />
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_12%,rgba(216,189,112,0.18),transparent_28%),radial-gradient(circle_at_90%_22%,rgba(203,184,255,0.18),transparent_28%)]" />
 
-            <button
-              type="button"
-              aria-label="關閉塔羅牌介紹"
-              onClick={() => setSelectedCard(null)}
-              className="absolute right-4 top-4 z-10 flex h-11 w-11 items-center justify-center rounded-full border border-white/12 bg-black/30 text-xl text-moon transition hover:bg-white/12"
-            >
-              ×
-            </button>
-
             <div className="relative z-10 grid gap-8 p-5 pb-8 sm:p-8 lg:grid-cols-[minmax(250px,330px)_1fr] lg:gap-10">
-              <div className="pt-10 sm:pt-2">
+              {/* pt-14 on mobile: clears the fixed close button above the modal.
+                  sm:pt-2: desktop modal has plenty of internal padding already. */}
+              <div className="pt-14 sm:pt-2">
                 <div className="relative mx-auto flex aspect-[2/3] w-full max-w-[420px] items-center justify-center rounded-3xl border border-[#d8bd70]/46 bg-black/20 p-3 shadow-[0_0_46px_rgba(216,189,112,0.18)]">
                   {selectedCard.image ? (
                     <Image
