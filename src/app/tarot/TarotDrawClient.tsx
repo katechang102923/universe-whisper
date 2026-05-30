@@ -282,6 +282,95 @@ function ReadingSectionList({ text, limit }: { text: string; limit?: number }) {
   );
 }
 
+// ── 三張牌解讀：內容解析 helper ──────────────────────────────────────────────
+
+/**
+ * 解析每張牌的 body，嘗試拆成三個子段落：
+ * 牌面重點 / 對你的問題代表 / 這張牌提醒你
+ */
+type CardSubsections = {
+  core?: string;
+  question?: string;
+  reminder?: string;
+  rawContent: string;
+};
+
+function parseCardSubsections(body: string): CardSubsections {
+  if (!body) return { rawContent: "" };
+
+  const coreM     = body.match(/牌面重點[：:]\s*\n?([\s\S]*?)(?=\n\n對你的問題代表[：:]|\n對你的問題代表[：:]|$)/);
+  const questionM = body.match(/對你的問題代表[：:]\s*\n?([\s\S]*?)(?=\n\n這張牌提醒你[：:]|\n這張牌提醒你[：:]|$)/);
+  const reminderM = body.match(/這張牌提醒你[：:]\s*\n?([\s\S]*)$/);
+
+  const core     = coreM?.[1]?.trim();
+  const question = questionM?.[1]?.trim();
+  const reminder = reminderM?.[1]?.trim();
+
+  if (core || question || reminder) {
+    return { core, question, reminder, rawContent: body };
+  }
+
+  // 沒有三小段格式 → 移除 header 行（牌名、摘要行），保留訊息本體
+  const rawContent = body
+    .split("\n")
+    .filter((l) => {
+      const t = l.trim();
+      if (!t) return false;
+      if (t.match(/^[\S]+（(?:正位|逆位)）/)) return false;
+      if (t.startsWith("摘要：")) return false;
+      return true;
+    })
+    .join("\n")
+    .trim();
+
+  return { rawContent: rawContent || body };
+}
+
+/**
+ * 解析 overallSummary：嘗試拆成「核心判斷」和「為什麼會這樣」兩段
+ */
+type OverallSummaryParsed = {
+  verdict?: string;
+  reason?: string;
+  raw: string;
+};
+
+function parseOverallSummary(text: string): OverallSummaryParsed {
+  if (!text) return { raw: "" };
+  const verdictM = text.match(/核心判斷[：:]\s*\n?([\s\S]*?)(?=\n\n?為什麼會這樣[：:]|$)/);
+  const reasonM  = text.match(/為什麼會這樣[：:]\s*\n?([\s\S]*)$/);
+  const verdict  = verdictM?.[1]?.trim();
+  const reason   = reasonM?.[1]?.trim();
+  if (verdict && reason) return { verdict, reason, raw: text };
+  return { raw: text };
+}
+
+/**
+ * 將 actionSteps 文字分組，每個 "Day X～Y｜" 開頭算一組
+ */
+function groupActionSteps(text: string): Array<{ dayLabel?: string; actionLabel?: string; content: string }> {
+  if (!text) return [];
+
+  // 先嘗試用 \n\n 分隔（新格式）
+  const byDouble = text.split("\n\n").map((s) => s.trim()).filter(Boolean);
+  const groups = byDouble.length > 1 ? byDouble : text.split("\n").filter(Boolean).reduce<string[]>((acc, line) => {
+    if (line.match(/^Day\s*\d/)) { acc.push(line); }
+    else if (acc.length) { acc[acc.length - 1] += "\n" + line; }
+    else { acc.push(line); }
+    return acc;
+  }, []);
+
+  return groups.map((step) => {
+    // Match "Day 1～2｜動詞短語\n内容"
+    const m1 = step.match(/^(Day\s*[\d]+[～~–-]+[\d]*)\s*[｜|]\s*([^\n]+)\n([\s\S]+)$/);
+    if (m1) return { dayLabel: m1[1].trim(), actionLabel: m1[2].trim(), content: m1[3].trim() };
+    // Match "Day 1–2：内容"
+    const m2 = step.match(/^(Day\s*[\d]+[～~–-]+[\d]*)[：:\s]+([\s\S]+)$/);
+    if (m2) return { dayLabel: m2[1].trim(), content: m2[2].trim() };
+    return { content: step };
+  });
+}
+
 // ── 三張牌完整解讀顯示元件 ───────────────────────────────────────────────────
 
 function ThreeCardReadingDisplay({
@@ -307,38 +396,52 @@ function ThreeCardReadingDisplay({
   return (
     <div className="space-y-4">
 
-      {/* 牌陣總結：最上方 highlight 卡片 */}
-      {s.overallSummary ? (
-        <article
-          className="reading-fade-in rounded-2xl border border-[#d8bd70]/30 bg-gradient-to-br from-[#d8bd70]/10 to-midnight/60 p-5 shadow-[0_0_28px_rgba(216,189,112,0.10)]"
-          style={{ animationDelay: "0s" }}
-        >
-          <p className="mb-2 text-xs tracking-[0.22em] text-[#d8bd70]/75 uppercase">牌陣總結</p>
-          <p className="text-lg font-medium leading-8 text-moon">{s.overallSummary}</p>
-        </article>
-      ) : null}
+      {/* 牌陣總結：最上方 highlight 卡片，分「核心判斷」+「為什麼會這樣」 */}
+      {s.overallSummary ? (() => {
+        const parsed = parseOverallSummary(s.overallSummary);
+        return (
+          <article
+            className="reading-fade-in rounded-2xl border border-[#d8bd70]/30 bg-gradient-to-br from-[#d8bd70]/10 to-midnight/60 p-5 shadow-[0_0_28px_rgba(216,189,112,0.10)]"
+            style={{ animationDelay: "0s" }}
+          >
+            <p className="mb-3 text-xs tracking-[0.22em] text-[#d8bd70]/75 uppercase">牌陣總結</p>
+            {parsed.verdict && parsed.reason ? (
+              <div className="space-y-3">
+                <p className="text-lg font-semibold leading-8 text-moon">{parsed.verdict}</p>
+                <p className="text-base leading-[1.85] text-moon/72">{parsed.reason}</p>
+              </div>
+            ) : (
+              <p className="text-lg font-medium leading-[1.85] text-moon">{parsed.raw}</p>
+            )}
+          </article>
+        );
+      })() : null}
 
-      {/* 逐張牌解讀 */}
-      {cardSections.map(({ data, card, idx }) =>
-        data.body ? (
+      {/* 逐張牌解讀：每張分三小段 */}
+      {cardSections.map(({ data, card, idx }) => {
+        if (!data.body) return null;
+        const sub = parseCardSubsections(data.body);
+        const hasSubs = !!(sub.core || sub.question || sub.reminder);
+
+        return (
           <article
             key={idx}
             className={baseCard}
             style={{ animationDelay: `${(idx + 1) * 0.2}s` }}
           >
-            {/* 小標題：第N張牌 + 位置 + 牌名 */}
-            <div className="mb-3 flex flex-wrap items-center gap-2">
+            {/* 卡片 header：第N張 + 位置 + 牌名 */}
+            <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-white/8 pb-3">
               <span className="rounded-full border border-[#d8bd70]/35 bg-midnight/60 px-2.5 py-0.5 text-xs font-medium tracking-wide text-[#d8bd70]">
                 第 {idx + 1} 張
               </span>
               {(data.subtitle || card?.position) && (
-                <span className="text-sm text-moon/70">{data.subtitle || card?.position}</span>
+                <span className="text-sm text-moon/65">{data.subtitle || card?.position}</span>
               )}
               {card?.name && (
-                <span className="ml-auto text-sm font-medium text-moon/90">
+                <span className="ml-auto text-sm font-semibold text-moon">
                   {card.name}
                   <span
-                    className={`ml-1.5 rounded-full border px-2 py-0.5 text-xs ${
+                    className={`ml-1.5 rounded-full border px-2 py-0.5 text-xs font-normal ${
                       card.orientation === "upright"
                         ? "border-aurora/40 text-aurora"
                         : "border-lavender/44 text-lavender"
@@ -349,31 +452,58 @@ function ThreeCardReadingDisplay({
                 </span>
               )}
             </div>
-            <p className={baseBody}>{data.body}</p>
+
+            {hasSubs ? (
+              /* 三小段格式 */
+              <div className="space-y-4">
+                {sub.core && (
+                  <div>
+                    <p className="mb-1.5 text-xs font-semibold tracking-wide text-[#d8bd70]/75 uppercase">牌面重點</p>
+                    <p className="text-base leading-[1.85] text-moon/82">{sub.core}</p>
+                  </div>
+                )}
+                {sub.question && (
+                  <div>
+                    <p className="mb-1.5 text-xs font-semibold tracking-wide text-lavender/70 uppercase">對你的問題代表</p>
+                    <p className="text-base leading-[1.85] text-moon/82">{sub.question}</p>
+                  </div>
+                )}
+                {sub.reminder && (
+                  <div className="rounded-xl border border-white/8 bg-midnight/30 p-3">
+                    <p className="mb-1.5 text-xs font-semibold tracking-wide text-aurora/70 uppercase">這張牌提醒你</p>
+                    <p className="text-base leading-[1.85] text-moon/85">{sub.reminder}</p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* fallback：純文字 */
+              <p className="whitespace-pre-line text-base leading-[1.85] text-moon/80">{sub.rawContent || data.body}</p>
+            )}
           </article>
-        ) : null
-      )}
+        );
+      })}
 
       {/* 三張牌整合訊息 */}
       {s.combined ? (
         <article className={baseCard} style={{ animationDelay: "0.7s" }}>
           <p className={baseTitle}>三張牌整合訊息</p>
-          <p className={baseBody}>{s.combined}</p>
+          <p className="mt-2 whitespace-pre-line text-base leading-[1.85] text-moon/80">{s.combined}</p>
         </article>
       ) : null}
 
-      {/* 3～7 天行動建議 */}
+      {/* 3～7 天行動建議：Day 1～2｜動詞 + 說明 */}
       {s.actionSteps ? (
         <article className={baseCard} style={{ animationDelay: "0.9s" }}>
           <p className={baseTitle}>3～7 天行動建議</p>
-          <ul className="mt-1 space-y-2">
-            {s.actionSteps.split("\n").filter(Boolean).map((step, i) => (
-              <li
-                key={i}
-                className="flex gap-2 text-base leading-7 text-moon/80"
-              >
-                <span className="mt-[3px] shrink-0 text-[#d8bd70]">✦</span>
-                <span>{step.replace(/^[-•·✦＊\*]\s*/, "").replace(/^Day\s*\d[–-]\d[：:]\s*/, (m) => `${m.trim().replace(/[：:]$/, "")}：`)}</span>
+          <ul className="mt-3 space-y-4">
+            {groupActionSteps(s.actionSteps).map((step, i) => (
+              <li key={i} className="border-l-2 border-[#d8bd70]/30 pl-3">
+                {(step.dayLabel || step.actionLabel) && (
+                  <p className="mb-1 text-xs font-semibold text-[#d8bd70]/80">
+                    {step.dayLabel}{step.actionLabel ? `｜${step.actionLabel}` : ""}
+                  </p>
+                )}
+                <p className="text-base leading-[1.85] text-moon/80">{step.content}</p>
               </li>
             ))}
           </ul>
@@ -1733,7 +1863,8 @@ export function TarotDrawClient() {
                 </p>
               )}
               <div className="mt-5">
-                {readingStatus === "loading" ? (
+                {/* Loading 預覽：僅在 AI 還沒回來（fullReading 為空）時才顯示 */}
+                {readingStatus === "loading" && !fullReading ? (
                   <div className="mb-5">
                     <p className="mb-2 text-xs tracking-[0.18em] text-lavender/58">
                       完整版整理中…
