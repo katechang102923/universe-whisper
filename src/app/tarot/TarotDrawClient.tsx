@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ShareStoryCard } from "@/components/ShareStoryCard";
 import { TarotCardBack, TarotCardFace, type TarotCardFaceData } from "@/components/TarotCardFace";
-import { TarotRitualDraw } from "./TarotRitualDraw";
+import { TarotShuffleAnimation } from "./TarotShuffleAnimation";
 import { useAuth } from "@/contexts/AuthContext";
 
 type DrawStatus = "idle" | "drawing" | "selecting" | "revealing" | "revealed";
@@ -1136,7 +1136,7 @@ export function TarotDrawClient() {
       {status === "drawing" ||
       status === "selecting" ||
       status === "revealing" ? (
-        <TarotRitualDraw
+        <TarotShuffleAnimation
           stage={status}
           cardCount={cardCount}
           selectedIndex={selectedCardIndex}
