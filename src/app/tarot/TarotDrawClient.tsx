@@ -640,13 +640,40 @@ export function TarotDrawClient() {
     };
   }
 
+  /**
+   * Build a stable cache key for a given draw so we can skip the AI call
+   * when the user repeats the same question + cards + mode + topic.
+   */
+  function buildReadingCacheKey(targetCards: TarotCardFaceData[]): string {
+    const cardPart = targetCards
+      .map((c) => `${c.id}|${c.orientation ?? ""}`)
+      .join(",");
+    return [
+      "cosmic-reading-v1",
+      mode,
+      toReadingTopic(topic),
+      question.trim(),
+      cardPart,
+    ].join("::");
+  }
+
   async function requestFullReading(targetCards: TarotCardFaceData[]) {
-    // ── PERF-C: AI reading API ────────────────────────────────────────────────
-    // This is almost always the dominant bottleneck (5–12 s depending on model).
-    // It is called from inside revealCards() → 1500 ms setTimeout, meaning the
-    // user already waited [draw_api_time + 3200ms animation + 1500ms flip]
-    // before this fetch even starts.  See revealCards() for that breakdown.
+    // ── Session cache: skip AI if same draw was already done this session ─────
+    const cacheKey = buildReadingCacheKey(targetCards);
+    try {
+      const cached = window.sessionStorage.getItem(cacheKey);
+      if (cached) {
+        console.log("[perf] C0: sessionStorage cache HIT — skipping AI call");
+        setFullReading(cached);
+        setReadingStatus("done");
+        return; // ← no network request needed
+      }
+    } catch {
+      /* sessionStorage unavailable (private mode, etc.) — proceed normally */
+    }
     // ─────────────────────────────────────────────────────────────────────────
+
+    // ── PERF-C: AI reading API ────────────────────────────────────────────────
     console.time("[perf] C3: tarot-reading API (total)");
     setReadingStatus("loading");
     setFullReading("");
@@ -678,8 +705,17 @@ export function TarotDrawClient() {
       throw new Error(data.error || "解讀暫時失敗，請稍後再試。");
     }
 
-    setFullReading(data.reading?.trim() || READING_FALLBACK_TEXT);
+    const reading = data.reading?.trim() || READING_FALLBACK_TEXT;
+    setFullReading(reading);
     setReadingStatus("done");
+
+    // ── Store in session cache so re-draw of the same cards is instant ────────
+    try {
+      window.sessionStorage.setItem(cacheKey, reading);
+    } catch {
+      /* sessionStorage full — silently skip caching */
+    }
+
     console.timeEnd("[perf] C3: tarot-reading API (total)");
     // ── End PERF-C ────────────────────────────────────────────────────────────
   }
@@ -804,41 +840,40 @@ export function TarotDrawClient() {
   function revealCards(choiceIndex: number) {
     if (!pendingCards.length) return;
 
-    // ── PERF-B: from user card-pick → reading displayed ──────────────────────
-    // Timeline so far when this function is called:
-    //   [draw API]  +  3200 ms animation  +  [fan entrance animation]  +
-    //   [user deliberation time]
-    // After this function:
-    //   1500 ms flip animation  →  revealed state  →  requestFullReading (~5-12 s)
-    // ─────────────────────────────────────────────────────────────────────────
+    // Capture the current pending cards synchronously before any state update
+    const capturedCards = pendingCards;
+
+    // ── PERF-B ────────────────────────────────────────────────────────────────
     console.time("[perf] B0: card-pick → reading displayed");
-    console.time("[perf] B1: flip animation (1500 ms fixed)");
+    console.time("[perf] B1: flip animation (running in parallel with AI)");
 
     setSelectedCardIndex(choiceIndex);
-    setCards(pendingCards);
+    setCards(capturedCards);
     setStatus("revealing");
 
-    window.setTimeout(() => {
-      console.timeEnd("[perf] B1: flip animation (1500 ms fixed)");
-      console.log("[perf] B2: status=revealed, cards visible to user ← FIRST USEFUL PAINT");
-      setStatus("revealed");
+    // ── 立即開始 AI 解讀，與翻牌動畫並行 ────────────────────────────────────
+    // Previously called AFTER the 1500 ms setTimeout — now called immediately.
+    // This saves ~1.5 s off the total wait for the reading to appear.
+    // skipRitual() already guards against duplicate calls via readingStatus.
+    void requestFullReading(capturedCards)
+      .then(() => {
+        console.timeEnd("[perf] B0: card-pick → reading displayed");
+        console.timeEnd("[perf] A0: total draw-to-result");
+      })
+      .catch((err) => {
+        console.timeEnd("[perf] B0: card-pick → reading displayed");
+        console.timeEnd("[perf] A0: total draw-to-result");
+        setReadingStatus("error");
+        setError(
+          err instanceof Error ? err.message : "解讀暫時失敗，請稍後再試。",
+        );
+      });
 
-      // ── Potential optimisation: requestFullReading() could be called
-      //    BEFORE this setTimeout to overlap the 1500 ms flip with the
-      //    API call — saves ~1.5 s off the reading wait time.
-      void requestFullReading(pendingCards)
-        .then(() => {
-          console.timeEnd("[perf] B0: card-pick → reading displayed");
-          console.timeEnd("[perf] A0: total draw-to-result");
-        })
-        .catch((err) => {
-          console.timeEnd("[perf] B0: card-pick → reading displayed");
-          console.timeEnd("[perf] A0: total draw-to-result");
-          setReadingStatus("error");
-          setError(
-            err instanceof Error ? err.message : "解讀暫時失敗，請稍後再試。",
-          );
-        });
+    // Flip animation: runs concurrently with the AI call above
+    window.setTimeout(() => {
+      console.timeEnd("[perf] B1: flip animation (running in parallel with AI)");
+      console.log("[perf] B2: status=revealed — cards visible; reading may already be ready");
+      setStatus("revealed");
     }, 1500);
   }
 
@@ -1409,9 +1444,20 @@ export function TarotDrawClient() {
               <h3 className="mt-2 text-2xl font-semibold text-moon">完整宇宙訊息</h3>
               <div className="mt-5">
                 {readingStatus === "loading" ? (
-                  <p className="text-base leading-8 text-moon/76">
-                    宇宙正在把牌義整理成你的訊息...
-                  </p>
+                  /* Preview: show freeSummary while AI reading is in-flight.
+                     Replaces the old blank "宇宙正在整理…" spinner so the user
+                     sees meaningful content immediately.  ReadingSectionList
+                     below renders empty until fullReading is populated. */
+                  <div className="mb-5">
+                    <p className="mb-2 text-xs tracking-[0.18em] text-lavender/58">
+                      完整版整理中…
+                    </p>
+                    <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
+                      <p className="text-base leading-8 text-moon/68">
+                        {freeSummary.message || "宇宙正在整理這次抽牌的核心訊息。"}
+                      </p>
+                    </div>
+                  </div>
                 ) : null}
                 <ReadingSectionList text={fullReading} />
               </div>

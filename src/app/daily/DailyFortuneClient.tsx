@@ -527,64 +527,78 @@ export function DailyFortuneClient() {
 
         {/*
           ── Zodiac image card ──────────────────────────────────────────────
-          Fixed 2:3 aspect-ratio container — height NEVER changes regardless
-          of which sign is selected or whether the image has loaded yet.
+          The container is ALWAYS rendered (not inside {selectedSlug && …})
+          so the layout never shifts when a sign is first selected.
 
-          We use a plain <img> (not Next.js Image) so the src URL matches
-          exactly what the preload effect fetched, guaranteeing a cache hit.
-          A shimmer skeleton is shown until the browser reports onLoad.
+          Width  : Tailwind responsive class (320px mobile / 300px desktop)
+          Height : driven by aspect-ratio:2/3 → always width × 1.5
+          Image  : plain <img> with same raw-webp path as the preload,
+                   guaranteeing a browser-cache hit after mount.
+          Skeleton shown until the onLoad event fires.
           ─────────────────────────────────────────────────────────────────── */}
-        {selectedSlug && (
-          <div
-            style={{
-              width: "min(100%, 300px)",
-              aspectRatio: "2 / 3",
-              maxHeight: 450,
-              marginTop: 24,
-              borderRadius: 24,
-              overflow: "hidden",
-              position: "relative",
-              flexShrink: 0,
-              background: "rgba(13,11,42,0.55)",
-              border: "1px solid rgba(203,184,255,0.22)",
-              boxShadow: "0 0 22px rgba(0,0,0,0.3)",
-            }}
-          >
-            {/* Shimmer skeleton — visible until image reports loaded */}
-            {!loadedSlugs.has(selectedSlug) && (
-              <div
-                className="absolute inset-0 animate-pulse"
-                style={{ background: "linear-gradient(135deg, rgba(203,184,255,0.06) 0%, rgba(216,189,112,0.08) 50%, rgba(203,184,255,0.06) 100%)" }}
-                aria-hidden="true"
-              />
-            )}
+        <div
+          className="mx-auto w-full max-w-[320px] lg:max-w-[300px]"
+          style={{
+            aspectRatio: "2 / 3",
+            marginTop: 24,
+            borderRadius: 24,
+            overflow: "hidden",
+            position: "relative",
+            flexShrink: 0,
+            background: "rgba(13,11,42,0.55)",
+            border: selectedSlug
+              ? "1px solid rgba(203,184,255,0.22)"
+              : "1px solid rgba(255,255,255,0.06)",
+            boxShadow: selectedSlug ? "0 0 22px rgba(0,0,0,0.3)" : "none",
+            transition: "border-color 0.25s ease, box-shadow 0.25s ease",
+          }}
+        >
+          {!selectedSlug ? (
+            /* Empty state placeholder — same size, no image */
+            <div className="absolute inset-0 flex items-center justify-center" aria-hidden="true">
+              <span className="text-5xl text-moon/10">✦</span>
+            </div>
+          ) : (
+            <>
+              {/* Shimmer skeleton — visible until image fires onLoad */}
+              {!loadedSlugs.has(selectedSlug) && (
+                <div
+                  className="absolute inset-0 animate-pulse"
+                  style={{
+                    background:
+                      "linear-gradient(135deg,rgba(203,184,255,0.06) 0%,rgba(216,189,112,0.08) 50%,rgba(203,184,255,0.06) 100%)",
+                  }}
+                  aria-hidden="true"
+                />
+              )}
 
-            {/* The zodiac cat image — raw webp path matches the preload URL */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={ZODIAC_IMAGES[selectedSlug]}
-              alt={ZODIAC_LABELS[selectedSlug]}
-              onLoad={() =>
-                setLoadedSlugs((prev) => {
-                  if (prev.has(selectedSlug)) return prev;
-                  const next = new Set(prev);
-                  next.add(selectedSlug);
-                  return next as ReadonlySet<ZodiacSlug>;
-                })
-              }
-              style={{
-                position: "absolute",
-                inset: 0,
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-                objectPosition: "center top",
-                opacity: loadedSlugs.has(selectedSlug) ? 1 : 0,
-                transition: "opacity 0.25s ease",
-              }}
-            />
-          </div>
-        )}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={ZODIAC_IMAGES[selectedSlug]}
+                alt={ZODIAC_LABELS[selectedSlug]}
+                onLoad={() =>
+                  setLoadedSlugs((prev) => {
+                    if (prev.has(selectedSlug)) return prev;
+                    const next = new Set(prev);
+                    next.add(selectedSlug);
+                    return next as ReadonlySet<ZodiacSlug>;
+                  })
+                }
+                style={{
+                  display: "block",
+                  position: "absolute",
+                  inset: 0,
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  objectPosition: "center",
+                  opacity: loadedSlugs.has(selectedSlug) ? 1 : 0,
+                  transition: "opacity 0.28s ease",
+                }}
+              />
+            </>
+          )}
+        </div>
 
         {/* API loading / error hint (non-blocking) */}
         {apiLoading && (
