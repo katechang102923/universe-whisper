@@ -527,40 +527,37 @@ export function DailyFortuneClient() {
 
         {/*
           ── Zodiac image card ──────────────────────────────────────────────
-          The container is ALWAYS rendered (not inside {selectedSlug && …})
-          so the layout never shifts when a sign is first selected.
+          Fixed display frame: always min(92vw, 320px) × (width × 1.5).
+          The wrapper NEVER changes size between signs.
 
-          Width  : Tailwind responsive class (320px mobile / 300px desktop)
-          Height : driven by aspect-ratio:2/3 → always width × 1.5
-          Image  : plain <img> with same raw-webp path as the preload,
-                   guaranteeing a browser-cache hit after mount.
-          Skeleton shown until the onLoad event fires.
+          object-fit: contain  → image is fully visible, never cropped.
+          14 px inset padding  → image doesn't touch the rounded border.
+          Always rendered      → no layout shift when a sign is first picked.
           ─────────────────────────────────────────────────────────────────── */}
         <div
-          className="mx-auto w-full max-w-[320px] lg:max-w-[300px]"
+          className="mx-auto"
           style={{
-            aspectRatio: "2 / 3",
+            width: "min(92vw, 320px)",
+            aspectRatio: "2 / 3",          // 320 × 480 px on desktop
             marginTop: 24,
-            borderRadius: 24,
+            borderRadius: 28,
             overflow: "hidden",
-            position: "relative",
+            position: "relative",           // anchor for absolute children
             flexShrink: 0,
-            background: "rgba(13,11,42,0.55)",
-            border: selectedSlug
-              ? "1px solid rgba(203,184,255,0.22)"
-              : "1px solid rgba(255,255,255,0.06)",
-            boxShadow: selectedSlug ? "0 0 22px rgba(0,0,0,0.3)" : "none",
-            transition: "border-color 0.25s ease, box-shadow 0.25s ease",
+            background: "rgba(255,255,255,0.04)",
+            border: "1px solid rgba(255,255,255,0.14)",
+            boxShadow: selectedSlug ? "0 0 20px rgba(0,0,0,0.28)" : "none",
+            transition: "box-shadow 0.25s ease",
           }}
         >
           {!selectedSlug ? (
-            /* Empty state placeholder — same size, no image */
+            /* Empty state: same-size placeholder with a faint star */
             <div className="absolute inset-0 flex items-center justify-center" aria-hidden="true">
               <span className="text-5xl text-moon/10">✦</span>
             </div>
           ) : (
             <>
-              {/* Shimmer skeleton — visible until image fires onLoad */}
+              {/* Shimmer skeleton — shown until onLoad fires */}
               {!loadedSlugs.has(selectedSlug) && (
                 <div
                   className="absolute inset-0 animate-pulse"
@@ -572,6 +569,11 @@ export function DailyFortuneClient() {
                 />
               )}
 
+              {/*
+                Image: 14 px from every edge (position absolute with inset).
+                object-fit: contain  → always fully visible, centred, no crop.
+                border-radius: 20px  → soft corners matching the frame.
+              */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={ZODIAC_IMAGES[selectedSlug]}
@@ -587,11 +589,15 @@ export function DailyFortuneClient() {
                 style={{
                   display: "block",
                   position: "absolute",
-                  inset: 0,
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "cover",
+                  top: 14,
+                  right: 14,
+                  bottom: 14,
+                  left: 14,
+                  width: "calc(100% - 28px)",
+                  height: "calc(100% - 28px)",
+                  objectFit: "contain",
                   objectPosition: "center",
+                  borderRadius: 20,
                   opacity: loadedSlugs.has(selectedSlug) ? 1 : 0,
                   transition: "opacity 0.28s ease",
                 }}
