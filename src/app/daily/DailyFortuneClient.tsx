@@ -143,10 +143,8 @@ function clientFallbackSign(slug: ZodiacSlug, date: string): HoroscopeSign {
   const socialStars = ss(seed + 400);
   const overallStars = Math.round((loveStars + workStars + moneyStars + socialStars) / 4);
   return {
-    signName,
-    symbol: ZODIAC_SYMBOLS[slug],
-    overallStars,
-    loveStars, workStars, moneyStars, socialStars,
+    signName, symbol: ZODIAC_SYMBOLS[slug],
+    overallStars, loveStars, workStars, moneyStars, socialStars,
     summary: sp(FB_SUMMARY, seed + 10),
     loveText: sp(FB_LOVE, seed + 110),
     workText: sp(FB_WORK, seed + 210),
@@ -158,7 +156,7 @@ function clientFallbackSign(slug: ZodiacSlug, date: string): HoroscopeSign {
   };
 }
 
-// ── Stars component ───────────────────────────────────────────────────────────
+// ── Stars ────────────────────────────────────────────────────────────────────
 
 function Stars({ count, size = "base" }: { count: number; size?: "sm" | "base" | "lg" }) {
   const safe = Math.min(5, Math.max(1, Math.round(count)));
@@ -171,7 +169,7 @@ function Stars({ count, size = "base" }: { count: number; size?: "sm" | "base" |
   );
 }
 
-// ── Category card ─────────────────────────────────────────────────────────────
+// ── CategoryCard ─────────────────────────────────────────────────────────────
 
 function CategoryCard({ label, stars, text, gradient }: {
   label: string; stars: number; text: string; gradient: string;
@@ -230,7 +228,7 @@ async function generateZodiacStoryImage(slug: ZodiacSlug, sign: HoroscopeSign, s
   const bg = ctx.createLinearGradient(0, 0, 0, H);
   bg.addColorStop(0, "#05071d"); bg.addColorStop(0.55, "#0d0b2a"); bg.addColorStop(1, "#1a0e2e");
   ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
-  try { const bi = await zLoadImg("/reference/story-bg.png"); ctx.drawImage(bi, 0, 0, W, H); } catch { /* use gradient */ }
+  try { const bi = await zLoadImg("/reference/story-bg.png"); ctx.drawImage(bi, 0, 0, W, H); } catch { /* gradient fallback */ }
 
   for (const [x, y, sz, a] of [[110, 90, 26, 0.55], [W - 130, 125, 20, 0.38], [88, H - 228, 22, 0.45], [W - 108, H - 260, 18, 0.38]] as [number, number, number, number][]) {
     ctx.font = `${sz}px serif`; ctx.fillStyle = `rgba(247,217,135,${a})`; ctx.textAlign = "left";
@@ -261,8 +259,7 @@ async function generateZodiacStoryImage(slug: ZodiacSlug, sign: HoroscopeSign, s
 
   ctx.font = "32px serif";
   const starsStr = "★".repeat(sign.overallStars) + "☆".repeat(5 - sign.overallStars);
-  const sw = ctx.measureText(starsStr).width;
-  const sx = W / 2 - sw / 2;
+  const sw = ctx.measureText(starsStr).width; const sx = W / 2 - sw / 2;
   ctx.fillStyle = "#f5c518"; ctx.fillText("★".repeat(sign.overallStars), sx, cy + 36);
   ctx.fillStyle = "rgba(255,255,255,0.22)"; ctx.fillText("☆".repeat(5 - sign.overallStars), sx + ctx.measureText("★".repeat(sign.overallStars)).width, cy + 36);
   cy += 60;
@@ -295,7 +292,7 @@ async function generateZodiacStoryImage(slug: ZodiacSlug, sign: HoroscopeSign, s
   const aspects = [
     { label: "愛情運", stars: sign.loveStars, text: sign.loveText },
     { label: "工作運", stars: sign.workStars, text: sign.workText },
-    { label: "財運", stars: sign.moneyStars, text: sign.moneyText },
+    { label: "財運",   stars: sign.moneyStars, text: sign.moneyText },
     { label: "人際運", stars: sign.socialStars, text: sign.socialText },
   ];
   const aColors = ["rgba(252,182,200,0.28)", "rgba(100,200,230,0.22)", "rgba(200,230,150,0.22)", "rgba(200,180,255,0.22)"];
@@ -387,6 +384,7 @@ export function DailyFortuneClient() {
       .catch(() => { setApiError("今天星光訊號有點微弱，稍後再試。"); setApiLoading(false); });
   }, []);
 
+  // Mobile: scroll to detail when sign selected
   useEffect(() => {
     if (selectedSlug && detailRef.current) {
       window.setTimeout(() => detailRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 80);
@@ -432,191 +430,207 @@ export function DailyFortuneClient() {
   const isApiDataForSelectedSign = Boolean(selectedSlug && apiData?.signs[selectedSlug]);
 
   // ── Render ────────────────────────────────────────────────────────────────
-
   return (
-    <>
-      {/*
-        ── Compact 12-sign selector ──────────────────────────────────────────
-        Desktop (sm+): 4 columns × 3 rows, height 52 px per button
-        Mobile       : 3 columns × 4 rows, height 48 px per button
-        This grid sits in the right column of page.tsx's 2-column layout.
-      */}
-      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-        {ZODIAC_ORDER.map((slug) => {
-          const active = selectedSlug === slug;
-          return (
-            <button
-              key={slug}
-              type="button"
-              onClick={() => selectSign(slug)}
-              className={[
-                // Layout & sizing
-                "flex h-12 flex-col items-center justify-center gap-0.5",
-                "rounded-xl border px-1 sm:h-[52px]",
-                // Interaction
-                "transition-all duration-200 active:scale-95",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d8bd70]/60",
-                // Colour state
-                active
-                  ? "border-[#d8bd70]/80 bg-[#d8bd70]/14 shadow-[0_0_14px_rgba(216,189,112,0.28)]"
-                  : "border-white/10 bg-midnight/50 hover:border-[#d8bd70]/36 hover:bg-white/5",
-              ].join(" ")}
-            >
-              {/* Zodiac symbol */}
-              <span
-                className={`text-[18px] leading-none sm:text-[20px] ${active ? "text-[#d8bd70]" : "text-moon/75"}`}
-                aria-hidden="true"
-              >
-                {ZODIAC_SYMBOLS[slug]}
-              </span>
+    /*
+      Desktop (lg+):  2-column CSS grid
+        Left  — 420 px fixed: page title + 3×4 sign selector
+        Right — 1fr: fortune detail (or placeholder)
+      Mobile (< lg):  single column, stacked top-to-bottom
+    */
+    <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[420px_minmax(0,1fr)] lg:gap-8">
 
-              {/* Chinese name — 13 px */}
-              <span
-                className={`text-[13px] font-medium leading-tight ${active ? "text-[#d8bd70]" : "text-moon/75"}`}
-              >
-                {ZODIAC_LABELS[slug]}
-              </span>
+      {/* ════════════════════════════════════════════════════════════════════
+          LEFT COLUMN — title + selector
+          On mobile this renders first (title above grid).
+          ════════════════════════════════════════════════════════════════════ */}
+      <div>
 
-              {/* Date range — 11 px, hidden on mobile */}
-              <span className="hidden text-[11px] text-moon/32 sm:block">
-                {ZODIAC_DATES[slug]}
-              </span>
-            </button>
-          );
-        })}
+        {/* Page title (visual; SEO title is in page.tsx metadata) */}
+        <div className="relative">
+          <p className="text-xs uppercase tracking-[0.32em] text-aurora/80">
+            daily cosmic note · 每日星語
+          </p>
+          <h1 className="mt-3 text-4xl font-semibold text-moon sm:text-5xl">今日星座運勢</h1>
+          <div className="mt-1.5 h-px w-24 bg-gradient-to-r from-lavender/60 to-transparent" />
+          <p className="mt-4 leading-8 text-moon/72">
+            選擇你的星座，<br className="hidden lg:block" />
+            看看今天宇宙想提醒你什麼。
+          </p>
+          {/* Decorative stars — visible on sm, hidden when the 2-col grid kicks in */}
+          <span className="absolute right-0 top-0 hidden text-2xl text-lavender/38 sm:block lg:hidden" aria-hidden="true">✦</span>
+          <span className="absolute right-8 top-7 hidden text-base text-aurora/28 sm:block lg:hidden" aria-hidden="true">✦</span>
+        </div>
+
+        {/*
+          12-sign selector grid
+          Desktop: 3 columns × 4 rows inside the 420 px left column
+          Mobile:  3 columns × 4 rows (same, just full width)
+          Button height: 48 px
+          Icon: 18–20 px | Name: 13 px | Date: 11 px (hidden mobile)
+        */}
+        <div className="mt-5 grid grid-cols-3 gap-2">
+          {ZODIAC_ORDER.map((slug) => {
+            const active = selectedSlug === slug;
+            return (
+              <button
+                key={slug}
+                type="button"
+                onClick={() => selectSign(slug)}
+                className={[
+                  "flex h-12 flex-col items-center justify-center gap-[2px]",
+                  "rounded-xl border px-1",
+                  "transition-all duration-200 active:scale-95",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d8bd70]/60",
+                  active
+                    ? "border-[#d8bd70]/80 bg-[#d8bd70]/14 shadow-[0_0_14px_rgba(216,189,112,0.28)]"
+                    : "border-white/10 bg-midnight/50 hover:border-[#d8bd70]/36 hover:bg-white/5",
+                ].join(" ")}
+              >
+                {/* Symbol */}
+                <span
+                  className={`text-[18px] leading-none sm:text-[20px] ${active ? "text-[#d8bd70]" : "text-moon/75"}`}
+                  aria-hidden="true"
+                >
+                  {ZODIAC_SYMBOLS[slug]}
+                </span>
+                {/* Chinese name */}
+                <span className={`text-[13px] font-medium leading-tight ${active ? "text-[#d8bd70]" : "text-moon/75"}`}>
+                  {ZODIAC_LABELS[slug]}
+                </span>
+                {/* Date range — hidden on mobile */}
+                <span className="hidden text-[10px] text-moon/32 sm:block">
+                  {ZODIAC_DATES[slug]}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* API loading hint */}
+        {apiLoading && (
+          <p className="mt-2 text-xs text-lavender/50">正在取回今天最新訊息…</p>
+        )}
+        {apiError && !isApiDataForSelectedSign && (
+          <p className="mt-2 text-xs text-moon/40">{apiError}</p>
+        )}
       </div>
 
-      {/* ── No-selection placeholder ── */}
-      {!selectedSlug && (
-        <div className="mt-4 rounded-[1.5rem] border border-white/8 bg-midnight/28 px-5 py-8 text-center">
-          <p className="text-sm text-moon/46">點選上方星座，查看今日宇宙訊息 ✦</p>
-        </div>
-      )}
+      {/* ════════════════════════════════════════════════════════════════════
+          RIGHT COLUMN — fortune detail
+          Sits next to the selector on desktop; below it on mobile.
+          ════════════════════════════════════════════════════════════════════ */}
+      <div ref={detailRef}>
 
-      {/* ── Fortune detail (shown once a sign is selected) ── */}
-      {selectedSlug && sign && (
-        <div ref={detailRef} className="mt-4 scroll-mt-4">
+        {/* Placeholder when no sign is selected */}
+        {!selectedSlug && (
+          <div className="rounded-[1.75rem] border border-white/8 bg-midnight/28 px-6 py-14 text-center lg:py-20">
+            <p className="text-sm text-moon/46">點選左側星座，查看今日宇宙訊息 ✦</p>
+          </div>
+        )}
 
-          {/* Back link */}
-          <button
-            type="button"
-            onClick={clearSign}
-            className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-white/14 bg-midnight/50 px-4 py-1.5 text-sm text-moon/65 transition hover:border-white/28 hover:text-moon"
-          >
-            ← 重新選擇
-          </button>
+        {/* Fortune detail */}
+        {selectedSlug && sign && (
+          <>
+            {/* Back link */}
+            <button
+              type="button"
+              onClick={clearSign}
+              className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-white/14 bg-midnight/50 px-4 py-1.5 text-sm text-moon/65 transition hover:border-white/28 hover:text-moon"
+            >
+              ← 重新選擇
+            </button>
 
-          {/* Loading / error hints (non-blocking) */}
-          {apiLoading && (
-            <p className="mb-2 text-xs text-lavender/50">正在取回今天最新訊息…</p>
-          )}
-          {apiError && !isApiDataForSelectedSign && (
-            <p className="mb-2 text-xs text-moon/40">{apiError}</p>
-          )}
+            <section className="relative overflow-hidden rounded-[1.75rem] border border-lavender/22 bg-midnight/52 shadow-glow">
 
-          <section className="relative overflow-hidden rounded-[1.75rem] border border-lavender/22 bg-midnight/52 shadow-glow">
-
-            {/* Faint zodiac image in background */}
-            <div className="pointer-events-none absolute inset-y-4 right-[-8%] z-0 w-[68%] max-w-[440px] opacity-[0.07] blur-[1.5px] sm:right-0 sm:w-[38%]">
-              <Image src={ZODIAC_IMAGES[selectedSlug]} alt="" fill sizes="440px" className="object-contain" aria-hidden="true" />
-            </div>
-
-            <div className="relative z-10 h-1 bg-gradient-to-r from-nebula/60 via-lavender/80 to-aurora/60" />
-
-            <div className="relative z-10 p-5 sm:p-6">
-
-              {/* Sign title row */}
-              <div className="mb-4 flex items-center gap-3">
-                <span className="text-3xl text-[#d8bd70] sm:text-4xl" aria-hidden="true">
-                  {ZODIAC_SYMBOLS[selectedSlug]}
-                </span>
-                <div>
-                  <h2 className="text-xl font-semibold text-moon sm:text-2xl">
-                    {sign.signName} 今日運勢
-                  </h2>
-                  <p className="text-xs text-moon/40">{ZODIAC_DATES[selectedSlug]}</p>
-                </div>
+              {/* Faint zodiac image in background */}
+              <div className="pointer-events-none absolute inset-y-4 right-[-8%] z-0 w-[68%] max-w-[440px] opacity-[0.07] blur-[1.5px] sm:right-0 sm:w-[38%]">
+                <Image src={ZODIAC_IMAGES[selectedSlug]} alt="" fill sizes="440px" className="object-contain" aria-hidden="true" />
               </div>
 
-              {/* Star ratings */}
-              <div className="mb-4 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3">
-                <div className="space-y-1.5">
+              <div className="relative z-10 h-1 bg-gradient-to-r from-nebula/60 via-lavender/80 to-aurora/60" />
+
+              <div className="relative z-10 p-5 sm:p-6">
+
+                {/* Sign title row */}
+                <div className="mb-4 flex items-center gap-3">
+                  <span className="text-3xl text-[#d8bd70] sm:text-4xl" aria-hidden="true">
+                    {ZODIAC_SYMBOLS[selectedSlug]}
+                  </span>
+                  <div>
+                    <h2 className="text-xl font-semibold text-moon sm:text-2xl">
+                      {sign.signName} 今日運勢
+                    </h2>
+                    <p className="text-xs text-moon/40">{ZODIAC_DATES[selectedSlug]}</p>
+                  </div>
+                </div>
+
+                {/* Star ratings */}
+                <div className="mb-4 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                  <div className="space-y-1.5">
+                    {[
+                      { label: "總評", stars: sign.overallStars, accent: true },
+                      { label: "愛情", stars: sign.loveStars, accent: false },
+                      { label: "工作", stars: sign.workStars, accent: false },
+                      { label: "財運", stars: sign.moneyStars, accent: false },
+                      { label: "人際", stars: sign.socialStars, accent: false },
+                    ].map(({ label, stars, accent }, i) => (
+                      <div key={label} className={`flex items-center justify-between gap-4 ${i === 0 ? "border-b border-white/8 pb-2" : ""}`}>
+                        <span className={`text-sm ${accent ? "font-semibold text-[#d8bd70]" : "text-moon/60"}`}>{label}</span>
+                        <Stars count={stars} size={accent ? "base" : "sm"} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Download share card button */}
+                <div className="mb-4 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={downloadImage}
+                    disabled={downloadStatus === "working"}
+                    className="inline-flex items-center gap-2 rounded-full border border-[#d8bd70]/35 bg-[#d8bd70]/10 px-4 py-2 text-sm font-medium text-[#d8bd70] transition hover:bg-[#d8bd70]/20 active:scale-95 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {downloadStatus === "working" ? "正在產生圖片…" : "⬇ 下載今日運勢圖"}
+                  </button>
+                  {downloadStatus === "done" && <p className="text-xs text-moon/55">圖片已下載 ✨</p>}
+                  {downloadStatus === "error" && (
+                    <p className="text-xs text-[#ffb4b4]">{downloadError || "產生失敗，請稍後再試。"}</p>
+                  )}
+                </div>
+
+                {/* Summary */}
+                <div className="mb-4 rounded-xl border border-lavender/14 bg-lavender/5 p-4">
+                  <p className="text-[10px] tracking-[0.22em] text-lavender/55">今日提醒</p>
+                  <p className="mt-2 text-sm leading-7 text-moon/80 sm:text-base">{sign.summary}</p>
+                </div>
+
+                {/* Category cards */}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <CategoryCard label="愛情運" stars={sign.loveStars} text={sign.loveText} gradient="from-pink-300/20 to-lavender/16" />
+                  <CategoryCard label="工作運" stars={sign.workStars} text={sign.workText} gradient="from-aurora/18 to-nebula/16" />
+                  <CategoryCard label="財運"   stars={sign.moneyStars} text={sign.moneyText} gradient="from-[#d8bd70]/20 to-moon/12" />
+                  <CategoryCard label="人際運" stars={sign.socialStars} text={sign.socialText} gradient="from-lavender/22 to-aurora/14" />
+                </div>
+
+                {/* Lucky info */}
+                <div className="mt-4 flex flex-wrap gap-2">
                   {[
-                    { label: "總評", stars: sign.overallStars, accent: true },
-                    { label: "愛情", stars: sign.loveStars, accent: false },
-                    { label: "工作", stars: sign.workStars, accent: false },
-                    { label: "財運", stars: sign.moneyStars, accent: false },
-                    { label: "人際", stars: sign.socialStars, accent: false },
-                  ].map(({ label, stars, accent }, i) => (
-                    <div
-                      key={label}
-                      className={`flex items-center justify-between gap-4 ${i === 0 ? "border-b border-white/8 pb-2" : ""}`}
-                    >
-                      <span className={`text-sm ${accent ? "font-semibold text-[#d8bd70]" : "text-moon/60"}`}>
-                        {label}
-                      </span>
-                      <Stars count={stars} size={accent ? "base" : "sm"} />
+                    { label: "幸運色",  value: sign.luckyColor },
+                    { label: "幸運數字", value: sign.luckyNumber },
+                    { label: "幸運時間", value: sign.luckyTime },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-center" style={{ minWidth: "88px" }}>
+                      <p className="text-[10px] text-moon/42">{label}</p>
+                      <p className="mt-0.5 text-sm font-semibold text-[#d8bd70]">{value}</p>
                     </div>
                   ))}
                 </div>
-              </div>
 
-              {/*
-                ── Download button for the share card ─────────────────────────
-                The canvas-generated 1080×1920 story image is the "分享小卡".
-                This button triggers it.
-              */}
-              <div className="mb-4 flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={downloadImage}
-                  disabled={downloadStatus === "working"}
-                  className="inline-flex items-center gap-2 rounded-full border border-[#d8bd70]/35 bg-[#d8bd70]/10 px-4 py-2 text-sm font-medium text-[#d8bd70] transition hover:bg-[#d8bd70]/20 active:scale-95 disabled:cursor-wait disabled:opacity-60"
-                >
-                  {downloadStatus === "working" ? "正在產生圖片…" : "⬇ 下載今日運勢圖"}
-                </button>
-                {downloadStatus === "done" && <p className="text-xs text-moon/55">圖片已下載 ✨</p>}
-                {downloadStatus === "error" && (
-                  <p className="text-xs text-[#ffb4b4]">{downloadError || "產生失敗，請稍後再試。"}</p>
-                )}
               </div>
-
-              {/* Today's summary */}
-              <div className="mb-4 rounded-xl border border-lavender/14 bg-lavender/5 p-4">
-                <p className="text-[10px] tracking-[0.22em] text-lavender/55">今日提醒</p>
-                <p className="mt-2 text-sm leading-7 text-moon/80 sm:text-base">{sign.summary}</p>
-              </div>
-
-              {/* Category cards */}
-              <div className="grid gap-3 sm:grid-cols-2">
-                <CategoryCard label="愛情運" stars={sign.loveStars} text={sign.loveText} gradient="from-pink-300/20 to-lavender/16" />
-                <CategoryCard label="工作運" stars={sign.workStars} text={sign.workText} gradient="from-aurora/18 to-nebula/16" />
-                <CategoryCard label="財運"   stars={sign.moneyStars} text={sign.moneyText} gradient="from-[#d8bd70]/20 to-moon/12" />
-                <CategoryCard label="人際運" stars={sign.socialStars} text={sign.socialText} gradient="from-lavender/22 to-aurora/14" />
-              </div>
-
-              {/* Lucky info */}
-              <div className="mt-4 flex flex-wrap gap-2">
-                {[
-                  { label: "幸運色",  value: sign.luckyColor },
-                  { label: "幸運數字", value: sign.luckyNumber },
-                  { label: "幸運時間", value: sign.luckyTime },
-                ].map(({ label, value }) => (
-                  <div
-                    key={label}
-                    className="flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-center"
-                    style={{ minWidth: "88px" }}
-                  >
-                    <p className="text-[10px] text-moon/42">{label}</p>
-                    <p className="mt-0.5 text-sm font-semibold text-[#d8bd70]">{value}</p>
-                  </div>
-                ))}
-              </div>
-
-            </div>
-          </section>
-        </div>
-      )}
-    </>
+            </section>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
