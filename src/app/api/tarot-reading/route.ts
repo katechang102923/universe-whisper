@@ -119,7 +119,26 @@ function getTopicLabel(topic: TarotReadingTopic) {
   }[topic];
 }
 
-function getTopicGuidance(topic: TarotReadingTopic) {
+type QuestionFocus = "finance" | "love" | "career" | "general";
+
+function detectQuestionFocus(question: string): QuestionFocus {
+  if (!question) return "general";
+  const q = question.toLowerCase();
+  const financeKeywords = ["財運", "金錢", "收入", "支出", "投資", "偏財", "獎金", "薪水", "存款", "理財", "財務", "賺錢", "錢", "財", "債", "借", "貸款", "房貸", "股票", "基金"];
+  const loveKeywords = ["感情", "愛情", "曖昧", "復合", "對方", "他", "她", "喜歡", "交往", "分手", "戀愛", "表白", "告白"];
+  const careerKeywords = ["工作", "職場", "事業", "升遷", "轉職", "創業", "職涯", "老闆", "同事", "面試", "辭職"];
+  if (financeKeywords.some((k) => q.includes(k))) return "finance";
+  if (loveKeywords.some((k) => q.includes(k))) return "love";
+  if (careerKeywords.some((k) => q.includes(k))) return "career";
+  return "general";
+}
+
+function getTopicGuidance(topic: TarotReadingTopic, questionFocus?: QuestionFocus) {
+  if (questionFocus === "finance") {
+    return `提問者問的是財運或金錢相關問題。請務必讓解讀至少 70% 圍繞金錢議題：近期財務狀態、收入機會、支出壓力、理財方向、潛在風險或被忽略的機會。
+不可以只講情緒、休息、宇宙能量而完全迴避財務面。每段解讀都要扣回金錢主題。
+第一段必須用 1～2 句直接回答：最近財運走向如何、有沒有機會、什麼在阻礙財務流動。`;
+  }
   return {
     love: "請偏向愛情關係、情緒需求、關係中的真實問題與是否值得繼續投入。",
     career: "請偏向工作狀態、職涯選擇、機會判斷、卡住原因與接下來可採取的行動。",
@@ -187,33 +206,42 @@ function buildAdFallback(cards: TarotReadingCard[], topic: TarotReadingTopic, qu
   const topicLabel = getTopicLabel(topic);
   const cardNames = cards.map((c) => `${c.name}（${c.position === "upright" ? "正位" : "逆位"}）`).join("、");
   const questionLine = question ? `你問的是：「${question}」` : "你把問題留在心裡，宇宙仍然把焦點放在你此刻最在意的事。";
+  const questionFocus = detectQuestionFocus(question);
+
+  const financeRelationshipSection = `這組牌面 ${cardNames} 在說：近期財運不是完全沒有機會，而是容易被壓力和既有支出拖住節奏。\n與其等一個大進帳，不如先看看哪裡有被忽略的小收入，或者哪些支出可以慢慢調整。\n財務的流動，往往從「看清楚現況」開始。`;
+
+  const financeEmotionSection = `你最近對錢的事，可能有點焦慮又有點麻木。\n不是你不努力，是心裡一直在撐，沒有空間好好整理財務狀態。\n先把頭抬起來，現況其實比你想的有更多可以動的地方 💫`;
+
+  const financeSevenDaySection = "前 2 天，先整理一次近期的收支，不用完美，看清楚就好。\n3～5 天，留意有沒有可以跟進的小機會或被擱置的收入來源。\n6～7 天，做一個小決定：增加一點收入，或減少一個不必要的支出。";
+
+  const financeMidnightSection = "偷偷說，財運不是只有大機會才算數。\n你每天做的小選擇，也在慢慢改變錢的流向。\n今晚先不要責怪自己，明天從一個小地方開始就夠了。";
 
   const emotionSection: Record<TarotReadingTopic, string> = {
     love: "老實說，你想等的可能不是訊息而已。\n你想等的是一種「我有被放在心上」的感覺吧 ☁️\n沒關係啦，會在乎的人，本來就會聽得比較細。",
     career: "其實你最近真的有點累了吧。\n不是不能撐，是心裡那盞小燈在問：我還想往這裡走嗎？\n先不用立刻回答，聽見它就很好了。",
     ambiguous: "曖昧最磨人的，就是一下靠近、一下安靜。\n你是不是也有一點這種感覺：好像有希望，又不敢太相信？\n宇宙先幫你抱一下，這種拉扯真的會累。",
-    general: `你最近不是突然累，是一點一點被生活塞滿了。\n這組牌面 ${cardNames} 像小夜燈，照見你其實撐很久了 💫\n今晚先不要照顧全世界，先照顧你自己。`
+    general: questionFocus === "finance" ? financeEmotionSection : `你最近不是突然累，是一點一點被生活塞滿了。\n這組牌面 ${cardNames} 像小夜燈，照見你其實撐很久了 💫\n今晚先不要照顧全世界，先照顧你自己。`
   };
 
   const relationshipSection: Record<TarotReadingTopic, string> = {
     love: `這組牌面 ${cardNames} 偷偷說：你們之間不是完全沒有光。\n只是有些話還沒說開，所以心會忍不住猜來猜去。\n先別急著定生死，先看看自己有沒有被溫柔對待。`,
     career: `這組牌面 ${cardNames} 像在說：你正在蓄力，也正在想轉彎。\n不用今天就衝出去，先把心裡真正想要的方向摸清楚。\n慢慢來，有些路是走著走著才亮起來的。`,
     ambiguous: `這組牌面 ${cardNames} 裡有一點火光，但也有一點霧。\n對方不一定沒感覺，只是現在還沒把靠近做得很清楚。\n你可以等，但也要記得把自己放在第一排 🐾`,
-    general: `這組牌面 ${cardNames} 在說：你真的已經很努力了。\n如果努力一直沒有回聲，心會累是很正常的。\n先讓自己喘口氣，不用每一步都走得很漂亮。`
+    general: questionFocus === "finance" ? financeRelationshipSection : `這組牌面 ${cardNames} 在說：你真的已經很努力了。\n如果努力一直沒有回聲，心會累是很正常的。\n先讓自己喘口氣，不用每一步都走得很漂亮。`
   };
 
   const sevenDaySection: Record<TarotReadingTopic, string> = {
     love: "接下來 7 天，先看對方有沒有自然靠近。\n不用逼答案，看他有沒有把你放進日常就好。\n第 4、5 天左右，溫度會比較容易被你感覺到。",
     career: "接下來 7 天，先整理，不硬衝。\n把手邊的事做穩，方向就會慢慢浮出來。\n宇宙不是叫你停下，是叫你別急著燃燒自己。",
     ambiguous: "接下來 7 天，留意那些沒理由的小靠近。\n如果他主動丟一句話，那一點火光還在。\n如果沒有，也不是你不好，只是你該把自己慢慢領回來。",
-    general: "接下來 7 天，少扛一點點就好。\n挑一件可以放下的小事，讓生活有縫隙可以呼吸。\n你不用一天變好，今天輕一點就很棒了。"
+    general: questionFocus === "finance" ? financeSevenDaySection : "接下來 7 天，少扛一點點就好。\n挑一件可以放下的小事，讓生活有縫隙可以呼吸。\n你不用一天變好，今天輕一點就很棒了。"
   };
 
   const midnightSection: Record<TarotReadingTopic, string> = {
     love: "偷偷說，你不用把話說得很漂亮，才值得被愛。\n真正想靠近你的人，會願意聽你慢慢講。\n所以今晚先別懷疑自己，好嗎？",
     career: "那個一直說「再撐一下」的你，真的辛苦了。\n宇宙沒有責怪你，只是想讓你休息一下 ☁️\n明天再努力也可以，今晚先回到自己身邊。",
     ambiguous: "等一個還不確定的人，心很容易變得小小的。\n但你不是只能等，你也可以一點一點選回自己。\n清楚的喜歡，不會讓你永遠猜謎。",
-    general: "今晚先把沒說出口的話，輕輕放在枕邊吧。\n你不用全部想通，明天的你會多懂一點點。\n有些路不是白走，它正在悄悄替未來鋪光。"
+    general: questionFocus === "finance" ? financeMidnightSection : "今晚先把沒說出口的話，輕輕放在枕邊吧。\n你不用全部想通，明天的你會多懂一點點。\n有些路不是白走，它正在悄悄替未來鋪光。"
   };
 
   return `🌙 宇宙偷偷話
@@ -251,12 +279,16 @@ ${sevenDaySection[topic]}
 
 function buildAdPrompt(cards: TarotReadingCard[], topic: TarotReadingTopic, question: string) {
   const topicLabel = getTopicLabel(topic);
-  const topicGuidance = getTopicGuidance(topic);
+  const questionFocus = detectQuestionFocus(question);
+  const topicGuidance = getTopicGuidance(topic, questionFocus);
   const spreadLabels = getSpreadLabels();
   const cardText = cards
     .map((card, index) => formatCardForPrompt(card, index, spreadLabels))
     .join("\n");
-  const questionText = question ? `\n提問者寫下的心事：${question}` : "\n提問者沒有寫下問題，請以此刻的感受陪伴為主。";
+  const questionText = question ? `\n提問者寫下的問題：「${question}」` : "\n提問者沒有寫下問題，請以此刻的感受陪伴為主。";
+  const questionFocusInstruction = question
+    ? `\n解讀必須先直接回答這個問題，再用療癒語氣包裝。「🌙 宇宙偷偷話」第一段要有 1～2 句明確呼應問題的話。`
+    : "";
 
   return `請為「宇宙偷偷話」網站寫一段塔羅解讀。
 
@@ -267,6 +299,7 @@ ${questionText}
 
 ${TAROT_READING_STYLE_RULES}
 ${topicGuidance}
+${questionFocusInstruction}
 
 請把每張牌的牌組、正逆位、關鍵字與真正塔羅牌義融入解讀；不要只列牌名。若是三張牌，請把過去、現在、未來串成一條「狀態 → 牌義提醒 → 行動方向」的脈絡。
 
@@ -296,26 +329,33 @@ function buildPremiumFallback(cards: TarotReadingCard[], topic: TarotReadingTopi
   const topicLabel = getTopicLabel(topic);
   const cardNames = cards.map((card) => `${card.name}（${card.position === "upright" ? "正位" : "逆位"}）`).join("、");
   const questionLine = question ? `你問的是：「${question}」` : "你把問題留在心裡，宇宙仍然把焦點放在你此刻最在意的關係。";
+  const questionFocus = detectQuestionFocus(question);
 
   const realStateSection: Record<TarotReadingTopic, string> = {
     love: `這組牌面 ${cardNames} 像夜裡寄來的一封小信 ✨\n它不是要你立刻下結論，只是提醒你：有些沒說清楚的話，正在悄悄變成距離。`,
     career: `這組牌面 ${cardNames} 像把你帶到一個安靜的岔路口。\n你不是迷路，只是需要重新確認：自己的力氣，還想交給哪裡。`,
     ambiguous: `這組牌面 ${cardNames} 像曖昧裡一盞忽明忽暗的小燈。\n偷偷說，你們不是完全沒有光，只是現在還沒有人把話說亮。`,
-    general: `這組牌面 ${cardNames} 像替你的生活按下暫停鍵。\n你有些地方已經做得很好了，只是你一直忘了稱讚自己。`
+    general: questionFocus === "finance"
+      ? `這組牌面 ${cardNames} 在說：近期財運不是沒有機會，而是你容易被壓力和既有支出拖住，讓真正的機會從眼前滑過。\n比起等一個大進帳，這組牌更像在說：先整理負擔、看見被忽略的小機會，財務狀態會慢慢穩下來。`
+      : `這組牌面 ${cardNames} 像替你的生活按下暫停鍵。\n你有些地方已經做得很好了，只是你一直忘了稱讚自己。`
   };
 
   const innerSection: Record<TarotReadingTopic, string> = {
     love: "其實呀，你真正不安的，可能不是一則訊息。\n是你不想再用猜測，證明自己有沒有被選擇。",
     career: "老實說，你最累的也許不是事情太多。\n而是你一直很努力，卻很少問自己：我還喜歡這個方向嗎？",
     ambiguous: "你心裡其實有感覺，只是還不敢完全相信。\n沒關係啦，宇宙不催你醒來，只陪你慢慢看清。",
-    general: "你承受的比自己承認的更多。\n安靜不代表沒事，有時候只是心在等你回頭抱抱它 ☁️"
+    general: questionFocus === "finance"
+      ? "你對財務的焦慮，不只是數字的問題。\n是那種「努力了但還是覺得不夠穩」的心情，讓你很難冷靜看清現況 ☁️\n先把情緒和帳本分開，你會看見其實有更多可以動的空間。"
+      : "你承受的比自己承認的更多。\n安靜不代表沒事，有時候只是心在等你回頭抱抱它 ☁️"
   };
 
   const unspokenSection: Record<TarotReadingTopic, string> = {
     love: "他沒有說出口的，也許不是完全不在乎。\n但你的心也不用一直替沉默找理由，真的不用。",
     career: "你沒說出口的是：某個方向可能已經不太合身了。\n不用一次改變人生，先移動一小步，風就會進來。",
     ambiguous: "對方可能比表面更在意你，只是靠近得不夠穩。\n可你的溫柔不該只拿來等待，也要留一點給自己 🐾",
-    general: "那些說不清的累，宇宙其實都有聽見。\n今晚不用逞強，把心交還給自己一點點就好。"
+    general: questionFocus === "finance"
+      ? "財運的門，不一定是大機會才算敲開。\n從今天起留意小收入、小節省，你會發現錢的流向其實比你以為的更聽話。"
+      : "那些說不清的累，宇宙其實都有聽見。\n今晚不用逞強，把心交還給自己一點點就好。"
   };
 
   return `🌙 宇宙偷偷話
@@ -335,8 +375,7 @@ ${innerSection[topic]}
 
 ✨ 接下來可以怎麼做
 
-先不要逼自己立刻變得很勇敢。
-請選一件能讓心回到身體裡的小事，把注意力從反覆猜測慢慢帶回來。
+${questionFocus === "finance" ? "先把近期的收支大概整理一下，不用很精準，讓自己知道錢去哪裡就好。\n找一個可以增加收入或減少不必要支出的小行動，從那裡開始。\n別把所有壓力堆在一個大決策上，小步移動，財務會慢慢有感覺。" : "先不要逼自己立刻變得很勇敢。\n請選一件能讓心回到身體裡的小事，把注意力從反覆猜測慢慢帶回來。"}
 
 🌌 給你的溫柔提醒
 
@@ -344,25 +383,27 @@ ${unspokenSection[topic]}
 
 🕯️ 7日能量提示
 
-前 3 天，先離開反覆想像的房間。
-第 4、5 天，某個小訊號可能會變清楚。
-第 6、7 天，跟著事實走，不要只跟著害怕走。
+${questionFocus === "finance" ? "前 2 天，先整理一次近期的收支狀況，看清楚比擔心有用。\n3～5 天，留意有沒有可以跟進的收入機會，或被擱置的小事可以推進。\n6～7 天，做一個具體的小財務決定，不管大小，行動會帶來流動。" : "前 3 天，先離開反覆想像的房間。\n第 4、5 天，某個小訊號可能會變清楚。\n第 6、7 天，跟著事實走，不要只跟著害怕走。"}
 
 💫 一句專屬祝福
 
-願你在還沒有完全確定之前，也能溫柔地站在自己這一邊。`;
+${questionFocus === "finance" ? "願你在整理財務的同時，也記得整理一下對自己的溫柔——你比你以為的更有能力讓事情慢慢變好。" : "願你在還沒有完全確定之前，也能溫柔地站在自己這一邊。"}`;
 }
 
 function buildPremiumPrompt(cards: TarotReadingCard[], topic: TarotReadingTopic, question: string) {
   const topicLabel = getTopicLabel(topic);
-  const topicGuidance = getTopicGuidance(topic);
+  const questionFocus = detectQuestionFocus(question);
+  const topicGuidance = getTopicGuidance(topic, questionFocus);
   const sections = getPremiumSections(topic).join("\n");
 
   const spreadLabels = getSpreadLabels();
   const cardText = cards
     .map((card, index) => formatCardForPrompt(card, index, spreadLabels))
     .join("\n");
-  const questionText = question ? `\n提問者寫下的心事：${question}` : "\n提問者沒有寫下問題，請以此刻的感受陪伴為主。";
+  const questionText = question ? `\n提問者寫下的問題：「${question}」` : "\n提問者沒有寫下問題，請以此刻的感受陪伴為主。";
+  const questionFocusInstruction = question
+    ? `\n解讀必須先直接回答這個問題，再用療癒語氣包裝。「🌙 宇宙偷偷話」第一段要有 1～2 句明確呼應問題核心的話，不可以只說宇宙能量或情緒狀態。`
+    : "";
 
   return `請為「宇宙偷偷話」網站寫一段深度塔羅解讀。
 
@@ -374,6 +415,7 @@ ${questionText}
 ${TAROT_READING_STYLE_RULES}
 不要寫成心理諮商、職涯分析或制式報告。
 ${topicGuidance}
+${questionFocusInstruction}
 
 「🌌 給你的溫柔提醒」是核心亮點，請寫得具體、有畫面感、能讓提問者感覺被深深看見，適合截圖分享，而不是泛泛的安慰。
 
