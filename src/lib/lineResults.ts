@@ -69,11 +69,16 @@ function parseLineDirection(fullText: string): string {
 }
 
 function parseLineCardOneLiner(fullText: string, cardIndex: number): string {
-  // 先試 shortSummary
+  // 先試 shortSummary（格式：「牌名（正逆位）——描述」，去掉「牌名——」前綴）
   const mSummary = fullText.match(
     new RegExp(`🃏 第${cardIndex + 1}張牌[\\s\\S]*?摘要：([^\n]+)`)
   );
-  if (mSummary?.[1]) return mSummary[1].trim().slice(0, 55);
+  if (mSummary?.[1]) {
+    // 去掉 "牌名（正逆位）——" 前綴，只保留描述部分
+    const raw = mSummary[1].trim();
+    const stripped = raw.replace(/^[^——]+——/, "").trim();
+    return (stripped || raw).slice(0, 55);
+  }
   // 再試「這張牌代表：」後面的第一句
   const mRepresent = fullText.match(
     new RegExp(`🃏 第${cardIndex + 1}張牌[\\s\\S]*?這張牌代表：([^\n]+)`)
@@ -141,11 +146,11 @@ function buildLineThreeCardMessage(
   }
 
   const actionText = direction || actionSummary;
-  if (actionText) parts.push(``, `🕯️ 接下來建議\n${actionText}`);
+  if (actionText) parts.push(``, `🕯️ 接下來 3～7 天\n${actionText}`);
 
-  if (blessing) parts.push(``, `💫 ${blessing}`);
+  if (blessing) parts.push(``, `💫 給你的祝福\n${blessing}`);
 
-  parts.push(``, `🔮 完整解讀在這裡：\n${resultUrl}`);
+  parts.push(``, `🔮 完整解讀請回到網站查看：\n${resultUrl}`);
 
   return parts.join("\n");
 }
@@ -175,8 +180,8 @@ function buildLineSingleCardMessage(
 
   if (cosmic) parts.push(``, `✨ 宇宙說\n${cosmic}`);
   if (action) parts.push(``, `🐾 今天可以\n${action}`);
-  if (blessing) parts.push(``, `💫 ${blessing}`);
-  parts.push(``, `🔮 完整解讀在這裡：\n${resultUrl}`);
+  if (blessing) parts.push(``, `💫 給你的祝福\n${blessing}`);
+  parts.push(``, `🔮 完整解讀請回到網站查看：\n${resultUrl}`);
 
   return parts.join("\n");
 }
@@ -196,7 +201,7 @@ export function buildLineResultMessage(result: LineResultData, resultId: string,
   }
 
   // 最後兜底：短版
-  return `🌙 宇宙偷偷話｜塔羅訊息\n\n你的問題：\n${questionText}\n\n你抽到的牌：\n${formatResultCards(result.cards)}\n\n🔮 完整解讀在這裡：\n${resultUrl}`;
+  return `🌙 宇宙偷偷話｜塔羅訊息\n\n你的問題：\n${questionText}\n\n你抽到的牌：\n${formatResultCards(result.cards)}\n\n🔮 完整解讀請回到網站查看：\n${resultUrl}`;
 }
 
 export async function pushLineTextMessage(lineUserId: string, message: string) {

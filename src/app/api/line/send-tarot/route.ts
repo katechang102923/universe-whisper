@@ -94,9 +94,9 @@ function buildLineMessage(payload: SendTarotPayload, resultUrl: string) {
     ];
     if (overallAnswer) parts.push(``, `✨ 整體答案\n${overallAnswer}`);
     if (cardLines) parts.push(``, `🃏 三張牌提醒你\n${cardLines}`);
-    if (actionText) parts.push(``, `🕯️ 接下來建議\n${actionText}`);
-    if (blessing) parts.push(``, `💫 ${blessing}`);
-    parts.push(``, `🔮 完整解讀在這裡：\n${resultUrl}`);
+    if (actionText) parts.push(``, `🕯️ 接下來 3～7 天\n${actionText}`);
+    if (blessing) parts.push(``, `💫 給你的祝福\n${blessing}`);
+    parts.push(``, `🔮 完整解讀請回到網站查看：\n${resultUrl}`);
     return parts.join("\n");
   }
 
@@ -116,7 +116,7 @@ ${cardText}
 ✨ 宇宙說
 ${core}
 
-🔮 完整解讀在這裡：
+🔮 完整解讀請回到網站查看：
 ${resultUrl}`;
 }
 

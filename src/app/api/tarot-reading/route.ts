@@ -442,7 +442,7 @@ function parseThreeCardJson(raw: string, forcedCategory?: string): ThreeCardRead
       actionSteps = p.actionSteps.split(/\n|；/).map((s) => s.trim()).filter(Boolean).slice(0, 5);
     }
     if (!actionSteps.length) {
-      actionSteps = ["Day 1–2：先觀察當下的狀態，不急著行動", "Day 3–4：選一件可以執行的小事開始", "Day 5–7：把注意力收回來，整理自己的感受"];
+      actionSteps = ["Day 1～2｜先把現在最想問的那件事寫下來，看清楚問題在哪裡", "Day 3～4｜選一件你能控制的小事，先動起來再說", "Day 5～7｜觀察這幾天的實際變化，再決定下一步要怎麼走"];
     }
 
     const result: ThreeCardReading = {
@@ -1385,8 +1385,8 @@ function buildThreeCardPrompt(
   return `請根據以下牌陣資料，以 JSON 格式解讀塔羅牌陣。只回傳純 JSON，不加說明文字。
 
 【重要提示】這是使用者分享 Facebook 後才能解鎖的完整版。
-使用者抽了三張牌，期待看到比單張牌更完整、更有深度的解讀。
-每個欄位都要有真實的洞察，不可以過短、不可以像制式模板、不可以每個欄位只寫一句話打發。
+使用者想知道方向，不是來學牌義的。每段必須白話、清楚、有答案。
+格式嚴格遵守：牌面重點1句≤60字、對你的問題代表2句≤140字、這張牌提醒你2句≤120字、為什麼會這樣只要2句。
 
 【抽牌模式】三張牌陣完整解讀
 【問題】${question || "（未填寫問題）"}
@@ -1491,9 +1491,9 @@ ${positionSchema}
   ],
   "combinedReading": "",
   "actionSteps": [
-    "Day 1～2｜（2-4字動詞短語，例如「先釐清」「整理帳務」）\\n（50-70字，具體說明怎麼做）",
-    "Day 3～4｜（2-4字動詞短語）\\n（50-70字，具體行動，不能和Day1-2重複）",
-    "Day 5～7｜（2-4字動詞短語）\\n（50-70字，說明觀察什麼變化或下一步走向）"
+    "Day 1～2｜一句話，給一個小任務，最多50字",
+    "Day 3～4｜一句話，給一個觀察或整理方向，最多50字",
+    "Day 5～7｜一句話，給一個實際行動，最多50字"
   ],
   "gentleReminder": "（${remindSpec}，療癒但要呼應本次牌陣，不能用「先整理自己」「宇宙提醒你」等通用語）",
   "blessing": "（20～40字祝福語，每次不同）",
