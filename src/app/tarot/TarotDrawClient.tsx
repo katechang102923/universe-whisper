@@ -1267,13 +1267,13 @@ export function TarotDrawClient() {
         setDrawsRemaining((prev) => (typeof prev === "number" && prev > 0 ? prev - 1 : prev));
       }
 
-      // ── PERF note: 3200 ms fixed animation delay before "selecting" shows ──
-      console.log("[perf] A2: waiting 3200 ms shuffle animation…");
+      // ── PERF note: 2000 ms fixed animation delay before "selecting" shows ──
+      console.log("[perf] A2: waiting 2000 ms shuffle animation…");
       window.setTimeout(() => {
         console.log("[perf] A2: shuffle done → selecting stage");
         setPendingCards(data.cards ?? []);
         setStatus("selecting");
-      }, 3200);
+      }, 2000);
     } catch (err) {
       console.timeEnd("[perf] A0: total draw-to-result");
       setStatus("idle");

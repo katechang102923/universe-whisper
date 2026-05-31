@@ -44,11 +44,17 @@ function getCardOneLiner(readingText: string, cardIndex: number): string {
   const mSummary = readingText.match(
     new RegExp(`🃏 第${cardIndex + 1}張牌[\\s\\S]*?摘要：([^\n]+)`)
   );
-  if (mSummary?.[1]) return mSummary[1].trim().slice(0, 50);
-  const mRepresent = readingText.match(
-    new RegExp(`🃏 第${cardIndex + 1}張牌[\\s\\S]*?這張牌代表：([^\n]+)`)
+  if (mSummary?.[1]) {
+    const raw = mSummary[1].trim();
+    // 相容舊格式（含「牌名——」前綴）
+    const clean = raw.includes("——") ? raw.replace(/^[^——]+——/, "").trim() : raw;
+    return (clean || raw).slice(0, 50);
+  }
+  // 從 牌面重點 section 取第一行（已清理，不含牌名/前綴）
+  const mCore = readingText.match(
+    new RegExp(`🃏 第${cardIndex + 1}張牌[\\s\\S]*?牌面重點[：:]\\s*\\n?([^\n]+)`)
   );
-  return mRepresent?.[1]?.trim().slice(0, 50) ?? "";
+  return mCore?.[1]?.trim().slice(0, 50) ?? "";
 }
 
 function getActionSummary(readingText: string): string {

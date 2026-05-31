@@ -339,11 +339,9 @@ const ANTI_SIMILARITY_HINT = `
 
 /**
  * 以句號/驚嘆號/問號/換行分句，去除完全相同的句子（保留第一次出現）。
- * 只用於單張牌 cardMessage / questionAnswer，不影響任何傳送格式。
  */
 function deduplicateSentences(text: string): string {
   if (!text) return text;
-  // 分句：在句末標點後 + 空白或換行 處斷開，保留標點
   const sentences = text.split(/(?<=[。！？\n])/).map((s) => s.trim()).filter(Boolean);
   const seen = new Set<string>();
   const result: string[] = [];
@@ -355,6 +353,74 @@ function deduplicateSentences(text: string): string {
     }
   }
   return result.join("").trim();
+}
+
+/**
+ * 清理三張牌 card message 的各段落：
+ * 1. 移除「牌面重點」段落內的「牌名（正逆位）[｜關鍵字...]」行
+ * 2. 移除「這張牌代表：」前綴
+ * 3. 跨欄位去重：避免「對你的問題代表」與「牌面重點」重複，「這張牌提醒你」與前兩者重複
+ */
+function cleanCardMessageSections(msg: string): string {
+  if (!msg) return msg;
+
+  const coreM     = msg.match(/牌面重點[：:]\s*\n?([\s\S]*?)(?=\n\n?對你的問題代表[：:]|$)/);
+  const questionM = msg.match(/對你的問題代表[：:]\s*\n?([\s\S]*?)(?=\n\n?這張牌提醒你[：:]|$)/);
+  const reminderM = msg.match(/這張牌提醒你[：:]\s*\n?([\s\S]*)$/);
+
+  let core     = coreM?.[1]?.trim()     ?? "";
+  let question = questionM?.[1]?.trim() ?? "";
+  let reminder = reminderM?.[1]?.trim() ?? "";
+
+  // 若沒有找到三段結構，直接回傳（格式可能不同）
+  if (!core && !question && !reminder) return msg;
+
+  // 清理 core：移除「牌名（正逆位）｜關鍵字...」行和「這張牌代表：」前綴
+  core = core
+    .split("\n")
+    .flatMap((line) => {
+      const t = line.trim();
+      if (!t) return [];
+      // 移除「牌名（正位/逆位）[｜...]」行（前端標題已有牌名，不用重複）
+      if (/[一-龥a-zA-Z]+（(?:正位|逆位)）/.test(t)) return [];
+      // 移除「關鍵字：...」獨立行
+      if (/^關鍵字[：:]/.test(t)) return [];
+      // 移除「這張牌代表：」前綴，只保留後面的內容
+      return [t.replace(/^這張牌代表[：:]\s*/, "")];
+    })
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+
+  // 跨欄位去重：收集 core 的句子集合
+  const extractSentenceSet = (text: string): Set<string> =>
+    new Set(text.split(/[。！？\n]/).map(s => s.replace(/\s/g, "")).filter(Boolean));
+
+  if (core && question) {
+    const coreKeys = extractSentenceSet(core);
+    question = question
+      .split(/(?<=[。！？])/)
+      .filter(s => !coreKeys.has(s.replace(/\s/g, "")))
+      .join("")
+      .trim();
+  }
+
+  if (reminder && (core || question)) {
+    const prevKeys = extractSentenceSet(core + "。" + question);
+    reminder = reminder
+      .split(/(?<=[。！？])/)
+      .filter(s => !prevKeys.has(s.replace(/\s/g, "")))
+      .join("")
+      .trim();
+  }
+
+  // 重新組合（保留標題作為前端 parser 用的 marker）
+  const parts: string[] = [];
+  if (core)     parts.push(`牌面重點：\n${core}`);
+  if (question) parts.push(`對你的問題代表：\n${question}`);
+  if (reminder) parts.push(`這張牌提醒你：\n${reminder}`);
+
+  return parts.join("\n\n");
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -425,10 +491,10 @@ function parseThreeCardJson(raw: string, forcedCategory?: string): ThreeCardRead
         orientation:  typeof entry.orientation === "string" ? entry.orientation : "正位",
         keywords,
         shortSummary: typeof entry.shortSummary === "string" ? entry.shortSummary : undefined,
-        // 對每張牌的 message 套用段落內去重（消除 AI 重複牌義句）
-        message: deduplicateSentences(
+        // 對每張牌的 message 套用清理+去重：移除冗餘標題行、跨欄位去重
+        message: cleanCardMessageSections(deduplicateSentences(
           typeof entry.message === "string" ? entry.message : "這張牌的訊息正在凝聚中，請稍後再細細感受。"
-        ),
+        )),
       };
     }) as [ThreeCardEntry, ThreeCardEntry, ThreeCardEntry];
 
@@ -1044,10 +1110,10 @@ function buildThreeCardFallback(
     // 「對你的問題代表」與「這張牌提醒你」都依位置 × topic × 正逆位動態產生
     const questionAnswerText = getCardQuestionAnswerByIndex(card, i, focus, question);
     const reminderText       = getCardReminderByIndex(card, i, focus);
+    // 牌面重點只留一句，不含牌名/正逆位/關鍵字/前綴（前台已有標題顯示這些資訊）
     const msg = [
       `牌面重點：`,
-      `${card.name}（${ori}）${kw ? `，關鍵字「${kw}」。` : "。"}`,
-      `這張牌代表：${coreMeaning}`,
+      coreMeaning,
       ``,
       `對你的問題代表：`,
       questionAnswerText,
@@ -1061,7 +1127,7 @@ function buildThreeCardFallback(
       cardName:    card.name,
       orientation: ori,
       message:     msg,
-      shortSummary: `${card.name}（${ori}）——${coreMeaning.slice(0, 40)}`,
+      shortSummary: coreMeaning.slice(0, 50),
     };
   });
 
@@ -1378,7 +1444,7 @@ function buildThreeCardPrompt(
       "orientation": "${ori}",
       "keywords": ${cardKw ? `["${card.keywords?.slice(0,3).join('", "')}"]` : '["（關鍵字1）", "（關鍵字2）", "（關鍵字3）"]'},
       "shortSummary": "（30～50字摘要，直接說這張牌在「${posLabel}」位置對問題的核心提示，供未解鎖使用者看${cardKw ? `，可用關鍵字：${cardKw}` : ""}）",
-      "message": "牌面重點：\\n${card.name}（${ori}），關鍵字「${card.keywords?.slice(0,3).join("、") ?? "（關鍵字）"}」。\\n這張牌代表：（【嚴格限制】1句話，最多60字，白話說明核心意思，不要超過，不要像塔羅教科書）\\n\\n對你的問題代表：\\n（【嚴格限制】2句話，最多140字，直接連回使用者問題：${card.position === "upright" ? "正向牌說可以怎麼做或往哪個方向走" : "逆位牌說什麼在阻礙或需先停下來"}，不重複牌面重點）\\n\\n這張牌提醒你：\\n（【嚴格限制】2句話，最多120字，給使用者一個方向或提醒，必須依「${card.name}」（${ori}）專屬牌義寫，三張牌提醒不能說同樣的話，不重複對你的問題代表）"
+      "message": "牌面重點：\\n（【嚴格限制】1句白話，30-55字，最多70字。只描述這張牌帶出的核心狀態或感受。【絕對禁止】不可包含牌名、正逆位、關鍵字；不可加「這張牌代表：」「${card.name}（${ori}）」等前綴；不可解釋牌義；不可把「對你的問題代表」或「這張牌提醒你」的內容寫進來）\\n\\n對你的問題代表：\\n（【嚴格限制】2句話，80-130字，最多150字。直接連回使用者問題，說清楚這張牌在「${posLabel}」代表什麼：${card.position === "upright" ? "正向牌說可以怎麼做或往哪個方向走" : "逆位牌說什麼在阻礙或需先停下來"}。不重複牌面重點，不用「這張牌在這個位置提醒你」這種模板句）\\n\\n這張牌提醒你：\\n（【嚴格限制】2句話，60-110字，最多130字。給一個具體提醒或下一步，口吻白話溫柔。三張牌的提醒不能說同樣的話，不重複對你的問題代表）"
     }`;
   }).join(",\n");
 
@@ -1720,10 +1786,10 @@ export async function POST(request: Request) {
 
       const client = new OpenAI({ apiKey });
 
-      // ad 版 token（standard 深度）
+      // ad 版 token（standard 深度，縮短以提升速度）
       const reading = isSingle
-        ? await callSingleCard(client, model, cards[0], topic, question, "standard", 1800)
-        : await callThreeCard (client, model, cards,    topic, question, "standard", 2600);
+        ? await callSingleCard(client, model, cards[0], topic, question, "standard", 1600)
+        : await callThreeCard (client, model, cards,    topic, question, "standard", 1900);
 
       const usedFallback = !reading;
       console.log("[tarot-reading] fallback:", usedFallback);
@@ -1756,11 +1822,10 @@ export async function POST(request: Request) {
 
     const client = new OpenAI({ apiKey });
 
-    // 三張牌 premium token 限制在 1600，單張 1400
+    // premium 版 token（deep 深度，縮短以提升速度）
     const reading = isSingle
-      // premium 版 token（deep 深度）
-      ? await callSingleCard(client, model, cards[0], topic, question, "deep", 2400)
-      : await callThreeCard (client, model, cards,    topic, question, "deep", 3600);
+      ? await callSingleCard(client, model, cards[0], topic, question, "deep", 2000)
+      : await callThreeCard (client, model, cards,    topic, question, "deep", 2400);
 
     const usedFallback = !reading;
     console.log("[tarot-reading] fallback:", usedFallback);

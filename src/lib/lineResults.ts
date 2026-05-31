@@ -74,12 +74,21 @@ function parseLineCardOneLiner(fullText: string, cardIndex: number): string {
     new RegExp(`🃏 第${cardIndex + 1}張牌[\\s\\S]*?摘要：([^\n]+)`)
   );
   if (mSummary?.[1]) {
-    // 去掉 "牌名（正逆位）——" 前綴，只保留描述部分
     const raw = mSummary[1].trim();
-    const stripped = raw.replace(/^[^——]+——/, "").trim();
+    // 若仍有「牌名——」前綴（舊格式），去掉；新格式不含前綴
+    const stripped = raw.includes("——") ? raw.replace(/^[^——]+——/, "").trim() : raw;
     return (stripped || raw).slice(0, 55);
   }
-  // 再試「這張牌代表：」後面的第一句
+  // 再試牌面重點 section 第一行（新格式：不含牌名/前綴的乾淨句子）
+  const mCore = fullText.match(
+    new RegExp(`🃏 第${cardIndex + 1}張牌[\\s\\S]*?牌面重點[：:]\\s*\\n?([^\n]+)`)
+  );
+  if (mCore?.[1]) {
+    const raw = mCore[1].trim();
+    // 跳過仍有牌名的舊格式行
+    if (!/（(?:正位|逆位)）/.test(raw)) return raw.slice(0, 55);
+  }
+  // 舊格式：「這張牌代表：」後面的第一句
   const mRepresent = fullText.match(
     new RegExp(`🃏 第${cardIndex + 1}張牌[\\s\\S]*?這張牌代表：([^\n]+)`)
   );
