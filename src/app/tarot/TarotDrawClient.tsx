@@ -11,9 +11,22 @@ type ReadingStatus = "idle" | "loading" | "done" | "error";
 type ReadingTopic = "love" | "career" | "general";
 type SpreadPosition = "past" | "present" | "future";
 
+/** 最近一次付費結果，暫存於 localStorage */
+type LastPaidResult = {
+  question: string;
+  mode: string;
+  topic: string;
+  cards: TarotCardFaceData[];
+  fullReading: string;
+  createdAt: number;
+  /** 顯示用交易參考編號，例如 UW-1X2Y3Z */
+  refId: string;
+};
+
 const ANON_ID_STORAGE_KEY = "cosmic_anon_id";
 const FB_SHARE_UNLOCK_STORAGE_KEY = "cosmic_fb_unlock_date";
 const LINE_CONNECT_MESSAGE_KEY = "line-connect-message-payload";
+const PAID_RESULT_STORAGE_KEY = "universeWhisper:lastPaidTarotResult";
 const LINE_ADD_FRIEND_URL =
   process.env.NEXT_PUBLIC_LINE_ADD_FRIEND_URL ?? "https://line.me/R/ti/p/@453gfmok";
 
@@ -1026,9 +1039,13 @@ export function TarotDrawClient() {
     "idle" | "working" | "done" | "error"
   >("idle");
   const [storyError, setStoryError] = useState("");
+  // 最近一次付費結果（從 localStorage 載入；付費完成後存入）
+  const [lastPaidResult, setLastPaidResult] = useState<LastPaidResult | null>(null);
+  const [isRestoredResult, setIsRestoredResult] = useState(false);
 
   const paymentTimerRef = useRef<number | null>(null);
   const storyCardRef = useRef<HTMLDivElement | null>(null);
+  const savedPaidResultKeyRef = useRef("");
 
   const cardCount = mode === "three_card" ? 3 : 1;
   const visibleBacks = useMemo(() => Array.from({ length: cardCount }), [cardCount]);
@@ -1090,6 +1107,37 @@ export function TarotDrawClient() {
   }, [getIdToken]);
 
   // ??? Reset ????????????????????????????????????????????????????????????????
+
+  // 載入最近一次付費結果（mount 時）
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(PAID_RESULT_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as LastPaidResult;
+      if (parsed.cards?.length && parsed.fullReading) {
+        setLastPaidResult(parsed);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  // 付費完成且解讀完成後，自動儲存至 localStorage
+  useEffect(() => {
+    if (!paidUnlocked || readingStatus !== "done" || !fullReading || !cards.length) return;
+    const resultKey = cards.map((c) => (c.id ?? c.name ?? "")).join(",");
+    if (savedPaidResultKeyRef.current === resultKey) return;
+    savedPaidResultKeyRef.current = resultKey;
+    const refId = `UW-${Date.now().toString(36).toUpperCase()}`;
+    const result: LastPaidResult = {
+      question, mode, topic, cards, fullReading,
+      createdAt: Date.now(),
+      refId,
+    };
+    try {
+      window.localStorage.setItem(PAID_RESULT_STORAGE_KEY, JSON.stringify(result));
+      setLastPaidResult(result);
+    } catch { /* localStorage 滿了或私密模式，靜默跳過 */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paidUnlocked, readingStatus, fullReading, cards]);
 
   function resetReading() {
     if (paymentTimerRef.current) clearTimeout(paymentTimerRef.current);
@@ -1619,6 +1667,21 @@ export function TarotDrawClient() {
     }, 1000);
   }
 
+  /** 恢復上次付費結果（從 localStorage 重新載入） */
+  function restoreLastPaidResult() {
+    if (!lastPaidResult) return;
+    setQuestion(lastPaidResult.question);
+    setCards(lastPaidResult.cards);
+    setFullReading(lastPaidResult.fullReading);
+    setPaidUnlocked(true);
+    setPaidDrawMode(true);
+    setStatus("revealed");
+    setReadingStatus("done");
+    setIsRestoredResult(true);
+    setError("");
+    setFbSharePending(false);
+  }
+
   // ??? Story download ???????????????????????????????????????????????????????
 
   async function downloadStoryImage() {
@@ -1843,6 +1906,22 @@ export function TarotDrawClient() {
       </button>
 
       {/* ?? Error notice ?? */}
+      {/* 恢復上次付費結果（僅在 idle 且 localStorage 有資料時顯示） */}
+      {status === "idle" && lastPaidResult && !isRestoredResult ? (
+        <div className="relative z-10 mt-3 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={restoreLastPaidResult}
+            className="rounded-full border border-moon/22 bg-white/5 px-4 py-2 text-xs text-moon/60 transition hover:bg-white/10 hover:text-moon/85"
+          >
+            ↩ 恢復上次結果
+          </button>
+          <span className="text-xs text-moon/38">
+            {new Date(lastPaidResult.createdAt).toLocaleDateString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+          </span>
+        </div>
+      ) : null}
+
       {error ? (
         <div className="relative z-10 mt-4 rounded-2xl border border-lavender/30 bg-nebula/20 p-4 text-sm text-moon">
           <p>{error}</p>
@@ -2125,6 +2204,11 @@ export function TarotDrawClient() {
                       NT$49 再抽一次
                     </button>
                   </div>
+                  {/* 退款提醒 */}
+                  <p className="mt-3 text-xs leading-6 text-moon/40">
+                    本服務為即時數位內容，付款成功並成功顯示結果後恕不退費。若未收到內容，請於 24 小時內聯繫
+                    <a href="mailto:ciut0000@gmail.com" className="underline underline-offset-2 hover:text-moon/60">客服信箱</a>。
+                  </p>
                 </div>
               ) : null}
             </div>
@@ -2181,6 +2265,21 @@ export function TarotDrawClient() {
                   <p className="mt-2 text-sm text-[#ffb4b4]">{lineDeliveryMessage}</p>
                 ) : null}
               </div>
+
+              {/* 客服提示：付費後顯示 */}
+              {paidUnlocked ? (
+                <div className="mt-5 rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+                  <p className="text-xs leading-6 text-moon/48">
+                    若付款成功但內容未正常顯示，請截圖此頁並聯繫客服：
+                    <a href="mailto:ciut0000@gmail.com" className="underline underline-offset-2 hover:text-moon/70">
+                      ciut0000@gmail.com
+                    </a>
+                  </p>
+                  {lastPaidResult?.refId ? (
+                    <p className="mt-1 text-xs text-moon/36">交易參考編號：{lastPaidResult.refId}</p>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           )}
 
@@ -2221,6 +2320,13 @@ export function TarotDrawClient() {
                     : "NT$49 再抽一次"}
               </button>
             </div>
+            {/* 退款說明小字 */}
+            <p className="mt-4 text-xs leading-6 text-moon/42 text-center px-2">
+              本服務為即時產生之數位內容，付款成功並成功顯示結果後恕不退費。
+              若付款成功但未收到內容，請於 24 小時內聯繫
+              <a href="mailto:ciut0000@gmail.com" className="underline underline-offset-2 hover:text-moon/70">客服信箱</a>
+              ，確認後協助補發或退款。
+            </p>
           </div>
         </div>
       ) : null}
