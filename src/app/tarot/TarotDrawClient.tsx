@@ -349,19 +349,22 @@ function parseCardSubsections(body: string): CardSubsections {
  * 解析 overallSummary：嘗試拆成「核心判斷」和「為什麼會這樣」兩段
  */
 type OverallSummaryParsed = {
-  verdict?: string;
-  reason?: string;
+  verdict?: string;   // 整體答案
+  reason?: string;    // 為什麼會這樣
+  direction?: string; // 接下來的方向（新段落）
   raw: string;
 };
 
 function parseOverallSummary(text: string): OverallSummaryParsed {
   if (!text) return { raw: "" };
   // 支援「整體答案」（新）和「核心判斷」（舊）兩種標籤
-  const verdictM = text.match(/(?:整體答案|核心判斷)[：:]\s*\n?([\s\S]*?)(?=\n\n?為什麼會這樣[：:]|$)/);
-  const reasonM  = text.match(/為什麼會這樣[：:]\s*\n?([\s\S]*)$/);
-  const verdict  = verdictM?.[1]?.trim();
-  const reason   = reasonM?.[1]?.trim();
-  if (verdict && reason) return { verdict, reason, raw: text };
+  const verdictM   = text.match(/(?:整體答案|核心判斷)[：:]\s*\n?([\s\S]*?)(?=\n\n?為什麼會這樣[：:]|$)/);
+  const reasonM    = text.match(/為什麼會這樣[：:]\s*\n?([\s\S]*?)(?=\n\n?接下來的方向[：:]|$)/);
+  const directionM = text.match(/接下來的方向[：:]\s*\n?([\s\S]*)$/);
+  const verdict    = verdictM?.[1]?.trim();
+  const reason     = reasonM?.[1]?.trim();
+  const direction  = directionM?.[1]?.trim();
+  if (verdict && reason) return { verdict, reason, direction, raw: text };
   return { raw: text };
 }
 
@@ -513,7 +516,7 @@ function ThreeCardReadingDisplay({
           >
             <p className="mb-3 text-xs tracking-[0.22em] text-[#d8bd70]/75 uppercase">牌陣總結</p>
             {parsed.verdict && parsed.reason ? (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 <div>
                   <p className="mb-1 text-xs font-semibold tracking-wide text-[#d8bd70]/65">整體答案</p>
                   <p className="text-lg font-semibold leading-8 text-moon">{parsed.verdict}</p>
@@ -522,6 +525,12 @@ function ThreeCardReadingDisplay({
                   <p className="mb-1 text-xs font-semibold tracking-wide text-[#d8bd70]/65">為什麼會這樣</p>
                   <p className="text-base leading-[1.85] text-moon/78">{parsed.reason}</p>
                 </div>
+                {parsed.direction && (
+                  <div className="border-t border-white/10 pt-3">
+                    <p className="mb-1 text-xs font-semibold tracking-wide text-[#d8bd70]/65">接下來的方向</p>
+                    <p className="text-base leading-[1.85] text-moon/82">{parsed.direction}</p>
+                  </div>
+                )}
               </div>
             ) : (
               <p className="text-lg font-medium leading-[1.85] text-moon">{parsed.raw}</p>
