@@ -355,44 +355,111 @@ function deduplicateSentences(text: string): string {
   return result.join("").trim();
 }
 
+// ── 新增：取第一句話，最多 maxChars 字 ───────────────────────────────────────
+
+function firstSentence(text: string, maxChars: number): string {
+  if (!text) return text;
+  const m = text.match(/^[\s\S]*?[。！？]/);
+  const s = (m ? m[0] : text).trim();
+  if (s.length <= maxChars) return s;
+  // 在 maxChars 以內找最後一個標點截斷
+  const sub = s.slice(0, maxChars);
+  const lastPunct = Math.max(
+    sub.lastIndexOf("。"), sub.lastIndexOf("！"), sub.lastIndexOf("？"),
+    sub.lastIndexOf("，"), sub.lastIndexOf("、")
+  );
+  return lastPunct > maxChars / 2 ? sub.slice(0, lastPunct + 1) : sub + "…";
+}
+
+// ── 新增：以「欄位名稱」為邊界提取段落內容（容許行內混合格式）──────────────────
+
+function extractSectionByPosition(text: string, sectionName: string, stopNames: string[]): string {
+  const markerRe = new RegExp(`${sectionName}[：:]\\s*`);
+  const markerM  = text.match(markerRe);
+  if (!markerM || markerM.index == null) return "";
+  const start = markerM.index + markerM[0].length;
+  let end = text.length;
+  for (const stop of stopNames) {
+    const stopM = text.slice(start).match(new RegExp(`${stop}[：:]`));
+    if (stopM?.index != null) end = Math.min(end, start + stopM.index);
+  }
+  return text.slice(start, end).trim();
+}
+
+// ── 新增：清理牌面重點文字（硬性規則）────────────────────────────────────────
+
+/**
+ * cleanCardPointText：
+ * 1. 移除欄位標題前綴
+ * 2. 移除「牌名（正位/逆位）」行
+ * 3. 移除「關鍵字：」行
+ * 4. 切斷在「對你的問題代表」或「這張牌提醒你」之前
+ * 5. 只保留第一句，最多 60 字
+ */
+function cleanCardPointText(rawText: string): string {
+  if (!rawText) return rawText;
+  let t = rawText
+    .replace(/^(牌面重點|這張牌代表|關鍵字)[：:]\s*/g, "")
+    .replace(/[^\n]*（(?:正位|逆位)）[^\n]*/g, "")
+    .replace(/^關鍵字[：:][^\n]*/gm, "")
+    .trim();
+  // 切斷在下一個欄位邊界
+  for (const b of ["對你的問題代表", "這張牌提醒你", "這張牌代表："]) {
+    const idx = t.indexOf(b);
+    if (idx !== -1) t = t.slice(0, idx).trim();
+  }
+  return firstSentence(t, 60);
+}
+
+// ── 新增：清理「對你的問題代表」文字（硬性規則）──────────────────────────────
+
+/**
+ * cleanQuestionAnswerText：
+ * 1. 移除欄位標題前綴
+ * 2. 切斷在「這張牌提醒你」之前（防止提醒文混入）
+ * 3. 移除「建議你」「可以先」「接下來」等行動建議前綴（移到第一個行動詞之前）
+ */
+function cleanQuestionAnswerText(rawText: string): string {
+  if (!rawText) return rawText;
+  let t = rawText.replace(/^(對你的問題代表|牌面重點)[：:]\s*/g, "").trim();
+  // 切斷在「這張牌提醒你」之前
+  const reminderIdx = t.indexOf("這張牌提醒你");
+  if (reminderIdx !== -1) t = t.slice(0, reminderIdx).trim();
+  // 切斷在「牌面重點：」之前（防止 core 混入）
+  const coreIdx = t.indexOf("牌面重點：");
+  if (coreIdx !== -1) t = t.slice(0, coreIdx).trim();
+  return t.trim();
+}
+
 /**
  * 清理三張牌 card message 的各段落：
- * 1. 移除「牌面重點」段落內的「牌名（正逆位）[｜關鍵字...]」行
- * 2. 移除「這張牌代表：」前綴
- * 3. 跨欄位去重：避免「對你的問題代表」與「牌面重點」重複，「這張牌提醒你」與前兩者重複
+ * 1. 使用位置偵測提取各段（容許行內混合格式，不需強制換行分隔）
+ * 2. 對「牌面重點」套用 cleanCardPointText（≤60字、無牌名/正逆位/關鍵字）
+ * 3. 對「對你的問題代表」套用 cleanQuestionAnswerText（切斷在提醒文之前）
+ * 4. 跨欄位去重：避免 question 與 core 重複，reminder 與前兩者重複
  */
 function cleanCardMessageSections(msg: string): string {
   if (!msg) return msg;
 
-  const coreM     = msg.match(/牌面重點[：:]\s*\n?([\s\S]*?)(?=\n\n?對你的問題代表[：:]|$)/);
-  const questionM = msg.match(/對你的問題代表[：:]\s*\n?([\s\S]*?)(?=\n\n?這張牌提醒你[：:]|$)/);
-  const reminderM = msg.match(/這張牌提醒你[：:]\s*\n?([\s\S]*)$/);
+  // ── 位置偵測提取（比 regex lookbehind 更能處理行內混合格式）────────────────
+  const coreRaw     = extractSectionByPosition(msg, "牌面重點",     ["對你的問題代表", "這張牌提醒你"]);
+  const questionRaw = extractSectionByPosition(msg, "對你的問題代表", ["這張牌提醒你"]);
+  const reminderRaw = extractSectionByPosition(msg, "這張牌提醒你",  []);
 
-  let core     = coreM?.[1]?.trim()     ?? "";
-  let question = questionM?.[1]?.trim() ?? "";
-  let reminder = reminderM?.[1]?.trim() ?? "";
+  // 若三段都是空的，嘗試舊版 regex（向下相容）
+  if (!coreRaw && !questionRaw && !reminderRaw) {
+    const coreM     = msg.match(/牌面重點[：:]\s*\n?([\s\S]*?)(?=\n\n?對你的問題代表[：:]|$)/);
+    const questionM = msg.match(/對你的問題代表[：:]\s*\n?([\s\S]*?)(?=\n\n?這張牌提醒你[：:]|$)/);
+    const reminderM = msg.match(/這張牌提醒你[：:]\s*\n?([\s\S]*)$/);
+    if (!coreM?.[1] && !questionM?.[1] && !reminderM?.[1]) return msg;
+  }
 
-  // 若沒有找到三段結構，直接回傳（格式可能不同）
-  if (!core && !question && !reminder) return msg;
+  // ── 硬性清理 ────────────────────────────────────────────────────────────────
+  let core     = cleanCardPointText(coreRaw);
+  let question = cleanQuestionAnswerText(questionRaw);
+  let reminder = reminderRaw.trim();
 
-  // 清理 core：移除「牌名（正逆位）｜關鍵字...」行和「這張牌代表：」前綴
-  core = core
-    .split("\n")
-    .flatMap((line) => {
-      const t = line.trim();
-      if (!t) return [];
-      // 移除「牌名（正位/逆位）[｜...]」行（前端標題已有牌名，不用重複）
-      if (/[一-龥a-zA-Z]+（(?:正位|逆位)）/.test(t)) return [];
-      // 移除「關鍵字：...」獨立行
-      if (/^關鍵字[：:]/.test(t)) return [];
-      // 移除「這張牌代表：」前綴，只保留後面的內容
-      return [t.replace(/^這張牌代表[：:]\s*/, "")];
-    })
-    .filter(Boolean)
-    .join("\n")
-    .trim();
-
-  // 跨欄位去重：收集 core 的句子集合
+  // ── 跨欄位去重 ──────────────────────────────────────────────────────────────
   const extractSentenceSet = (text: string): Set<string> =>
     new Set(text.split(/[。！？\n]/).map(s => s.replace(/\s/g, "")).filter(Boolean));
 
@@ -414,11 +481,12 @@ function cleanCardMessageSections(msg: string): string {
       .trim();
   }
 
-  // 重新組合（保留標題作為前端 parser 用的 marker）
+  // ── 重新組合（保留標題作為前端 parser 用的 marker）──────────────────────────
   const parts: string[] = [];
   if (core)     parts.push(`牌面重點：\n${core}`);
   if (question) parts.push(`對你的問題代表：\n${question}`);
   if (reminder) parts.push(`這張牌提醒你：\n${reminder}`);
+  if (!parts.length) return msg;
 
   return parts.join("\n\n");
 }
@@ -1788,8 +1856,8 @@ export async function POST(request: Request) {
 
       // ad 版 token（standard 深度，縮短以提升速度）
       const reading = isSingle
-        ? await callSingleCard(client, model, cards[0], topic, question, "standard", 1600)
-        : await callThreeCard (client, model, cards,    topic, question, "standard", 1900);
+        ? await callSingleCard(client, model, cards[0], topic, question, "standard", 1300)
+        : await callThreeCard (client, model, cards,    topic, question, "standard", 1600);
 
       const usedFallback = !reading;
       console.log("[tarot-reading] fallback:", usedFallback);
@@ -1824,8 +1892,8 @@ export async function POST(request: Request) {
 
     // premium 版 token（deep 深度，縮短以提升速度）
     const reading = isSingle
-      ? await callSingleCard(client, model, cards[0], topic, question, "deep", 2000)
-      : await callThreeCard (client, model, cards,    topic, question, "deep", 2400);
+      ? await callSingleCard(client, model, cards[0], topic, question, "deep", 1600)
+      : await callThreeCard (client, model, cards,    topic, question, "deep", 1800);
 
     const usedFallback = !reading;
     console.log("[tarot-reading] fallback:", usedFallback);
