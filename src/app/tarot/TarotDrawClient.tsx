@@ -2206,7 +2206,7 @@ export function TarotDrawClient() {
                   </div>
                   {/* 退款提醒 */}
                   <p className="mt-3 text-xs leading-6 text-moon/40">
-                    本服務為即時數位內容，付款成功並成功顯示結果後恕不退費。若未收到內容，請於 24 小時內聯繫
+                    每日可免費查看一次基礎內容；完整解讀需付費解鎖，費用為 NT$49／次。本服務為即時產生之數位內容，付款完成並成功產出、顯示或發送結果後，恕不接受退費。若付款成功但未收到內容，請於 24 小時內聯繫
                     <a href="mailto:ciut0000@gmail.com" className="underline underline-offset-2 hover:text-moon/60">客服信箱</a>。
                   </p>
                 </div>

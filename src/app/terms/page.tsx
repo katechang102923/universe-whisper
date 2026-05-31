@@ -43,13 +43,7 @@ const refundItems = [
   },
   {
     title: "客服處理方式",
-    body: "我們將於確認後協助處理，處理方式可能包含：",
-    list: [
-      "人工補發結果內容",
-      "重新開通一次觀看權限",
-      "提供可重新查看結果的連結",
-      "若確認無法補發或重新提供內容，將協助退款或取消交易",
-    ],
+    body: "客服確認後，將以 Email 人工協助重新提供本次完整解讀內容。若確認無法重新提供內容，將協助退款或取消交易。",
   },
 ];
 
@@ -66,6 +60,24 @@ export default function TermsPage() {
           <ul className="space-y-4 leading-8 text-moon/74">
             {terms.map((item) => <li key={item}>・{item}</li>)}
           </ul>
+        </div>
+
+        {/* 免費與付費服務 */}
+        <div className="cosmic-tool-panel mt-8 rounded-[1.75rem] p-5 sm:p-7">
+          <p className="mb-1 text-xs uppercase tracking-[0.22em] text-aurora/70">free &amp; paid</p>
+          <h2 className="text-2xl font-semibold text-moon">免費與付費服務</h2>
+          <div className="mt-5 space-y-4 leading-8 text-moon/74">
+            <p>
+              Universe Whisper 提供每日一次基礎免費抽牌服務。免費內容範圍以網站當下頁面顯示為準。
+            </p>
+            <p>
+              若使用者希望查看本次塔羅完整解讀，可依頁面標示金額付費解鎖。完整解讀目前費用為{" "}
+              <span className="font-semibold text-[#d8bd70]">NT$49／次</span>。
+            </p>
+            <p>
+              付費完成後，若系統已成功產出、顯示或發送完整解讀內容，該數位內容即視為已完成提供。
+            </p>
+          </div>
         </div>
 
         {/* 退款政策與系統異常處理 */}

@@ -4,10 +4,10 @@ import { PageNavActions } from "@/components/PageNavActions";
 
 export const metadata: Metadata = {
   title: "付款說明 | Universe Whisper 宇宙塔羅",
-  description: "Universe Whisper 宇宙塔羅完整解讀付款說明：商品名稱、服務內容、付款金額 NT$49、交付方式與退款政策。",
+  description: "Universe Whisper 宇宙塔羅完整解讀付款說明：每日免費一次基礎抽牌，完整解讀 NT$49／次，含退款政策與客服資訊。",
   openGraph: {
     title: "付款說明 | Universe Whisper 宇宙偷偷話",
-    description: "宇宙塔羅完整解讀 NT$49｜即時產生個人化塔羅文字解讀，付款完成後網站結果頁立即顯示。",
+    description: "每日免費一次基礎塔羅抽牌；完整解讀 NT$49／次，付款完成後網站結果頁立即顯示。",
   },
 };
 
@@ -42,10 +42,29 @@ export default function PaymentInfoPage() {
             <div>
               <p className="text-sm font-semibold text-moon/90">交付方式</p>
               <p>
-                付款完成後，完整解讀將於網站結果頁顯示。若因系統異常導致付款成功但內容未正常顯示，使用者可於
-                24 小時內聯繫客服，客服確認後將協助補發、重新開通或退款處理。
+                付款完成後，完整解讀將於網站結果頁顯示。若因系統異常導致付款成功但內容未正常顯示，使用者可於付款後
+                24 小時內聯繫客服並提供付款紀錄，客服確認後將以 Email 人工協助重新提供本次完整解讀內容；若確認無法重新提供，將協助退款或取消交易。
               </p>
             </div>
+          </div>
+        </div>
+
+        {/* 免費與付費規則 */}
+        <div className="cosmic-tool-panel mt-8 rounded-[1.75rem] p-5 sm:p-7">
+          <p className="mb-1 text-xs uppercase tracking-[0.22em] text-aurora/70">free &amp; paid</p>
+          <h2 className="text-2xl font-semibold text-moon">免費與付費規則</h2>
+
+          <div className="mt-5 space-y-4 leading-8 text-moon/74">
+            <p>
+              每位使用者每日可免費進行一次基礎塔羅抽牌，並查看頁面提供的免費內容。免費內容範圍以網站當下顯示為準。
+            </p>
+            <p>
+              若使用者希望查看本次塔羅的完整解讀，可選擇付費解鎖。完整解讀費用為{" "}
+              <span className="font-semibold text-[#d8bd70]">NT$49／次</span>。
+            </p>
+            <p>
+              付費解鎖後，系統將提供本次抽牌對應的完整塔羅文字解讀內容。
+            </p>
           </div>
         </div>
 
@@ -77,20 +96,9 @@ export default function PaymentInfoPage() {
               </ul>
             </div>
 
-            <div>
-              <p className="text-sm font-semibold text-moon/90 mb-2">客服處理方式</p>
-              <p>我們將於確認後協助處理，處理方式可能包含：</p>
-              <ul className="mt-2 space-y-1">
-                {[
-                  "人工補發結果內容",
-                  "重新開通一次觀看權限",
-                  "提供可重新查看結果的連結",
-                  "若確認無法補發或重新提供內容，將協助退款或取消交易",
-                ].map((item) => (
-                  <li key={item} className="pl-4 before:mr-1 before:content-['—']">{item}</li>
-                ))}
-              </ul>
-            </div>
+            <p>
+              客服確認後，將以 Email 人工協助重新提供本次完整解讀內容。若確認無法重新提供內容，將協助退款或取消交易。
+            </p>
           </div>
         </div>
 
