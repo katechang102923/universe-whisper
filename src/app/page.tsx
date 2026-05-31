@@ -138,10 +138,9 @@ export default function Home() {
           {/* 單張塔羅 */}
           <FeatureCard
             gradient="from-aurora/36 to-nebula/22"
-            title="單張塔羅"
+            title="單張塔羅牌"
             description="默想一個問題，讓宇宙為你抽一張牌，給你溫柔而直接的回應。"
             href="/tarot"
-            badge="免費"
             icon={
               <svg
                 viewBox="0 0 22 22"
