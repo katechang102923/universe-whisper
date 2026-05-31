@@ -743,6 +743,238 @@ function getFallbackFocusMessage(focus: QuestionFocus, isUpright: boolean): stri
     : "目前有些東西被卡住了，但那不是終點——只是在提示你需要先停下來，看清楚是什麼讓自己動不了，再重新出發。";
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 三張牌 per-card reminder（依位置 × topic × 正逆位，保證三張不重複）
+// posIndex: 0=過去/背景  1=現在/阻礙  2=未來/建議
+// ─────────────────────────────────────────────────────────────────────────────
+
+function getCardReminderByIndex(
+  card: TarotReadingCard,
+  posIndex: number,
+  focus: QuestionFocus
+): string {
+  const up = card.position === "upright";
+  const f  = focus.primary;
+
+  // ── 愛情 ────────────────────────────────────────────────────────────────────
+  if (f === "love") {
+    if (posIndex === 0) return up
+      ? `${card.name}在過去位置出現，說明你帶進這段關係的能量本來是溫暖的。提醒你：過去的付出已經發生，重要的是看清楚它有沒有被對等接收，而不是繼續單方面加碼。`
+      : `${card.name}逆位在過去的位置，代表這段關係裡有些傷口還沒完全癒合。提醒你：帶著沒說清楚的委屈進入下一階段，會讓模式重演。先把最在意的那件事說出來。`;
+    if (posIndex === 1) return up
+      ? `${card.name}在目前位置說明感情的能量是流動的，雙方之間還有空間。提醒你：真正的靠近不是單方面努力，觀察對方是否也在往你的方向移動，這比你繼續主動更重要。`
+      : `${card.name}逆位目前擋住了你們靠近的可能。提醒你：卡住的不一定是感情本身，而是你們都不願意先承認有問題。先開口說出「我有一點擔心」，往往就能讓空氣流動。`;
+    return up
+      ? `${card.name}在未來位置給出的方向是開放的。提醒你：接下來可以給這段關係一次機會，但不要把所有期待一下子壓上去。先觀察對方有沒有穩定的行動，再慢慢調整投入的比例。`
+      : `${card.name}逆位在未來提醒你：先不要急著推進，觀察對方的行動多於言語。如果對方一直讓你猜、讓你等，那不是考驗，那是一個答案。`;
+  }
+
+  // ── 工作 / 事業 ─────────────────────────────────────────────────────────────
+  if (f === "career") {
+    if (posIndex === 0) return up
+      ? `${card.name}在過去位置說明你有過有能力的狀態。提醒你：過去累積的資歷和能力是真實的，不要讓最近的卡關讓你懷疑整段過去。`
+      : `${card.name}逆位在背景位置，說明這份工作上的壓力不是最近才有的。提醒你：長期承受卻沒有處理的東西，現在開始影響你的判斷力——先把這個部分拆開來看。`;
+    if (posIndex === 1) return up
+      ? `${card.name}在目前位置，工作上是有條件往前走的。提醒你：不要因為還沒準備好就繼續等待，現在的狀態已經可以主動出手——投履歷、提案、或直接說出你的想法。`
+      : `${card.name}逆位出現在目前，說明有個核心問題你一直在迴避面對。提醒你：不管是不滿意職位、還是關係問題，繼續拖著只會讓決定更難。先把那個迴避的部分命名出來。`;
+    return up
+      ? `${card.name}在未來位置是正向的。提醒你：接下來適合有計畫地前進，而不是衝動裸辭或躊躇不前。先把你真正想去的方向確認好，再決定下一步動作。`
+      : `${card.name}逆位在未來提醒你：暫時不適合做太大的職涯決定。先把手上的資源整理清楚，再想下一步。倉促的決定在這個階段容易讓你陷入更亂的處境。`;
+  }
+
+  // ── 財運 ────────────────────────────────────────────────────────────────────
+  if (f === "finance") {
+    if (posIndex === 0) return up
+      ? `${card.name}在背景位置，財務上的底子是有的。提醒你：過去也許有過不錯的收入或機會，重要的是看清楚那時候什麼做對了，現在哪裡走偏了。`
+      : `${card.name}逆位在背景，說明財務上有些舊的漏洞還沒堵住。提醒你：在還沒找到新收入之前，先把支出最大的那個洞看清楚。`;
+    if (posIndex === 1) return up
+      ? `${card.name}在目前位置說明財務有改善的能量。提醒你：機會不會自己找上門，你需要主動整理收支、找出可動用的資源，才能讓這股能量真正發揮。`
+      : `${card.name}逆位目前讓財務流動受阻。提醒你：這個時間點不適合衝動投資或做大額支出決定，先守住現金流，看清楚阻礙在哪裡再動。`;
+    return up
+      ? `${card.name}在未來位置提示財務有好轉的可能。提醒你：接下來可以小幅嘗試新的收入機會，但不要孤注一擲，保留安全緩衝比全押在一個選項上更穩。`
+      : `${card.name}逆位在未來提醒你：這段時間先以守為主，不適合做高風險的財務決定。把現有的錢和負擔整理清楚，比急著賺更多重要。`;
+  }
+
+  // ── 人際 ────────────────────────────────────────────────────────────────────
+  if (f === "relationship") {
+    if (posIndex === 0) return up
+      ? `${card.name}在背景位置，說明這段關係或互動的基礎原本是穩的。提醒你：現在的誤解不代表整段關係都有問題，找到最初的摩擦點，比從頭否定有效。`
+      : `${card.name}逆位在過去，說明這段關係有些積累的誤解還沒解開。提醒你：說清楚一件事就好，不需要把所有問題一次搬出來。`;
+    if (posIndex === 1) return up
+      ? `${card.name}在目前位置，溝通的機會是有的。提醒你：說話比沉默更有效，但要先把你真正想表達的整理清楚，才不會說了更多但說不到點上。`
+      : `${card.name}逆位現在說明有些話你不確定說了會不會讓事情更糟。提醒你：保持沉默也許讓你感覺更安全，但距離會越來越大——選一個輕的話題先開口。`;
+    return up
+      ? `${card.name}在未來位置提示這段關係可以往前走。提醒你：主動溝通的時機快到了，但要把話說清楚，不要靠猜，也不要讓對方猜。`
+      : `${card.name}逆位在未來提醒你：先把自己的界線拉回來，不要為了討好所有人而失去立場。守住自己的需求，反而讓關係更能持續。`;
+  }
+
+  // ── 一般 (general / health / 其他) ──────────────────────────────────────────
+  const generalByPos: Array<[string, string]> = [
+    [
+      `${card.name}在背景位置說明你走到這裡不是偶然。提醒你：過去的選擇不需要後悔，但需要從中找到「我下次要不一樣的是什麼」。`,
+      `${card.name}逆位在過去位置提醒你：有些事情當時沒解決，現在仍在影響你。先把最耗費你精力的那一件事找出來，處理它比忽略它輕鬆。`,
+    ],
+    [
+      `${card.name}在目前位置說明你已經有足夠資訊做出下一步選擇。提醒你：不要因為害怕出錯而一直等——現在行動比繼續觀望更能帶來改變。`,
+      `${card.name}逆位在目前提醒你：你正在用舊的方式應對一個需要新思路的處境。停下來想想「如果這件事換個方式處理，會有什麼不同」。`,
+    ],
+    [
+      `${card.name}在未來位置給出的是可以往前走的訊號。提醒你：把你真正想抵達的目標說清楚，再選擇行動方式，不要讓別人的期待替你決定方向。`,
+      `${card.name}逆位在未來提醒你：這段時間先不要做難以回頭的大決定。讓事情再沉澱一下，等你看清楚全局再出手，比現在衝更穩。`,
+    ],
+  ];
+
+  const [u, r] = generalByPos[posIndex] ?? generalByPos[1]!;
+  return up ? u : r;
+}
+
+/** 三張牌「對你的問題代表」— 依位置 × topic × 正逆位動態產生，避免模板句 */
+function getCardQuestionAnswerByIndex(
+  card: TarotReadingCard,
+  posIndex: number,
+  focus: QuestionFocus,
+  question: string
+): string {
+  const up = card.position === "upright";
+  const f  = focus.primary;
+  const qPrefix = question ? `你問的是「${question}」。` : "";
+
+  if (f === "love") {
+    if (posIndex === 0) return up
+      ? `${qPrefix}${card.name}在這個位置說明感情裡有真實的溫度存在，不是完全沒有可能。但它同時提醒你，靠近需要雙方都在動，不能只靠你一個人維持。`
+      : `${qPrefix}這張牌出現在過去，代表這段感情裡有些情緒或期待還沒有被消化掉。在往前走之前，先把那個沒說清楚的部分整理一下。`;
+    if (posIndex === 1) return up
+      ? `${qPrefix}目前的狀態對這段感情來說是可以溝通的，雙方之間有空間。但「有空間」不等於「會自動靠近」——需要有人先邁出那一步。`
+      : `${qPrefix}目前的困難在於雙方都在等對方先有所行動，形成僵局。如果你先把你的感受說出來，至少讓對方知道你在意，才有機會打破這個循環。`;
+    return up
+      ? `${qPrefix}接下來的走向對這段感情是相對正向的，可以慢慢給一次機會。但要觀察對方的行動是否穩定、持續，而不是只看一時的甜言蜜語。`
+      : `${qPrefix}接下來如果對方持續讓你猜、讓你等，這張牌的提示是：你不需要一直替對方找理由。先把重心放回自己，讓答案自然浮現。`;
+  }
+
+  if (f === "career") {
+    if (posIndex === 0) return up
+      ? `${qPrefix}過去的工作資歷和能力是你真實擁有的底氣，這張牌提醒你不要在卡關時全盤否定自己。現在需要的是重新確認方向，而不是懷疑能力。`
+      : `${qPrefix}工作上累積的壓力比你意識到的更重。這張牌建議你先把「哪些事耗費了你最多精力」列出來——轉職或調整之前，先看清楚自己在逃離什麼。`;
+    if (posIndex === 1) return up
+      ? `${qPrefix}目前的工作狀態是有條件行動的。如果你在考慮換工作或爭取機會，現在可以開始準備，不需要等到完全準備好才動。`
+      : `${qPrefix}工作上卡住的原因，可能不只是外在環境，還有你自己在迴避的一個決定。這張牌提示你：那個你一直拖著沒做的事，現在可以先面對它了。`;
+    return up
+      ? `${qPrefix}接下來的方向是可以推進的，但要有計畫而不是衝動。先把你真正想去的職位或環境說清楚，再決定下一步動作，避免只是在「逃離現在」而不是「走向想要的地方」。`
+      : `${qPrefix}接下來先不適合做大的職涯決定。把手上的資源整理好，讓自己有備案，再考慮要不要動。`;
+  }
+
+  if (f === "finance") {
+    if (posIndex === 0) return up
+      ? `${qPrefix}財務背景是穩的，代表你有可以運用的資源。提醒你：回顧一下過去哪些收入來源比較穩定，把那個方向繼續強化。`
+      : `${qPrefix}財務上有些舊習慣或決定的後遺症還在。提醒你：先把目前最大的支出或負擔找出來，這才是需要優先處理的，不是急著找新收入。`;
+    if (posIndex === 1) return up
+      ? `${qPrefix}目前財務有改善的條件，但機會需要你主動整理出來。把近期的收支狀況具體寫下來，你會看到哪裡有空間可以調整。`
+      : `${qPrefix}目前財務上有個你沒有正視的漏洞。先把支出最大的項目找出來，不要只靠感覺，看數字才能知道問題在哪裡。`;
+    return up
+      ? `${qPrefix}接下來財務有機會改善，可以小幅嘗試新的收入方式。但不要因為看到機會就全押，先試小的，確認可行再加碼。`
+      : `${qPrefix}接下來先以守為主，這不是好的時機做高風險財務決定。先確保現金流穩定，再談擴張或投資。`;
+  }
+
+  // general / relationship / health / 其他
+  const byPos = [
+    up ? `${qPrefix}過去的背景說明你帶著一定的底氣走到現在。提醒你：過去的選擇有它的脈絡，不需要一概否定，但需要找出哪裡可以做不一樣的選擇。`
+       : `${qPrefix}過去有些能量還沒有被整理乾淨。這張牌提示你：先把那個影響你最深的舊模式找出來，才能真正往前走。`,
+    up ? `${qPrefix}目前的狀態是有能量可以行動的。提醒你：不要因為還沒完全準備好就繼續等——選一件最小但能做到的事，從那裡開始。`
+       : `${qPrefix}目前有個你一直在迴避的核心問題。這張牌提示你：把它說清楚，比繼續繞著它打轉要有效得多。`,
+    up ? `${qPrefix}接下來的方向是往前走的，但要先確認你真正想抵達的地方，而不是被環境推著走。`
+       : `${qPrefix}接下來先暫停，讓自己有時間重新看清楚全局。不是所有事情都需要現在決定，等你看清楚再動比衝動決定更穩。`,
+  ];
+  return byPos[posIndex] ?? byPos[1]!;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 三張牌 message 去重：提取「這張牌提醒你」段落，偵測重複後替換
+// ─────────────────────────────────────────────────────────────────────────────
+
+function extractCardReminder(message: string): string {
+  const m = message.match(/這張牌提醒你[：:]\s*\n?([\s\S]*)$/);
+  return m?.[1]?.trim() ?? "";
+}
+
+function replaceCardReminder(message: string, newReminder: string): string {
+  return message.replace(
+    /這張牌提醒你[：:]\s*\n?[\s\S]*$/,
+    `這張牌提醒你：\n${newReminder}`
+  );
+}
+
+function replaceCardQuestionAnswer(message: string, newQA: string): string {
+  return message.replace(
+    /(對你的問題代表[：:]\s*\n?)[\s\S]*?(\n\n這張牌提醒你)/,
+    `$1${newQA}$2`
+  );
+}
+
+/**
+ * 簡單相似度：去空白後重疊字元比率
+ */
+function textSimilarity(a: string, b: string): number {
+  const sa = a.replace(/\s/g, "");
+  const sb = b.replace(/\s/g, "");
+  if (!sa || !sb) return 0;
+  let match = 0;
+  const shorter = sa.length < sb.length ? sa : sb;
+  for (const ch of shorter) if (sa.includes(ch) && sb.includes(ch)) match++;
+  return match / Math.max(sa.length, sb.length);
+}
+
+/**
+ * 對三張牌的 message 做去重：
+ * - 「這張牌提醒你」完全相同 → 替換
+ * - 相似度 > 0.72 → 替換
+ * - 「對你的問題代表」為固定模板句 → 替換
+ */
+function deduplicateCardMessages(
+  cards: [ThreeCardEntry, ThreeCardEntry, ThreeCardEntry],
+  rawCards: TarotReadingCard[],
+  focus: QuestionFocus,
+  question: string
+): [ThreeCardEntry, ThreeCardEntry, ThreeCardEntry] {
+  const TEMPLATE_QA =
+    "它的出現說明你目前這個面向的狀態有值得深入看清楚的地方——不是要你立刻採取行動，而是先讓自己真正理解這裡發生了什麼。";
+
+  const reminders = cards.map((c) => extractCardReminder(c.message));
+
+  const result = cards.map((entry, i) => {
+    let msg = entry.message;
+
+    // ① 替換固定模板 QA
+    if (msg.includes(TEMPLATE_QA)) {
+      const raw = rawCards[i];
+      if (raw) {
+        const newQA = getCardQuestionAnswerByIndex(raw, i, focus, question);
+        msg = replaceCardQuestionAnswer(msg, newQA);
+      }
+    }
+
+    // ② 偵測 reminder 是否與之前任一張重複（或高度相似）
+    const thisReminder = reminders[i] ?? "";
+    const isDup = reminders.some((r, j) => {
+      if (j >= i) return false; // 只比較前面的牌
+      return r === thisReminder || textSimilarity(r, thisReminder) > 0.72;
+    });
+
+    if (isDup) {
+      const raw = rawCards[i];
+      if (raw) {
+        const newReminder = getCardReminderByIndex(raw, i, focus);
+        msg = replaceCardReminder(msg, newReminder);
+        // 更新 reminders 陣列讓後續比較用新值
+        reminders[i] = newReminder;
+      }
+    }
+
+    return { ...entry, message: msg };
+  }) as [ThreeCardEntry, ThreeCardEntry, ThreeCardEntry];
+
+  return result;
+}
+
 function buildThreeCardFallback(
   cards: TarotReadingCard[],
   _topic: TarotReadingTopic,
@@ -782,15 +1014,18 @@ function buildThreeCardFallback(
       : `${card.name}逆位代表這個面向的能量受到阻礙或壓抑，需要先正視才能解開。`);
 
     // 三小段格式：牌面重點 / 對你的問題代表 / 這張牌提醒你
+    // 「對你的問題代表」與「這張牌提醒你」都依位置 × topic × 正逆位動態產生
+    const questionAnswerText = getCardQuestionAnswerByIndex(card, i, focus, question);
+    const reminderText       = getCardReminderByIndex(card, i, focus);
     const msg = [
       `牌面重點：`,
       `${card.name}（${ori}）${kw ? `，關鍵字「${kw}」。` : "。"}${coreMeaning}`,
       ``,
       `對你的問題代表：`,
-      `這張牌在「${posLabel}」的位置，${posRole}。它的出現說明你目前這個面向的狀態有值得深入看清楚的地方——不是要你立刻採取行動，而是先讓自己真正理解這裡發生了什麼。`,
+      questionAnswerText,
       ``,
       `這張牌提醒你：`,
-      getFallbackFocusMessage(focus, isUpright),
+      reminderText,
     ].join("\n");
 
     return {
@@ -1105,7 +1340,7 @@ function buildThreeCardPrompt(
       "orientation": "${ori}",
       "keywords": ${cardKw ? `["${card.keywords?.slice(0,3).join('", "')}"]` : '["（關鍵字1）", "（關鍵字2）", "（關鍵字3）"]'},
       "shortSummary": "（30～50字摘要，直接說這張牌在「${posLabel}」位置對問題的核心提示，供未解鎖使用者看${cardKw ? `，可用關鍵字：${cardKw}` : ""}）",
-      "message": "牌面重點：\\n（60-80字，說明「${card.name}」（${ori}）本身的核心牌義和這個方向的能量，必須引用牌名）\\n\\n對你的問題代表：\\n（60-80字，說明這張牌在「${posLabel}」位置如何回應使用者的問題，說清楚代表什麼狀況或原因，不要複製牌面重點的內容）\\n\\n這張牌提醒你：\\n（40-60字，給一個明確具體的提醒，不要和另外兩張牌的提醒重複，不要用通用療癒語句）"
+      "message": "牌面重點：\\n（50-70字，說明「${card.name}」（${ori}）本身的象徵含義和正逆位能量，必須引用牌名，不提使用者問題）\\n\\n對你的問題代表：\\n（50-70字，直接說這張牌在「${posLabel}」位置對使用者問題的意義：${card.position === "upright" ? "正向牌要說明可以怎麼做或什麼正在往好的方向走" : "逆位牌要說明什麼在阻礙或需要先停下來處理"}，不可用「它的出現說明你目前這個面向的狀態有值得深入看清楚的地方」這類模板句）\\n\\n這張牌提醒你：\\n（40-55字，【重要】必須根據「${card.name}」（${ori}）這張牌的專屬牌義寫，不可以和其他兩張牌的提醒說同樣的話。正位提醒要和逆位提醒方向明顯不同。禁止：「目前的狀態是可以往前走的」「先把心裡最擔心的問題說清楚」「讓行動更有方向」這三個句子）"
     }`;
   }).join(",\n");
 
@@ -1159,10 +1394,29 @@ ${antiSimilarityHint}
 
 7. 三張牌整體字數目標：900～1400字。每張牌解讀要有明顯差異，不可以三張說一樣的話。
 
-【anti-repetition 規則】
-三張牌的 message 中，禁止讓不同牌出現相同的核心提醒。
-例如不可以三張牌都說「先把問題看清楚」「可以重新選擇」「心與行動不一致」「先停下來」。
-每張牌的提醒必須根據牌名和位置有明顯差異。
+【這張牌提醒你 — 強制獨立規則（最重要）】
+三張牌的「這張牌提醒你」必須根據各自的牌名 + 正逆位 + 位置寫出，不可以相同或相似。
+
+強制要求：
+1. 三張牌的提醒文字不得相同，字面相同的提醒不能出現兩次。
+2. 同一個核心意思（例如「先看清楚問題」）不可在三張牌裡重複說。
+3. 提醒中必須能看出「這是哪一張牌的提醒」——要有牌義的痕跡，不能是通用語。
+4. 正位牌的提醒方向：可以怎麼做、可以往哪裡走、什麼已經準備好了。
+5. 逆位牌的提醒方向：要先注意什麼、什麼不建議做、哪裡需要先停下來。
+6. 不同位置（過去/現在/未來）的提醒角度也必須不同：
+   - 過去位置：反思過去的模式或情緒
+   - 現在位置：現在需要做什麼或注意什麼
+   - 未來位置：接下來如何行動或選擇
+
+絕對禁止在任何一張牌的提醒裡出現：
+「目前的狀態是可以往前走的，只是你需要先把心裡最擔心的那個問題說清楚，才能讓行動更有方向。」
+「目前有些東西被卡住了，但那不是終點」
+「先整理自己」「宇宙提醒你」「相信自己」「慢下來」
+
+範例（說明牌名不同如何影響提醒）：
+戰車（正位）提醒你：「你不是不能前進，而是要先抓回主導權。把注意力放在真正想抵達的方向，不要被旁人意見拉著跑。」
+權杖十（正位）提醒你：「你已經扛得太多了。現在最重要的不是再撐下去，而是分清楚哪些責任真的屬於你，哪些只是你習慣性接了下來。」
+聖杯皇后（逆位）提醒你：「你可能吸收了太多情緒，把別人的期待當成自己的責任。先把界線拉回來，才不會在做決定時失去自己的聲音。」
 
 【輸出 JSON 格式】
 {
@@ -1274,6 +1528,9 @@ async function callThreeCard(
       const parseSuccess = parsed !== null;
       console.log("[tarot-reading] parse success:", parseSuccess);
       if (!parsed) return null;
+      // 去重：偵測「這張牌提醒你」重複並替換
+      const focus = detectQuestionFocus(question);
+      parsed.cards = deduplicateCardMessages(parsed.cards, cards, focus, question);
       return formatThreeCardReading(parsed);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
