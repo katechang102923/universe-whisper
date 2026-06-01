@@ -27,8 +27,13 @@ const ANON_ID_STORAGE_KEY = "cosmic_anon_id";
 const FB_SHARE_UNLOCK_STORAGE_KEY = "cosmic_fb_unlock_date";
 const LINE_CONNECT_MESSAGE_KEY = "line-connect-message-payload";
 const PAID_RESULT_STORAGE_KEY = "universeWhisper:lastPaidTarotResult";
+const LINE_OA_ID = process.env.NEXT_PUBLIC_LINE_OA_ID ?? "453gfmok";
+/** oaMessage 預填文字連結前綴（@ 必須 percent-encode 成 %40） */
+const LINE_OA_MESSAGE_BASE = `https://line.me/R/oaMessage/%40${LINE_OA_ID}/?`;
+/** 加好友連結（@ 必須 percent-encode，避免 Safari 解析問題） */
 const LINE_ADD_FRIEND_URL =
-  process.env.NEXT_PUBLIC_LINE_ADD_FRIEND_URL ?? "https://line.me/R/ti/p/@453gfmok";
+  process.env.NEXT_PUBLIC_LINE_ADD_FRIEND_URL ??
+  `https://line.me/R/ti/p/%40${LINE_OA_ID}`;
 
 const modes = [
   { key: "single_tarot", label: "單張牌", description: "接收此刻最靠近你的訊息" },
@@ -1007,6 +1012,69 @@ async function generateStoryImage(
 // Main component
 // ?????????????????????????????????????????????????????????????????????????????
 
+// ── 共用複製按鈕元件 ──────────────────────────────────────────────────────────
+
+function CopyCodeButton({
+  text,
+  label,
+  copiedLabel,
+  feedbackText,
+  className,
+}: {
+  text: string;
+  label: string;
+  copiedLabel?: string;
+  feedbackText?: string;
+  className?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  function doCopy() {
+    if (!text) return;
+    const finish = () => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2500);
+    };
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(finish).catch(fallback);
+    } else {
+      fallback();
+    }
+    function fallback() {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.cssText = "position:fixed;top:-9999px;left:-9999px;opacity:0;pointer-events:none";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        finish();
+      } catch { /* 靜默失敗 */ }
+    }
+  }
+
+  return (
+    <span className="inline-flex flex-col items-center gap-1">
+      <button
+        type="button"
+        onClick={doCopy}
+        className={className ?? `inline-flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-sm font-medium transition active:scale-95 ${
+          copied
+            ? "border-aurora/40 text-aurora/80"
+            : "border-[#d8bd70]/35 text-[#d8bd70]/80 hover:border-[#d8bd70]/60 hover:text-[#d8bd70]"
+        }`}
+      >
+        {copied ? <>✓ {copiedLabel ?? "已複製"}</> : <>{label}</>}
+      </button>
+      {copied && feedbackText ? (
+        <span className="text-xs text-aurora/70">{feedbackText}</span>
+      ) : null}
+    </span>
+  );
+}
+
 // ── LINE 驗證碼 UI 元件（純展示，不含任何 LINE API 邏輯）────────────────────
 
 type LineClaimStatus = "idle" | "loading" | "ready" | "checking" | "claimed" | "error";
@@ -1014,20 +1082,26 @@ type LineClaimStatus = "idle" | "loading" | "ready" | "checking" | "claimed" | "
 function LineClaimSection({
   status,
   claimCode,
+  lookupCode,
   error,
   onOpen,
   onCheck,
   onReset,
-  addFriendUrl,
 }: {
   status: LineClaimStatus;
   claimCode: string;
+  lookupCode: string;
   error: string;
   onOpen: () => void;
   onCheck: () => void;
   onReset: () => void;
-  addFriendUrl: string;
 }) {
+  // oaMessage URL：幫使用者開啟聊天室並預填驗證碼（@ 已 encode 成 %40）
+  const oaMessageUrl = claimCode
+    ? LINE_OA_MESSAGE_BASE + encodeURIComponent(claimCode)
+    : LINE_ADD_FRIEND_URL;
+
+  // ── 已成功兌換 ─────────────────────────────────────────────────────────────
   if (status === "claimed") {
     return (
       <p className="mt-2 flex items-center gap-2 text-sm text-aurora/80">
@@ -1036,6 +1110,7 @@ function LineClaimSection({
     );
   }
 
+  // ── 錯誤 ───────────────────────────────────────────────────────────────────
   if (status === "error") {
     return (
       <div className="mt-2 space-y-2">
@@ -1051,33 +1126,79 @@ function LineClaimSection({
     );
   }
 
+  // ── 已產生驗證碼（ready / checking）────────────────────────────────────────
   if (status === "ready" || status === "checking") {
     return (
       <div className="mt-2 space-y-3">
         <p className="text-sm leading-7 text-moon/55">
-          請先加入宇宙偷偷話 LINE 官方帳號，並在聊天室傳送下方驗證碼，系統會自動把本次結果回傳到你的 LINE 聊天室。
+          請加入官方帳號 @{LINE_OA_ID}，並將下方驗證碼傳到聊天室，系統會自動回覆本次結果。
         </p>
-        {/* 驗證碼顯示框 */}
+
+        {/* 驗證碼卡片 */}
         <div className="rounded-2xl border border-[#d8bd70]/30 bg-midnight/70 px-5 py-4 text-center">
-          <p className="text-xs tracking-[0.22em] text-moon/45 mb-1">驗證碼</p>
-          <p className="text-2xl font-bold tracking-[0.18em] text-[#d8bd70]">{claimCode}</p>
-          <p className="mt-1 text-xs text-moon/35">有效期限 1 小時</p>
+          <p className="text-xs tracking-[0.22em] text-moon/45 mb-2">驗證碼（1 小時有效）</p>
+          <p className="text-3xl font-bold tracking-[0.28em] text-[#d8bd70] select-all">
+            {claimCode}
+          </p>
+          <p className="mt-1 text-xs text-moon/35">開啟 LINE 後，請按送出。</p>
+          <div className="mt-3 flex justify-center">
+            <CopyCodeButton
+              text={claimCode}
+              label="⎘ 複製驗證碼"
+              copiedLabel={`已複製（@${LINE_OA_ID}）`}
+              feedbackText={`已複製驗證碼，請貼到 @${LINE_OA_ID} 聊天室。`}
+            />
+          </div>
         </div>
-        {/* 加入按鈕 */}
+
+        {/* 主要按鈕：開啟 LINE 預填驗證碼 */}
         <a
-          href={addFriendUrl}
+          href={oaMessageUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold text-white shadow-[0_0_20px_rgba(6,199,85,0.28)] transition hover:opacity-90 active:scale-95 sm:w-auto sm:min-w-[220px]"
+          className="flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold text-white shadow-[0_0_20px_rgba(6,199,85,0.28)] transition hover:opacity-90 active:scale-95 sm:w-auto sm:min-w-[240px]"
           style={{ background: "#06C755" }}
         >
-          加入 LINE 官方帳號
+          開啟 LINE 並送出驗證碼
         </a>
-        <p className="text-sm leading-7 text-moon/60">
-          加入後，請把驗證碼傳到聊天室：
-          <span className="ml-1 font-semibold text-[#d8bd70]">{claimCode}</span>
+        <p className="text-xs leading-6 text-moon/45">
+          開啟 LINE 後，請按「送出」，系統才會回覆結果。
         </p>
-        {/* 狀態確認按鈕 */}
+
+        {/* Fallback：加好友連結 */}
+        <p className="text-xs text-moon/38">
+          無法開啟？
+          <a
+            href={LINE_ADD_FRIEND_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ml-1 underline underline-offset-2 hover:text-moon/60"
+          >
+            點此加入 @{LINE_OA_ID}
+          </a>
+        </p>
+
+        {/* 永久結果查詢碼 */}
+        {lookupCode ? (
+          <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
+            <p className="text-xs tracking-[0.18em] text-moon/40 mb-1">結果查詢碼（永久有效）</p>
+            <div className="flex items-center gap-3">
+              <span className="font-mono text-sm font-semibold text-moon/70 select-all">{lookupCode}</span>
+              <CopyCodeButton
+                text={lookupCode}
+                label="複製"
+                copiedLabel="已複製"
+                feedbackText={`可傳到 @${LINE_OA_ID} 或到 /tarot/lookup 查詢`}
+                className="inline-flex items-center gap-1 rounded-full border border-white/15 px-3 py-1 text-xs text-moon/50 transition hover:border-white/30 hover:text-moon/70 active:scale-95"
+              />
+            </div>
+            <p className="mt-1 text-xs text-moon/35">
+              請截圖或複製，之後可在網站或傳到 @{LINE_OA_ID} 查詢本次結果。
+            </p>
+          </div>
+        ) : null}
+
+        {/* 確認狀態按鈕 */}
         <button
           type="button"
           onClick={onCheck}
@@ -1086,15 +1207,20 @@ function LineClaimSection({
         >
           {status === "checking" ? "確認中..." : "我已傳送驗證碼，重新檢查狀態"}
         </button>
+        {status === "checking" ? null : (
+          <p className="text-xs text-moon/35">
+            若仍 pending，請確認你已傳到 @{LINE_OA_ID}，且已在 LINE 聊天室按送出。
+          </p>
+        )}
       </div>
     );
   }
 
-  // idle / loading
+  // ── idle / loading：尚未產生驗證碼 ─────────────────────────────────────────
   return (
     <div className="mt-2 space-y-2">
       <p className="text-sm leading-7 text-moon/55">
-        請先加入宇宙偷偷話 LINE 官方帳號，並在聊天室傳送下方驗證碼，系統會自動把本次結果回傳到你的 LINE 聊天室。
+        請加入官方帳號 @{LINE_OA_ID}，並將驗證碼傳到聊天室，系統會自動回覆本次結果。
       </p>
       <button
         type="button"
@@ -1139,6 +1265,7 @@ export function TarotDrawClient() {
   >("idle");
   const [lineDeliveryMessage, setLineDeliveryMessage] = useState("");
   const [lineResultId, setLineResultId] = useState("");
+  const [lineResultLookupCode, setLineResultLookupCode] = useState("");
   // LINE claim-code flow state
   const [lineClaimStatus, setLineClaimStatus] = useState<
     "idle" | "loading" | "ready" | "checking" | "claimed" | "error"
@@ -1251,6 +1378,14 @@ export function TarotDrawClient() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paidUnlocked, readingStatus, fullReading, cards]);
 
+  // 付費解鎖後自動建立 Firestore 結果記錄，取得永久「結果查詢碼」
+  useEffect(() => {
+    if (paidUnlocked && readingStatus === "done" && !lineResultId) {
+      void createOrGetLineResult().catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paidUnlocked, readingStatus, lineResultId]);
+
   function resetReading() {
     if (paymentTimerRef.current) clearTimeout(paymentTimerRef.current);
     paymentTimerRef.current = null;
@@ -1269,6 +1404,7 @@ export function TarotDrawClient() {
     setLineDeliveryStatus("idle");
     setLineDeliveryMessage("");
     setLineResultId("");
+    setLineResultLookupCode("");
     setLineClaimStatus("idle");
     setLineClaimCode("");
     setLineClaimError("");
@@ -1406,6 +1542,7 @@ export function TarotDrawClient() {
     const data = (await response.json().catch(() => ({}))) as {
       ok?: boolean;
       resultId?: string;
+      lookupCode?: string;
       error?: string;
     };
 
@@ -1414,6 +1551,7 @@ export function TarotDrawClient() {
     }
 
     setLineResultId(data.resultId);
+    if (data.lookupCode) setLineResultLookupCode(data.lookupCode);
     return data.resultId;
   }
 
@@ -2378,11 +2516,11 @@ export function TarotDrawClient() {
                 <LineClaimSection
                   status={lineClaimStatus}
                   claimCode={lineClaimCode}
+                  lookupCode={lineResultLookupCode}
                   error={lineClaimError}
                   onOpen={() => void openLineClaimFlow()}
                   onCheck={() => void checkLineClaimStatus()}
                   onReset={() => { setLineClaimStatus("idle"); setLineClaimError(""); setLineClaimCode(""); }}
-                  addFriendUrl={LINE_ADD_FRIEND_URL}
                 />
               </div>
             </div>
@@ -2423,25 +2561,47 @@ export function TarotDrawClient() {
                 <LineClaimSection
                   status={lineClaimStatus}
                   claimCode={lineClaimCode}
+                  lookupCode={lineResultLookupCode}
                   error={lineClaimError}
                   onOpen={() => void openLineClaimFlow()}
                   onCheck={() => void checkLineClaimStatus()}
                   onReset={() => { setLineClaimStatus("idle"); setLineClaimError(""); setLineClaimCode(""); }}
-                  addFriendUrl={LINE_ADD_FRIEND_URL}
                 />
               </div>
 
-              {/* 客服提示：付費後顯示 */}
+              {/* 客服提示 + 結果查詢碼：付費後顯示 */}
               {paidUnlocked ? (
-                <div className="mt-5 rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+                <div className="mt-5 rounded-2xl border border-white/8 bg-white/[0.03] p-4 space-y-2">
                   <p className="text-xs leading-6 text-moon/48">
                     若付款成功但內容未正常顯示，請截圖此頁並聯繫客服：
                     <a href="mailto:ciut0000@gmail.com" className="underline underline-offset-2 hover:text-moon/70">
                       ciut0000@gmail.com
                     </a>
                   </p>
+                  {/* 付款參考碼（僅供客服對帳） */}
                   {lastPaidResult?.refId ? (
-                    <p className="mt-1 text-xs text-moon/36">交易參考編號：{lastPaidResult.refId}</p>
+                    <p className="text-xs text-moon/32">付款參考碼：{lastPaidResult.refId}</p>
+                  ) : null}
+                  {/* 結果查詢碼（已儲存至 Firestore，可查詢） */}
+                  {lineResultLookupCode ? (
+                    <div className="pt-1">
+                      <p className="text-xs tracking-[0.18em] text-moon/40 mb-1">結果查詢碼</p>
+                      <div className="flex items-center gap-3">
+                        <span className="font-mono text-sm font-semibold text-moon/72 select-all">
+                          {lineResultLookupCode}
+                        </span>
+                        <CopyCodeButton
+                          text={lineResultLookupCode}
+                          label="複製查詢碼"
+                          copiedLabel="已複製"
+                          feedbackText={`已複製查詢碼，可回網站或傳到 @${LINE_OA_ID} 查詢結果。`}
+                          className="inline-flex items-center gap-1 rounded-full border border-white/15 px-3 py-1 text-xs text-moon/50 transition hover:border-white/30 hover:text-moon/70 active:scale-95"
+                        />
+                      </div>
+                      <p className="mt-1 text-xs text-moon/32">
+                        請截圖或複製，之後可在網站或傳到 @{LINE_OA_ID} 查詢本次結果。
+                      </p>
+                    </div>
                   ) : null}
                 </div>
               ) : null}

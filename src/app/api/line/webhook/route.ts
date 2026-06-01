@@ -86,6 +86,34 @@ async function replyWithText(replyToken: string, text: string) {
   });
 }
 
+// ── 新增：lookupCode fallback — 查詢舊紀錄 ──────────────────────────────────
+async function handleLookupCodeFallback(code: string, replyToken: string): Promise<void> {
+  const db = getAdminDb();
+
+  const snap = await db
+    .collection(LINE_RESULTS_COLLECTION)
+    .where("lookupCode", "==", code)
+    .limit(1)
+    .get();
+
+  if (snap.empty) {
+    await replyWithText(
+      replyToken,
+      "找不到這組代碼，請確認是否輸入正確。\n\n" +
+        "若你要查詢舊紀錄，請輸入結果頁底部的「結果查詢碼」（格式：UW-XXXXXXXX）。",
+    );
+    return;
+  }
+
+  const doc = snap.docs[0];
+  const result = doc.data() as LineResultData;
+  const resultId = doc.id;
+  const message =
+    "🔍 查詢到你的塔羅紀錄\n\n" + buildLineResultMessage(result, resultId, SITE_URL);
+
+  await replyWithText(replyToken, message);
+}
+
 // ── 新增：處理驗證碼事件 ─────────────────────────────────────────────────────
 async function handleClaimCode(
   claimCode: string,
@@ -99,7 +127,8 @@ async function handleClaimCode(
   const claimSnap = await claimRef.get();
 
   if (!claimSnap.exists) {
-    await replyWithText(replyToken, "找不到此驗證碼，請確認輸入是否正確，或回網站重新取得。");
+    // claimCode 找不到時，嘗試以 lookupCode 查詢舊紀錄
+    await handleLookupCodeFallback(claimCode, replyToken);
     return;
   }
 

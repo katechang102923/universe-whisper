@@ -185,6 +185,12 @@ export default async function ShareResultPage({
           >
             看每日星座運勢
           </Link>
+          <Link
+            href="/tarot/lookup"
+            className="rounded-full border border-white/20 px-5 py-3 text-moon/70 transition hover:bg-white/8"
+          >
+            輸入序號看原本結果
+          </Link>
         </div>
 
         {/* Site branding */}

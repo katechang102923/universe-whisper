@@ -11,6 +11,13 @@ import { getAdminDb, getFirebaseAdminEnvStatus } from "@/lib/firebaseAdmin";
 
 const validTypes = ["tarot", "daily", "whisper"] as const;
 
+/** 產生永久結果查詢碼，格式 UW-XXXXXXXX（8碼，去除易混淆字元）*/
+function generateLookupCode(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = crypto.randomBytes(8);
+  return "UW-" + Array.from(bytes).map((b) => chars[b % chars.length]).join("");
+}
+
 function isResultType(value: unknown): value is LineResultType {
   return typeof value === "string" && validTypes.includes(value as LineResultType);
 }
@@ -51,6 +58,7 @@ export async function POST(request: Request) {
   }
 
   const resultId = crypto.randomUUID();
+  const lookupCode = generateLookupCode();
   const siteUrl = getSiteUrl(request);
   const resultUrl = `${siteUrl}/share/${resultId}`;
   const normalizedCards = normalizeCards(body.cards);
@@ -77,6 +85,7 @@ export async function POST(request: Request) {
         shortText,
         fullText,
         resultUrl,
+        lookupCode,
         lineUserId: null,
         lineDisplayName: null,
         pushedAt: null,
@@ -86,8 +95,8 @@ export async function POST(request: Request) {
         updatedAt: FieldValue.serverTimestamp(),
       });
 
-    console.info("[results/create] Firestore write success", { resultId });
-    return NextResponse.json({ ok: true, resultId, resultUrl });
+    console.info("[results/create] Firestore write success", { resultId, lookupCode });
+    return NextResponse.json({ ok: true, resultId, resultUrl, lookupCode });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown Firestore error.";
     console.error("[results/create] Failed to save result:", { resultId, errorMessage, envStatus });
