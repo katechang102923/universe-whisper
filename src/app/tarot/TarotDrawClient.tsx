@@ -1007,6 +1007,110 @@ async function generateStoryImage(
 // Main component
 // ?????????????????????????????????????????????????????????????????????????????
 
+// ── LINE 驗證碼 UI 元件（純展示，不含任何 LINE API 邏輯）────────────────────
+
+type LineClaimStatus = "idle" | "loading" | "ready" | "checking" | "claimed" | "error";
+
+function LineClaimSection({
+  status,
+  claimCode,
+  error,
+  onOpen,
+  onCheck,
+  onReset,
+  addFriendUrl,
+}: {
+  status: LineClaimStatus;
+  claimCode: string;
+  error: string;
+  onOpen: () => void;
+  onCheck: () => void;
+  onReset: () => void;
+  addFriendUrl: string;
+}) {
+  if (status === "claimed") {
+    return (
+      <p className="mt-2 flex items-center gap-2 text-sm text-aurora/80">
+        <span>✅</span> 已成功傳送到 LINE！
+      </p>
+    );
+  }
+
+  if (status === "error") {
+    return (
+      <div className="mt-2 space-y-2">
+        <p className="text-sm text-[#ffb4b4]">{error}</p>
+        <button
+          type="button"
+          onClick={onReset}
+          className="text-sm text-moon/50 underline underline-offset-2 transition hover:text-moon/80"
+        >
+          重新申請驗證碼
+        </button>
+      </div>
+    );
+  }
+
+  if (status === "ready" || status === "checking") {
+    return (
+      <div className="mt-2 space-y-3">
+        <p className="text-sm leading-7 text-moon/55">
+          請先加入宇宙偷偷話 LINE 官方帳號，並在聊天室傳送下方驗證碼，系統會自動把本次結果回傳到你的 LINE 聊天室。
+        </p>
+        {/* 驗證碼顯示框 */}
+        <div className="rounded-2xl border border-[#d8bd70]/30 bg-midnight/70 px-5 py-4 text-center">
+          <p className="text-xs tracking-[0.22em] text-moon/45 mb-1">驗證碼</p>
+          <p className="text-2xl font-bold tracking-[0.18em] text-[#d8bd70]">{claimCode}</p>
+          <p className="mt-1 text-xs text-moon/35">有效期限 1 小時</p>
+        </div>
+        {/* 加入按鈕 */}
+        <a
+          href={addFriendUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold text-white shadow-[0_0_20px_rgba(6,199,85,0.28)] transition hover:opacity-90 active:scale-95 sm:w-auto sm:min-w-[220px]"
+          style={{ background: "#06C755" }}
+        >
+          加入 LINE 官方帳號
+        </a>
+        <p className="text-sm leading-7 text-moon/60">
+          加入後，請把驗證碼傳到聊天室：
+          <span className="ml-1 font-semibold text-[#d8bd70]">{claimCode}</span>
+        </p>
+        {/* 狀態確認按鈕 */}
+        <button
+          type="button"
+          onClick={onCheck}
+          disabled={status === "checking"}
+          className="text-sm text-moon/50 underline underline-offset-2 transition hover:text-moon/80 disabled:cursor-wait disabled:opacity-60"
+        >
+          {status === "checking" ? "確認中..." : "我已傳送驗證碼，重新檢查狀態"}
+        </button>
+      </div>
+    );
+  }
+
+  // idle / loading
+  return (
+    <div className="mt-2 space-y-2">
+      <p className="text-sm leading-7 text-moon/55">
+        請先加入宇宙偷偷話 LINE 官方帳號，並在聊天室傳送下方驗證碼，系統會自動把本次結果回傳到你的 LINE 聊天室。
+      </p>
+      <button
+        type="button"
+        onClick={onOpen}
+        disabled={status === "loading"}
+        className="flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold text-white shadow-[0_0_20px_rgba(6,199,85,0.28)] transition hover:opacity-90 active:scale-95 disabled:cursor-wait disabled:opacity-60 sm:w-auto sm:min-w-[220px]"
+        style={{ background: "#06C755" }}
+      >
+        {status === "loading" ? "正在產生驗證碼..." : "加入 LINE 並領取結果"}
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function TarotDrawClient() {
   const { isAdmin, getIdToken } = useAuth();
   const [mode, setMode] = useState<(typeof modes)[number]["key"]>("single_tarot");
@@ -1029,12 +1133,18 @@ export function TarotDrawClient() {
   const [paidDrawMode, setPaidDrawMode] = useState(false);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<"idle" | "processing" | "success">("idle");
-  // LINE delivery state
+  // LINE delivery state (preserved — kept for openLineConnect compatibility)
   const [lineDeliveryStatus, setLineDeliveryStatus] = useState<
     "idle" | "creating" | "done" | "error"
   >("idle");
   const [lineDeliveryMessage, setLineDeliveryMessage] = useState("");
   const [lineResultId, setLineResultId] = useState("");
+  // LINE claim-code flow state
+  const [lineClaimStatus, setLineClaimStatus] = useState<
+    "idle" | "loading" | "ready" | "checking" | "claimed" | "error"
+  >("idle");
+  const [lineClaimCode, setLineClaimCode] = useState("");
+  const [lineClaimError, setLineClaimError] = useState("");
   // Misc state
   const [drawsRemaining, setDrawsRemaining] = useState<number | null>(null);
   const [storyDownloadStatus, setStoryDownloadStatus] = useState<
@@ -1159,6 +1269,9 @@ export function TarotDrawClient() {
     setLineDeliveryStatus("idle");
     setLineDeliveryMessage("");
     setLineResultId("");
+    setLineClaimStatus("idle");
+    setLineClaimCode("");
+    setLineClaimError("");
     setStoryDownloadStatus("idle");
     setStoryError("");
   }
@@ -1614,6 +1727,56 @@ export function TarotDrawClient() {
   }
 
   // ??? FB Share Unlock flow ?????????????????????????????????????????????????
+
+  // ── LINE claim-code flow（新流程；openLineConnect 保持完全不動）────────────
+
+  async function openLineClaimFlow() {
+    if (lineClaimStatus === "loading") return;
+    setLineClaimStatus("loading");
+    setLineClaimError("");
+    try {
+      const resultId = await createOrGetLineResult();
+      const r = await fetch("/api/line/claim/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resultId, visitorId: getOrCreateAnonId() }),
+      });
+      const data = (await r.json().catch(() => ({}))) as {
+        ok?: boolean;
+        claimCode?: string;
+        error?: string;
+      };
+      if (!r.ok || !data.ok || !data.claimCode) {
+        throw new Error(data.error || "無法產生驗證碼，請稍後再試。");
+      }
+      setLineClaimCode(data.claimCode);
+      setLineClaimStatus("ready");
+    } catch (err) {
+      setLineClaimError(err instanceof Error ? err.message : "無法產生驗證碼，請稍後再試。");
+      setLineClaimStatus("error");
+    }
+  }
+
+  async function checkLineClaimStatus() {
+    if (!lineClaimCode || lineClaimStatus === "checking") return;
+    setLineClaimStatus("checking");
+    try {
+      const r = await fetch(
+        `/api/line/claim/status?claimCode=${encodeURIComponent(lineClaimCode)}`,
+      );
+      const data = (await r.json().catch(() => ({}))) as { ok?: boolean; status?: string };
+      if (data.status === "claimed") {
+        setLineClaimStatus("claimed");
+      } else if (data.status === "expired" || data.status === "not_found") {
+        setLineClaimError("驗證碼已過期，請點擊「重新申請」取得新的驗證碼。");
+        setLineClaimStatus("error");
+      } else {
+        setLineClaimStatus("ready");
+      }
+    } catch {
+      setLineClaimStatus("ready");
+    }
+  }
 
   async function openFbShare() {
     // Build a result-specific share URL (with OG meta) when possible
@@ -2209,25 +2372,18 @@ export function TarotDrawClient() {
                 </p>
               </div>
 
-              {/* LINE 區塊 — 只改說明文字與按鈕 label，所有邏輯完全不動 */}
+              {/* LINE 驗證碼領取區 */}
               <div className="mt-5 border-t border-white/10 pt-5">
-                <p className="mb-3 text-sm text-moon/50">把本次完整結果傳送到 LINE 官方帳號聊天室。</p>
-                <button
-                  type="button"
-                  disabled={
-                    lineDeliveryStatus === "creating" || readingStatus === "loading"
-                  }
-                  onClick={() => void openLineConnect()}
-                  className="flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold text-white shadow-[0_0_20px_rgba(6,199,85,0.28)] transition hover:opacity-90 active:scale-95 disabled:cursor-wait disabled:opacity-60 sm:w-auto sm:min-w-[220px]"
-                  style={{ background: "#06C755" }}
-                >
-                  {lineDeliveryStatus === "creating"
-                    ? "正在準備 LINE..."
-                    : "傳送到 LINE"}
-                </button>
-                {lineDeliveryStatus === "error" && lineDeliveryMessage ? (
-                  <p className="mt-2 text-sm text-[#ffb4b4]">{lineDeliveryMessage}</p>
-                ) : null}
+                <p className="mb-1 text-sm font-semibold text-moon/70">將本次結果傳送到 LINE</p>
+                <LineClaimSection
+                  status={lineClaimStatus}
+                  claimCode={lineClaimCode}
+                  error={lineClaimError}
+                  onOpen={() => void openLineClaimFlow()}
+                  onCheck={() => void checkLineClaimStatus()}
+                  onReset={() => { setLineClaimStatus("idle"); setLineClaimError(""); setLineClaimCode(""); }}
+                  addFriendUrl={LINE_ADD_FRIEND_URL}
+                />
               </div>
             </div>
           ) : (
@@ -2261,27 +2417,18 @@ export function TarotDrawClient() {
                   : <ReadingSectionList text={fullReading} />
                 }
               </div>
-              {/* LINE action button inside full reading */}
+              {/* LINE 驗證碼領取區（完整解讀已解鎖版） */}
               <div className="mt-6 border-t border-white/10 pt-5">
-                <p className="mb-3 text-sm text-moon/50">把本次完整結果傳送到 LINE 官方帳號聊天室。</p>
-                <button
-                  type="button"
-                  disabled={
-                    lineDeliveryStatus === "creating" || readingStatus === "loading"
-                  }
-                  onClick={() => void openLineConnect()}
-                  className="flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold text-white shadow-[0_0_20px_rgba(6,199,85,0.28)] transition hover:opacity-90 active:scale-95 disabled:cursor-wait disabled:opacity-60 sm:w-auto sm:min-w-[220px]"
-                  style={{ background: "#06C755" }}
-                >
-                  {lineDeliveryStatus === "creating"
-                    ? "正在準備 LINE..."
-                    : lineDeliveryStatus === "done"
-                      ? "已傳送"
-                      : "傳送到 LINE"}
-                </button>
-                {lineDeliveryStatus === "error" && lineDeliveryMessage ? (
-                  <p className="mt-2 text-sm text-[#ffb4b4]">{lineDeliveryMessage}</p>
-                ) : null}
+                <p className="mb-1 text-sm font-semibold text-moon/70">將本次結果傳送到 LINE</p>
+                <LineClaimSection
+                  status={lineClaimStatus}
+                  claimCode={lineClaimCode}
+                  error={lineClaimError}
+                  onOpen={() => void openLineClaimFlow()}
+                  onCheck={() => void checkLineClaimStatus()}
+                  onReset={() => { setLineClaimStatus("idle"); setLineClaimError(""); setLineClaimCode(""); }}
+                  addFriendUrl={LINE_ADD_FRIEND_URL}
+                />
               </div>
 
               {/* 客服提示：付費後顯示 */}
