@@ -137,7 +137,19 @@ function firstTwoSentences(text: string, maxChars: number): string {
 
 const DIVIDER = "━━━━━━━━━━━━━━";
 
+/** 去除段落開頭的「標題：」前綴（避免 extractSubfield fallback 時重複顯示標題） */
+function stripLabelPrefix(text: string, ...labels: string[]): string {
+  let s = text.trim();
+  for (const label of labels) {
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    s = s.replace(new RegExp(`^${escaped}[：:]\\s*`, ""), "");
+  }
+  return s.trim();
+}
+
 // ── LINE 三張牌訊息 ────────────────────────────────────────────────────────────
+
+const CARD_DIVIDER = "--------------------";
 
 function buildLineThreeCardMessage(
   result: LineResultData,
@@ -147,12 +159,17 @@ function buildLineThreeCardMessage(
 ): string {
   // ── 提取牌陣總結及子欄位 ─────────────────────────────────────────────────────
   const summaryRaw = extractSection(fullText, "牌陣總結", "三張牌整合");
-  const overallAnswer = sliceAtSentence(
+
+  // 先嘗試提取子欄位（不含標題前綴）
+  const answerFromSub =
     extractSubfield(summaryRaw, "整體答案", "為什麼會這樣", "接下來的方向") ||
-    extractSubfield(summaryRaw, "核心判斷", "為什麼會這樣", "接下來的方向") ||
-    summaryRaw,
-    160,
-  );
+    extractSubfield(summaryRaw, "核心判斷", "為什麼會這樣", "接下來的方向");
+
+  // fallback 到整段 summaryRaw，但要去掉可能殘留的標題前綴
+  const overallAnswerRaw = answerFromSub ||
+    stripLabelPrefix(summaryRaw, "整體答案", "核心判斷");
+
+  const overallAnswer = sliceAtSentence(overallAnswerRaw, 160);
   const whyThisHappened = sliceAtSentence(
     extractSubfield(summaryRaw, "為什麼會這樣", "接下來的方向"),
     140,
@@ -162,7 +179,7 @@ function buildLineThreeCardMessage(
     140,
   );
 
-  // ── 心靈收束：合併溫柔提醒 + 祝福 ───────────────────────────────────────────
+  // ── 心靈收束：溫柔提醒 + 祝福 ────────────────────────────────────────────────
   const reminderRaw = extractSection(fullText, "給你的溫柔提醒", "溫柔提醒");
   const blessingRaw = extractSection(fullText, "一句專屬祝福", "一句祝福");
   const closingMessage = sliceAtSentence(reminderRaw || blessingRaw || "", 130);
@@ -196,7 +213,7 @@ function buildLineThreeCardMessage(
     `你抽到的牌：\n${cardListLines.join("\n")}`,
   ];
 
-  // 牌陣總結區塊
+  // 牌陣總結區塊：只有真正有內容才加標題
   const summaryParts: string[] = [];
   if (overallAnswer) summaryParts.push(`整體答案\n\n${overallAnswer}`);
   if (whyThisHappened) summaryParts.push(`為什麼會這樣\n\n${whyThisHappened}`);
@@ -214,25 +231,44 @@ function buildLineThreeCardMessage(
     const name = card.nameZh ?? card.name ?? "塔羅牌";
     const ori = card.orientationLabel ? `（${card.orientationLabel}）` : "";
     const sectionRaw = cardSectionRaws[i] || "";
+
     // 關鍵字：優先用儲存的 card.keywords，再從 fullText 提取
     const kw = card.keywords || extractKeywordsFromSection(sectionRaw);
-    // 提示：取本張牌 message 前兩句
-    const insight = firstTwoSentences(
-      sectionRaw
-        .replace(/^[^\n]*（(?:正位|逆位)）[^\n]*/m, "")
-        .replace(/^摘要：[^\n]*/m, "")
-        .trim(),
-      120,
-    );
 
-    const lines: string[] = [`${pos}｜${name}`];
-    lines.push(`${name}${ori}${kw ? `｜關鍵字：${kw}` : ""}`);
-    if (insight) lines.push("", insight);
-    cardReminderParts.push(lines.join("\n"));
+    // 提醒文字：從牌的 message 段取前兩句（去掉牌名行與摘要行）
+    const cleanedSection = sectionRaw
+      .split("\n")
+      .filter((line) => {
+        const t = line.trim();
+        if (!t) return false;
+        // 去掉「牌名（正/逆位）」開頭行
+        if (/^[\S]+（(?:正位|逆位)）/.test(t)) return false;
+        // 去掉「摘要：」行
+        if (/^摘要[：:]/.test(t)) return false;
+        // 去掉「關鍵字：」行（已單獨顯示）
+        if (/^關鍵字[：:]/.test(t)) return false;
+        return true;
+      })
+      .join(" ")
+      .trim();
+    const reminder = firstTwoSentences(cleanedSection, 130);
+
+    // 格式：「位置｜牌名（正逆位）」為標題，不重複牌名
+    const block: string[] = [`${pos}｜${name}${ori}`];
+    if (kw) {
+      block.push("", `關鍵字：\n${kw}`);
+    }
+    if (reminder) {
+      block.push("", `提醒：\n${reminder}`);
+    }
+    cardReminderParts.push(block.join("\n"));
   });
 
   if (cardReminderParts.length > 0) {
-    parts.push("", DIVIDER, "", "🔮 三張牌提醒你", "", cardReminderParts.join("\n\n"));
+    parts.push(
+      "", DIVIDER, "", "🔮 三張牌提醒你", "",
+      cardReminderParts.join(`\n\n${CARD_DIVIDER}\n\n`),
+    );
   }
 
   if (actionAdvice) {
