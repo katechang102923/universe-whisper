@@ -1094,13 +1094,17 @@ function LineClaimSection({
   onCheck: () => void;
   onReset: () => void;
 }) {
-  // 優先嘗試 LINE App deep link
-  // 桌機：只觸發瀏覽器「開啟 LINE」提示，不自動 fallback
-  // 手機：2500ms 後若頁面仍 visible（App 未開啟），才 fallback 到網頁版
+  // 優先使用 LINE msg text deep link 預填驗證碼，讓使用者只需按送出
+  // 若裝置不支援（桌機未安裝 LINE），fallback 到 LINE 官方帳號頁面
   function openLineOfficialAccount() {
-    window.location.href = LINE_DEEP_LINK;
+    const encoded = encodeURIComponent(claimCode);
+    // LINE msg text universal link（iOS/Android 有安裝 LINE 時預填文字）
+    const msgTextUrl = `https://line.me/R/msg/text/?${encoded}`;
+    window.location.href = msgTextUrl;
+
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     if (isMobile) {
+      // 2500ms 後若頁面仍 visible（App 未開啟），fallback 到 LINE 官方帳號頁
       setTimeout(() => {
         if (document.visibilityState === "visible") {
           window.location.href = LINE_OFFICIAL_ACCOUNT_URL;
@@ -1524,7 +1528,14 @@ export function TarotDrawClient() {
       body: JSON.stringify({
         type: "tarot",
         question,
-        cards,
+        // 傳入含正/逆位 keywords 的卡片資料，供 LINE formatter 使用
+        cards: cards.map((c) => ({
+          ...c,
+          keywords:
+            c.orientation === "reversed"
+              ? (c.reversedKeywords ?? c.keywords)
+              : (c.uprightKeywords ?? c.keywords),
+        })),
         // shortText：永遠只存摘要，供分享頁預覽用
         // fullText：永遠存完整 AI 解讀，供 LINE 建立精簡訊息用
         // unlocked：建立當時是否已解鎖，供分享頁決定是否展示完整版

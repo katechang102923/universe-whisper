@@ -37,6 +37,15 @@ function normalizeCards(cards: unknown): LineResultCard[] {
     if (typeof source.orientation === "string") normalized.orientation = source.orientation;
     if (typeof source.orientationLabel === "string") normalized.orientationLabel = source.orientationLabel;
     if (typeof source.position === "string") normalized.position = source.position;
+    // keywords：支援 string[]（前端傳來）或 string（逗號分隔）
+    if (Array.isArray(source.keywords)) {
+      const kws = (source.keywords as unknown[])
+        .filter((k): k is string => typeof k === "string" && k.trim().length > 0)
+        .map((k) => k.trim());
+      if (kws.length) normalized.keywords = kws.join("、");
+    } else if (typeof source.keywords === "string" && source.keywords.trim()) {
+      normalized.keywords = source.keywords.trim();
+    }
 
     return normalized;
   });
