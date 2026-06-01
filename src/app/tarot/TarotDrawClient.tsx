@@ -1094,32 +1094,13 @@ function LineClaimSection({
   onCheck: () => void;
   onReset: () => void;
 }) {
-  // 複製驗證碼到剪貼簿，再開啟 @453gfmok 官方帳號聊天室
+  // 複製驗證碼到剪貼簿，再用 line:// protocol 叫起 LINE App
   function copyAndOpenLine() {
     // 1. 複製驗證碼
-    const finish = () => {
-      // 2. 開啟官方帳號：手機優先 App deep link，桌機 fallback 到網頁版
-      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-      if (isMobile) {
-        window.location.href = LINE_DEEP_LINK;
-        setTimeout(() => {
-          if (document.visibilityState === "visible") {
-            window.location.href = LINE_OFFICIAL_ACCOUNT_URL;
-          }
-        }, 2500);
-      } else {
-        window.open(LINE_OFFICIAL_ACCOUNT_URL, "_blank", "noopener,noreferrer");
-      }
-    };
-
     if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(claimCode).then(finish).catch(() => {
-        fallbackCopy();
-        finish();
-      });
+      navigator.clipboard.writeText(claimCode).catch(() => fallbackCopy());
     } else {
       fallbackCopy();
-      finish();
     }
 
     function fallbackCopy() {
@@ -1134,6 +1115,9 @@ function LineClaimSection({
         document.body.removeChild(ta);
       } catch { /* 靜默失敗 */ }
     }
+
+    // 2. 叫起 LINE App（line:// protocol，桌機和手機均支援已安裝 LINE 的情況）
+    window.location.href = LINE_DEEP_LINK;
   }
 
   // ── 已成功兌換 ─────────────────────────────────────────────────────────────
