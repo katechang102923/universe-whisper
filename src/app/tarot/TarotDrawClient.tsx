@@ -28,12 +28,8 @@ const FB_SHARE_UNLOCK_STORAGE_KEY = "cosmic_fb_unlock_date";
 const LINE_CONNECT_MESSAGE_KEY = "line-connect-message-payload";
 const PAID_RESULT_STORAGE_KEY = "universeWhisper:lastPaidTarotResult";
 const LINE_OA_ID = process.env.NEXT_PUBLIC_LINE_OA_ID ?? "453gfmok";
-/** oaMessage 預填文字連結前綴（@ 必須 percent-encode 成 %40） */
-const LINE_OA_MESSAGE_BASE = `https://line.me/R/oaMessage/%40${LINE_OA_ID}/?`;
-/** 加好友連結（@ 必須 percent-encode，避免 Safari 解析問題） */
-const LINE_ADD_FRIEND_URL =
-  process.env.NEXT_PUBLIC_LINE_ADD_FRIEND_URL ??
-  `https://line.me/R/ti/p/%40${LINE_OA_ID}`;
+/** 官方帳號加好友連結（直接由 LINE_OA_ID 組出，不依賴可能被設錯的環境變數） */
+const LINE_ADD_FRIEND_URL = `https://line.me/R/ti/p/@${LINE_OA_ID}`;
 
 const modes = [
   { key: "single_tarot", label: "單張牌", description: "接收此刻最靠近你的訊息" },
@@ -1096,10 +1092,8 @@ function LineClaimSection({
   onCheck: () => void;
   onReset: () => void;
 }) {
-  // oaMessage URL：幫使用者開啟聊天室並預填驗證碼（@ 已 encode 成 %40）
-  const oaMessageUrl = claimCode
-    ? LINE_OA_MESSAGE_BASE + encodeURIComponent(claimCode)
-    : LINE_ADD_FRIEND_URL;
+  // 按鈕一律開啟加好友頁（oaMessage deep link 在各環境不穩定，會跳轉至 LINE 官網）
+  const oaMessageUrl = LINE_ADD_FRIEND_URL;
 
   // ── 已成功兌換 ─────────────────────────────────────────────────────────────
   if (status === "claimed") {

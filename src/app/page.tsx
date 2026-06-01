@@ -22,8 +22,7 @@ const cosmicMessages = [
   "讓答案慢慢靠近，不必用力追。",
 ];
 
-const lineAddFriendUrl =
-  process.env.NEXT_PUBLIC_LINE_ADD_FRIEND_URL ?? "https://line.me/R/ti/p/@453gfmok";
+const lineAddFriendUrl = "https://line.me/R/ti/p/@453gfmok";
 
 export default function Home() {
   const todayMessage = cosmicMessages[new Date().getDate() % cosmicMessages.length];

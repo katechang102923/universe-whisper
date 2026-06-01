@@ -1,5 +1,4 @@
-const LINE_ADD_FRIEND_URL =
-  process.env.NEXT_PUBLIC_LINE_ADD_FRIEND_URL ?? "https://line.me/R/ti/p/@453gfmok";
+const LINE_ADD_FRIEND_URL = "https://line.me/R/ti/p/@453gfmok";
 
 export function LineCtaBanner() {
   return (
