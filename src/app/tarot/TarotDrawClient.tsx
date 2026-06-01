@@ -1094,22 +1094,45 @@ function LineClaimSection({
   onCheck: () => void;
   onReset: () => void;
 }) {
-  // 優先使用 LINE msg text deep link 預填驗證碼，讓使用者只需按送出
-  // 若裝置不支援（桌機未安裝 LINE），fallback 到 LINE 官方帳號頁面
-  function openLineOfficialAccount() {
-    const encoded = encodeURIComponent(claimCode);
-    // LINE msg text universal link（iOS/Android 有安裝 LINE 時預填文字）
-    const msgTextUrl = `https://line.me/R/msg/text/?${encoded}`;
-    window.location.href = msgTextUrl;
+  // 複製驗證碼到剪貼簿，再開啟 @453gfmok 官方帳號聊天室
+  function copyAndOpenLine() {
+    // 1. 複製驗證碼
+    const finish = () => {
+      // 2. 開啟官方帳號：手機優先 App deep link，桌機 fallback 到網頁版
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      if (isMobile) {
+        window.location.href = LINE_DEEP_LINK;
+        setTimeout(() => {
+          if (document.visibilityState === "visible") {
+            window.location.href = LINE_OFFICIAL_ACCOUNT_URL;
+          }
+        }, 2500);
+      } else {
+        window.open(LINE_OFFICIAL_ACCOUNT_URL, "_blank", "noopener,noreferrer");
+      }
+    };
 
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    if (isMobile) {
-      // 2500ms 後若頁面仍 visible（App 未開啟），fallback 到 LINE 官方帳號頁
-      setTimeout(() => {
-        if (document.visibilityState === "visible") {
-          window.location.href = LINE_OFFICIAL_ACCOUNT_URL;
-        }
-      }, 2500);
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(claimCode).then(finish).catch(() => {
+        fallbackCopy();
+        finish();
+      });
+    } else {
+      fallbackCopy();
+      finish();
+    }
+
+    function fallbackCopy() {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = claimCode;
+        ta.style.cssText = "position:fixed;top:-9999px;left:-9999px;opacity:0;pointer-events:none";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      } catch { /* 靜默失敗 */ }
     }
   }
 
@@ -1163,17 +1186,17 @@ function LineClaimSection({
           </div>
         </div>
 
-        {/* 主要按鈕：優先 LINE App deep link，fallback 到網頁版 */}
+        {/* 主要按鈕：複製驗證碼 + 開啟官方帳號 */}
         <button
           type="button"
-          onClick={openLineOfficialAccount}
+          onClick={copyAndOpenLine}
           className="flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold text-white shadow-[0_0_20px_rgba(6,199,85,0.28)] transition hover:opacity-90 active:scale-95 sm:w-auto sm:min-w-[240px]"
           style={{ background: "#06C755" }}
         >
-          開啟 LINE 並送出驗證碼
+          複製驗證碼並開啟 LINE
         </button>
         <p className="text-xs leading-6 text-moon/45">
-          開啟 LINE 後，請按「送出」，系統才會回覆結果。
+          LINE 開啟後，請貼上驗證碼並送出，系統會自動回覆結果。
         </p>
 
         {/* Fallback：加好友連結 */}
