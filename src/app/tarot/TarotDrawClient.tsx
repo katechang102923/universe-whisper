@@ -634,20 +634,22 @@ function ThreeCardReadingDisplay({
 }
 
 function buildFreeSummary(cards: TarotCardFaceData[], fullReading: string) {
-  // 跳過「本次問題焦點」（只有類別標籤）和「一句話結論」，取有內容的段落
-  const SKIP_TITLES = new Set(["本次問題焦點", "一句話結論"]);
+  // 免費版只取第一個有意義的段落（不洩漏完整結論）
+  // 跳過「本次問題焦點」「一句話結論」「總結」等可能直接給出完整答案的段落
+  const SKIP_TITLES = new Set(["本次問題焦點", "一句話結論", "總結", "核心判斷", "行動建議"]);
   const sections = fullReading.trim()
     ? parseReadingSectionsForDisplay(fullReading)
         .filter((s) => !SKIP_TITLES.has(s.title) && s.body.length > 10)
-        .slice(0, 2)
+        .slice(0, 1)   // 只取第一段，保留懸念
     : [];
   const firstLines = sections.map((s) => s.body).join(" ");
   const fallback = cards.map((c) => c.cosmicMessage).filter(Boolean).join(" ");
   const source = firstLines || fallback || "宇宙正在整理這次抽牌的核心訊息。";
 
+  // 上限 120 字，給方向感但不講完整結論
   return {
-    message: source.length > 100 ? `${source.slice(0, 98)}...` : source,
-    reminder: "完整解讀請回網站分享 Facebook 解鎖。",
+    message: source.length > 120 ? `${source.slice(0, 118)}…` : source,
+    reminder: "解鎖完整版，看見這張牌真正想提醒你的事。",
   };
 }
 
@@ -2094,7 +2096,7 @@ export function TarotDrawClient() {
               </div>
 
               <p className="mt-4 text-sm leading-7 text-moon/55">
-                分享 Facebook 解鎖完整牌陣解讀，看見三張牌背後的原因、每張牌的完整訊息，以及接下來 3～7 天該怎麼做。
+                完整解讀將帶你看見三張牌真正指向的原因、你目前最該避開的風險，以及接下來 3～7 天的具體建議。
               </p>
             </div>
           ) : null}
@@ -2122,17 +2124,44 @@ export function TarotDrawClient() {
           {!hasFullAccess ? (
             <div className="cosmic-reading-card rounded-[1.75rem] border border-[#d8bd70]/24 bg-midnight/58 p-5 shadow-glow sm:p-6">
 
-              {/* Section A: FB unlock */}
-              <p className="text-sm tracking-[0.22em] text-[#d8bd70]/78">分享解鎖</p>
+              {/* 標題 */}
+              <p className="text-sm tracking-[0.22em] text-[#d8bd70]/78">解鎖完整解讀</p>
               <h3 className="mt-2 text-2xl font-semibold text-moon">
                 {isSingleResult ? "解鎖完整解讀" : "解鎖完整牌陣解讀"}
               </h3>
-              <p className="mx-auto mt-3 max-w-xl text-base leading-8 text-moon/72">
-                {isSingleResult
-                  ? "分享到 Facebook 後，就能解鎖本次完整解讀內容。"
-                  : "分享到 Facebook 後，解鎖完整牌陣解讀——每張牌的完整意義、核心判斷，以及 3～7 天行動建議。"}
+
+              {/* 完整解讀包含內容條列 */}
+              <p className="mt-4 text-sm font-semibold text-moon/80">完整解讀將包含：</p>
+              <ul className="mt-2 space-y-2">
+                {(isSingleResult
+                  ? [
+                      "這張牌真正指向的核心訊息",
+                      "你目前最該避開的風險",
+                      "是否適合立刻行動",
+                      "接下來 3～7 天的具體建議",
+                      "宇宙給你的收束祝福",
+                    ]
+                  : [
+                      "這三張牌真正指向的原因",
+                      "你目前最該避開的風險",
+                      "是否適合立刻行動",
+                      "接下來 3～7 天的具體建議",
+                      "宇宙給你的收束祝福",
+                    ]
+                ).map((item) => (
+                  <li key={item} className="flex items-start gap-2 text-sm leading-[1.8] text-moon/72">
+                    <span className="mt-[0.55em] h-1.5 w-1.5 shrink-0 rounded-full bg-[#d8bd70]/55" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+
+              {/* 每日免費一次說明 */}
+              <p className="mt-5 rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-3 text-sm leading-7 text-moon/60">
+                每日可免費查看一次基礎內容；若想查看完整解讀，可分享 Facebook 免費解鎖，或直接付費 NT$49 解鎖。
               </p>
 
+              {/* 主要按鈕：FB 分享免費解鎖 */}
               <div className="mt-5">
                 {fbSharePending ? (
                   <div className="flex flex-col items-center gap-3">
@@ -2160,16 +2189,29 @@ export function TarotDrawClient() {
                     onClick={() => void openFbShare()}
                     className="w-full rounded-full bg-[#d8bd70] px-6 py-4 text-base font-semibold text-midnight shadow-[0_0_28px_rgba(216,189,112,0.28)] transition hover:bg-moon active:scale-95 sm:w-auto sm:min-w-[280px]"
                   >
-                    {isSingleResult
-                      ? "分享到 Facebook 解鎖完整版"
-                      : "分享 Facebook 解鎖完整牌陣解讀"}
+                    分享 Facebook 免費解鎖
                   </button>
                 )}
               </div>
 
-              {/* Section B: LINE — completely unchanged */}
+              {/* 次要按鈕：NT$49 直接付費解鎖（不需分享，始終顯示） */}
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={openPaidDrawModal}
+                  className="w-full rounded-full border border-[#d8bd70]/40 px-6 py-3 text-sm font-semibold text-[#d8bd70] transition hover:border-[#d8bd70]/70 hover:bg-white/6 active:scale-95 sm:w-auto sm:min-w-[280px]"
+                >
+                  直接付費 NT$49 解鎖，不需分享
+                </button>
+                <p className="mt-2 text-xs leading-6 text-moon/40">
+                  本服務為即時產生之數位內容，付款完成並成功產出、顯示或發送結果後，恕不接受退費。若付款成功但未收到內容，請於 24 小時內聯繫
+                  <a href="mailto:ciut0000@gmail.com" className="underline underline-offset-2 hover:text-moon/60">客服信箱</a>。
+                </p>
+              </div>
+
+              {/* LINE 區塊 — 只改說明文字與按鈕 label，所有邏輯完全不動 */}
               <div className="mt-5 border-t border-white/10 pt-5">
-                <p className="mb-3 text-sm text-moon/50">把本次結果傳送到 LINE 官方帳號聊天室。</p>
+                <p className="mb-3 text-sm text-moon/50">把本次完整結果傳送到 LINE 官方帳號聊天室。</p>
                 <button
                   type="button"
                   disabled={
@@ -2181,36 +2223,12 @@ export function TarotDrawClient() {
                 >
                   {lineDeliveryStatus === "creating"
                     ? "正在準備 LINE..."
-                    : "LINE 看我的結果"}
+                    : "傳送到 LINE"}
                 </button>
                 {lineDeliveryStatus === "error" && lineDeliveryMessage ? (
                   <p className="mt-2 text-sm text-[#ffb4b4]">{lineDeliveryMessage}</p>
                 ) : null}
               </div>
-
-              {/* Section C: NT$49 — only when both free draws + FB unlock exhausted */}
-              {shouldShowPaidPlan ? (
-                <div className="mt-5 border-t border-white/10 pt-5">
-                  <p className="text-sm tracking-[0.22em] text-moon/50">付費完整解讀</p>
-                  <p className="mt-2 text-base leading-7 text-moon/72">
-                    今日免費抽牌與 Facebook 解鎖已使用完畢。可使用 NT$49 再抽一次，直接查看完整內容。
-                  </p>
-                  <div className="mt-4">
-                    <button
-                      type="button"
-                      onClick={openPaidDrawModal}
-                      className="w-full rounded-full border border-[#d8bd70]/40 px-6 py-3 text-sm font-semibold text-[#d8bd70] transition hover:border-[#d8bd70]/70 hover:bg-white/6 active:scale-95 sm:w-auto sm:min-w-[220px]"
-                    >
-                      NT$49 再抽一次
-                    </button>
-                  </div>
-                  {/* 退款提醒 */}
-                  <p className="mt-3 text-xs leading-6 text-moon/40">
-                    每日可免費查看一次基礎內容；完整解讀需付費解鎖，費用為 NT$49／次。本服務為即時產生之數位內容，付款完成並成功產出、顯示或發送結果後，恕不接受退費。若付款成功但未收到內容，請於 24 小時內聯繫
-                    <a href="mailto:ciut0000@gmail.com" className="underline underline-offset-2 hover:text-moon/60">客服信箱</a>。
-                  </p>
-                </div>
-              ) : null}
             </div>
           ) : (
             /* 4. Full reading (when unlocked) */

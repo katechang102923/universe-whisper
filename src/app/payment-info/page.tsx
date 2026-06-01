@@ -59,8 +59,8 @@ export default function PaymentInfoPage() {
               每位使用者每日可免費進行一次基礎塔羅抽牌，並查看頁面提供的免費內容。免費內容範圍以網站當下顯示為準。
             </p>
             <p>
-              若使用者希望查看本次塔羅的完整解讀，可選擇付費解鎖。完整解讀費用為{" "}
-              <span className="font-semibold text-[#d8bd70]">NT$49／次</span>。
+              若使用者希望查看本次塔羅的完整解讀，可選擇分享 Facebook 免費解鎖，或直接付費{" "}
+              <span className="font-semibold text-[#d8bd70]">NT$49／次</span> 解鎖。
             </p>
             <p>
               付費解鎖後，系統將提供本次抽牌對應的完整塔羅文字解讀內容。

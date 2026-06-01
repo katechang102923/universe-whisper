@@ -71,7 +71,7 @@ export default function TermsPage() {
               Universe Whisper 提供每日一次基礎免費抽牌服務。免費內容範圍以網站當下頁面顯示為準。
             </p>
             <p>
-              若使用者希望查看本次塔羅完整解讀，可依頁面標示金額付費解鎖。完整解讀目前費用為{" "}
+              若使用者希望查看本次塔羅完整解讀，可透過分享 Facebook 免費解鎖，或依頁面標示金額付費解鎖。完整解讀目前費用為{" "}
               <span className="font-semibold text-[#d8bd70]">NT$49／次</span>。
             </p>
             <p>
