@@ -3,14 +3,17 @@ import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { LINE_RESULTS_COLLECTION } from "@/lib/lineResults";
+import { CLAIM_COLLECTION } from "@/app/api/line/claim/create/route";
 
 // -------------------------------------------------------------------
-// GET /api/tarot/lookup?code=UW-XXXXXXXX[&visitorId=xxx]
-// 以結果查詢碼查詢塔羅結果（安全版本：不回傳 lineUserId 等私密欄位）
+// GET /api/tarot/lookup?code=UW-XXXXXXX
+// 以 1 小時驗證碼查詢塔羅結果（查 lineResultClaims）
+// 向下相容：若查不到 claim，嘗試舊 lineResults.lookupCode 欄位
 // Rate limit: 同一 IP 每分鐘最多 5 次
 // -------------------------------------------------------------------
 
-const LOOKUP_CODE_RE = /^UW-[A-Z0-9]{7,9}$/;
+const CLAIM_CODE_RE = /^UW-[A-Z0-9]{7}$/;
+const LEGACY_CODE_RE = /^UW-[A-Z0-9]{8,9}$/;
 const RATE_LIMIT_PER_MIN = 5;
 const RATE_COLLECTION = "lookup_rate_limits";
 
@@ -18,10 +21,9 @@ function hashIp(ip: string): string {
   return crypto.createHash("sha256").update(ip).digest("hex").slice(0, 20);
 }
 
-/** 以當前分鐘（UTC）為 key 做 rate limit */
 async function checkRateLimit(ip: string): Promise<boolean> {
   const db = getAdminDb();
-  const minuteKey = new Date().toISOString().slice(0, 16).replace("T", "_").replace(":", "-"); // YYYY-MM-DD_HH-MM
+  const minuteKey = new Date().toISOString().slice(0, 16).replace("T", "_").replace(":", "-");
   const docRef = db.collection(RATE_COLLECTION).doc(minuteKey);
   const ipKey = hashIp(ip || "unknown");
 
@@ -37,7 +39,7 @@ async function checkRateLimit(ip: string): Promise<boolean> {
     });
     return allowed;
   } catch {
-    return true; // 降級允許，避免 Firestore 故障擋掉所有請求
+    return true;
   }
 }
 
@@ -46,14 +48,16 @@ export async function GET(request: Request) {
   const raw = searchParams.get("code") ?? "";
   const code = raw.trim().toUpperCase();
 
-  if (!LOOKUP_CODE_RE.test(code)) {
+  const isClaimCode = CLAIM_CODE_RE.test(code);
+  const isLegacyCode = LEGACY_CODE_RE.test(code);
+
+  if (!isClaimCode && !isLegacyCode) {
     return NextResponse.json(
-      { ok: false, error: "請輸入有效的結果查詢碼（格式：UW-XXXXXXXX）。" },
+      { ok: false, error: "請輸入有效的驗證碼（格式：UW-XXXXXXX）。" },
       { status: 400 },
     );
   }
 
-  // Rate limit
   const ip =
     request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
     request.headers.get("cf-connecting-ip") ??
@@ -69,32 +73,82 @@ export async function GET(request: Request) {
 
   const db = getAdminDb();
 
-  // 先查 lineResults.lookupCode 欄位（單一欄位查詢，不需複合索引）
-  const snap = await db
+  // 1. 查 lineResultClaims（1 小時驗證碼）
+  if (isClaimCode) {
+    const claimSnap = await db.collection(CLAIM_COLLECTION).doc(code).get();
+
+    if (claimSnap.exists) {
+      const claim = claimSnap.data() as {
+        resultId?: string;
+        status?: string;
+        expiresAt?: { toDate?: () => Date };
+      };
+
+      // 過期檢查
+      const expiresAt = claim.expiresAt?.toDate?.();
+      if (claim.status === "expired" || (expiresAt && expiresAt < new Date())) {
+        return NextResponse.json(
+          { ok: false, expired: true, error: "驗證碼已過期，請重新抽牌。" },
+          { status: 410 },
+        );
+      }
+
+      const resultId = claim.resultId ?? "";
+      if (!resultId) {
+        return NextResponse.json(
+          { ok: false, error: "驗證碼資料異常，請回網站重新操作。" },
+          { status: 500 },
+        );
+      }
+
+      const resultSnap = await db.collection(LINE_RESULTS_COLLECTION).doc(resultId).get();
+      if (!resultSnap.exists) {
+        return NextResponse.json(
+          { ok: false, error: "找不到對應的塔羅結果，請重新抽牌。" },
+          { status: 404 },
+        );
+      }
+
+      const data = resultSnap.data()!;
+      return NextResponse.json({
+        ok: true,
+        resultId,
+        question: typeof data.question === "string" ? data.question : "",
+        cards: Array.isArray(data.cards) ? data.cards : [],
+        shortText: typeof data.shortText === "string" ? data.shortText : "",
+        fullText: typeof data.fullText === "string" ? data.fullText : "",
+        createdAt:
+          (data.createdAt as { toDate?: () => Date } | undefined)
+            ?.toDate?.()
+            ?.toISOString() ?? null,
+      });
+    }
+  }
+
+  // 2. 向下相容：查舊的 lineResults.lookupCode 欄位
+  const legacySnap = await db
     .collection(LINE_RESULTS_COLLECTION)
     .where("lookupCode", "==", code)
     .limit(1)
     .get();
 
-  if (snap.empty) {
+  if (legacySnap.empty) {
     return NextResponse.json(
-      { ok: false, error: "找不到這組結果查詢碼，請確認是否輸入正確。" },
+      { ok: false, error: "找不到這組驗證碼，可能已過期或輸入錯誤。" },
       { status: 404 },
     );
   }
 
-  const doc = snap.docs[0];
+  const doc = legacySnap.docs[0];
   const data = doc.data();
 
-  // 只回傳安全欄位，不包含 lineUserId、ipHash 等私密資料
   return NextResponse.json({
     ok: true,
     resultId: doc.id,
-    resultUrl: typeof data.resultUrl === "string" ? data.resultUrl : null,
     question: typeof data.question === "string" ? data.question : "",
     cards: Array.isArray(data.cards) ? data.cards : [],
-    shortText: typeof data.shortText === "string" ? data.shortText.slice(0, 300) : "",
-    lookupCode: code,
+    shortText: typeof data.shortText === "string" ? data.shortText : "",
+    fullText: typeof data.fullText === "string" ? data.fullText : "",
     createdAt:
       (data.createdAt as { toDate?: () => Date } | undefined)
         ?.toDate?.()

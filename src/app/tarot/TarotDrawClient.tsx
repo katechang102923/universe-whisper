@@ -1082,7 +1082,6 @@ type LineClaimStatus = "idle" | "loading" | "ready" | "checking" | "claimed" | "
 function LineClaimSection({
   status,
   claimCode,
-  lookupCode,
   error,
   onOpen,
   onCheck,
@@ -1090,7 +1089,6 @@ function LineClaimSection({
 }: {
   status: LineClaimStatus;
   claimCode: string;
-  lookupCode: string;
   error: string;
   onOpen: () => void;
   onCheck: () => void;
@@ -1141,7 +1139,7 @@ function LineClaimSection({
     return (
       <div className="mt-2 space-y-3">
         <p className="text-sm leading-7 text-moon/55">
-          請加入官方帳號 @{LINE_OA_ID}，並將下方驗證碼傳到聊天室，系統會自動回覆本次結果。
+          請複製此驗證碼，1 小時內可用於 LINE 或網頁查詢本次結果。
         </p>
 
         {/* 驗證碼卡片 */}
@@ -1186,26 +1184,6 @@ function LineClaimSection({
             點此加入 @{LINE_OA_ID}
           </a>
         </p>
-
-        {/* 永久結果查詢碼 */}
-        {lookupCode ? (
-          <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
-            <p className="text-xs tracking-[0.18em] text-moon/40 mb-1">結果查詢碼（永久有效）</p>
-            <div className="flex items-center gap-3">
-              <span className="font-mono text-sm font-semibold text-moon/70 select-all">{lookupCode}</span>
-              <CopyCodeButton
-                text={lookupCode}
-                label="複製"
-                copiedLabel="已複製"
-                feedbackText={`可傳到 @${LINE_OA_ID} 或到 /tarot/lookup 查詢`}
-                className="inline-flex items-center gap-1 rounded-full border border-white/15 px-3 py-1 text-xs text-moon/50 transition hover:border-white/30 hover:text-moon/70 active:scale-95"
-              />
-            </div>
-            <p className="mt-1 text-xs text-moon/35">
-              請截圖或複製，之後可在網站或傳到 @{LINE_OA_ID} 查詢本次結果。
-            </p>
-          </div>
-        ) : null}
 
         {/* 確認狀態按鈕 */}
         <button
@@ -1274,7 +1252,6 @@ export function TarotDrawClient() {
   >("idle");
   const [lineDeliveryMessage, setLineDeliveryMessage] = useState("");
   const [lineResultId, setLineResultId] = useState("");
-  const [lineResultLookupCode, setLineResultLookupCode] = useState("");
   // LINE claim-code flow state
   const [lineClaimStatus, setLineClaimStatus] = useState<
     "idle" | "loading" | "ready" | "checking" | "claimed" | "error"
@@ -1290,9 +1267,6 @@ export function TarotDrawClient() {
   // 最近一次付費結果（從 localStorage 載入；付費完成後存入）
   const [lastPaidResult, setLastPaidResult] = useState<LastPaidResult | null>(null);
   const [isRestoredResult, setIsRestoredResult] = useState(false);
-  // 結果查詢碼建立狀態
-  const [lookupCodeCreateStatus, setLookupCodeCreateStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
-
   const paymentTimerRef = useRef<number | null>(null);
   const storyCardRef = useRef<HTMLDivElement | null>(null);
   const readingSectionRef = useRef<HTMLElement | null>(null);
@@ -1391,19 +1365,16 @@ export function TarotDrawClient() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paidUnlocked, readingStatus, fullReading, cards]);
 
-  // 付費解鎖後自動建立 Firestore 結果記錄，取得永久「結果查詢碼」
+  // 付費解鎖後自動建立 Firestore 結果記錄（供 LINE claim code 使用）
   useEffect(() => {
     if (paidUnlocked && readingStatus === "done" && !lineResultId) {
-      setLookupCodeCreateStatus("loading");
       console.log("[lookupCode] Starting createOrGetLineResult...");
       void createOrGetLineResult()
         .then((id) => {
           console.log("[lookupCode] created result record, resultId:", id);
-          setLookupCodeCreateStatus("done");
         })
         .catch((err: unknown) => {
           console.error("[lookupCode] Failed to create result:", err instanceof Error ? err.message : err);
-          setLookupCodeCreateStatus("error");
         });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1427,13 +1398,11 @@ export function TarotDrawClient() {
     setLineDeliveryStatus("idle");
     setLineDeliveryMessage("");
     setLineResultId("");
-    setLineResultLookupCode("");
     setLineClaimStatus("idle");
     setLineClaimCode("");
     setLineClaimError("");
     setStoryDownloadStatus("idle");
     setStoryError("");
-    setLookupCodeCreateStatus("idle");
   }
 
   // ??? API helpers ??????????????????????????????????????????????????????????
@@ -1575,7 +1544,6 @@ export function TarotDrawClient() {
     }
 
     setLineResultId(data.resultId);
-    if (data.lookupCode) setLineResultLookupCode(data.lookupCode);
     return data.resultId;
   }
 
@@ -2018,25 +1986,6 @@ export function TarotDrawClient() {
   }
 
   // ??? Story download ???????????????????????????????????????????????????????
-
-  /** 手動重試建立 Firestore 結果紀錄（當自動建立失敗時使用） */
-  function retryCreateLookupCode() {
-    if (lookupCodeCreateStatus === "loading") return;
-    setLookupCodeCreateStatus("loading");
-    // 清除舊 resultId 讓 createOrGetLineResult 重新建立
-    setLineResultId("");
-    setLineResultLookupCode("");
-    console.log("[lookupCode] Retrying createOrGetLineResult...");
-    void createOrGetLineResult()
-      .then((id) => {
-        console.log("[lookupCode] Retry success, resultId:", id);
-        setLookupCodeCreateStatus("done");
-      })
-      .catch((err: unknown) => {
-        console.error("[lookupCode] Retry failed:", err instanceof Error ? err.message : err);
-        setLookupCodeCreateStatus("error");
-      });
-  }
 
   async function downloadStoryImage() {
     if (storyDownloadStatus === "working") return;
@@ -2575,7 +2524,6 @@ export function TarotDrawClient() {
                 <LineClaimSection
                   status={lineClaimStatus}
                   claimCode={lineClaimCode}
-                  lookupCode={lineResultLookupCode}
                   error={lineClaimError}
                   onOpen={() => void openLineClaimFlow()}
                   onCheck={() => void checkLineClaimStatus()}
@@ -2620,83 +2568,12 @@ export function TarotDrawClient() {
                 <LineClaimSection
                   status={lineClaimStatus}
                   claimCode={lineClaimCode}
-                  lookupCode={lineResultLookupCode}
                   error={lineClaimError}
                   onOpen={() => void openLineClaimFlow()}
                   onCheck={() => void checkLineClaimStatus()}
                   onReset={() => { setLineClaimStatus("idle"); setLineClaimError(""); setLineClaimCode(""); }}
                 />
               </div>
-
-              {/* 結果查詢碼：付費後顯示（突出卡片，有載入/錯誤/重試狀態） */}
-              {paidUnlocked ? (
-                <div className="mt-5 space-y-3">
-                  {/* 查詢碼主卡片 */}
-                  <div className="rounded-2xl border border-[#d8bd70]/30 bg-[#d8bd70]/6 p-4">
-                    <p className="text-xs tracking-[0.2em] text-[#d8bd70]/80 uppercase mb-2">
-                      結果查詢碼（永久有效）
-                    </p>
-
-                    {/* 載入中 */}
-                    {lookupCodeCreateStatus === "loading" && !lineResultLookupCode ? (
-                      <p className="text-sm text-moon/55">正在建立結果查詢碼...</p>
-                    ) : null}
-
-                    {/* 建立失敗 */}
-                    {lookupCodeCreateStatus === "error" && !lineResultLookupCode ? (
-                      <div className="space-y-2">
-                        <p className="text-sm text-[#ffb4b4]">查詢碼建立失敗，請重試。</p>
-                        <button
-                          type="button"
-                          onClick={retryCreateLookupCode}
-                          className="rounded-full border border-[#d8bd70]/40 px-4 py-1.5 text-xs text-[#d8bd70]/80 transition hover:border-[#d8bd70]/70 hover:text-[#d8bd70]"
-                        >
-                          重新取得查詢碼
-                        </button>
-                      </div>
-                    ) : null}
-
-                    {/* 成功：顯示查詢碼 */}
-                    {lineResultLookupCode ? (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-3">
-                          <span className="font-mono text-xl font-bold tracking-[0.2em] text-moon select-all">
-                            {lineResultLookupCode}
-                          </span>
-                          <CopyCodeButton
-                            text={lineResultLookupCode}
-                            label="複製"
-                            copiedLabel="已複製"
-                            feedbackText="已複製查詢碼，可到 /tarot/lookup 查詢結果。"
-                            className="inline-flex items-center gap-1 rounded-full border border-[#d8bd70]/40 px-3 py-1 text-xs text-[#d8bd70]/80 transition hover:border-[#d8bd70]/70 hover:text-[#d8bd70] active:scale-95"
-                          />
-                        </div>
-                        <p className="text-xs leading-6 text-moon/50">
-                          請截圖或複製此碼，之後可到{" "}
-                          <a href="/tarot/lookup" className="underline underline-offset-2 hover:text-moon/80">
-                            /tarot/lookup
-                          </a>{" "}
-                          查詢本次完整結果。
-                        </p>
-                      </div>
-                    ) : null}
-                  </div>
-
-                  {/* 客服資訊（縮小，不影響查詢碼視覺） */}
-                  <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 space-y-1">
-                    <p className="text-xs leading-6 text-moon/40">
-                      若付款成功但內容未正常顯示，請聯繫
-                      <a href="mailto:ciut0000@gmail.com" className="ml-1 underline underline-offset-2 hover:text-moon/60">
-                        ciut0000@gmail.com
-                      </a>
-                    </p>
-                    {/* 付款參考碼（僅供客服核對，不可用於查詢結果） */}
-                    {lastPaidResult?.refId ? (
-                      <p className="text-xs text-moon/28">客服參考碼（不可用於查詢）：{lastPaidResult.refId}</p>
-                    ) : null}
-                  </div>
-                </div>
-              ) : null}
             </div>
           )}
 
