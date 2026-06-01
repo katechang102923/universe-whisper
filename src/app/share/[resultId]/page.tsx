@@ -128,9 +128,12 @@ export default async function ShareResultPage({
     })
     .join("　");
 
-  // shortText 顯示摘要，fullText 若有則完整顯示（已解鎖結果）
+  // shortText 顯示摘要，fullText 只在 unlocked===true 時完整顯示
   const summaryText = cleanText(result.shortText || "", 400);
-  const hasFullReading = typeof result.fullText === "string" && result.fullText.trim().length > 0;
+  const hasFullReading =
+    result.unlocked === true &&
+    typeof result.fullText === "string" &&
+    result.fullText.trim().length > 0;
   const fullReadingText = hasFullReading
     ? result.fullText.replace(/\*\*/g, "").trim()
     : "";

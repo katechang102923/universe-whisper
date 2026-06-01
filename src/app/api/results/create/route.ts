@@ -52,6 +52,8 @@ export async function POST(request: Request) {
 
   const shortText = typeof body.shortText === "string" ? body.shortText.trim() : "";
   const fullText = typeof body.fullText === "string" ? body.fullText.trim() : "";
+  // unlocked：建立當時使用者是否已解鎖（控制分享頁與查詢頁是否顯示完整版）
+  const unlocked = body.unlocked === true;
 
   if (!shortText && !fullText) {
     return NextResponse.json({ ok: false, error: "缺少可儲存的宇宙訊息。" }, { status: 400 });
@@ -84,6 +86,7 @@ export async function POST(request: Request) {
         cards: normalizedCards,
         shortText,
         fullText,
+        unlocked,
         resultUrl,
         lookupCode,
         lineUserId: null,

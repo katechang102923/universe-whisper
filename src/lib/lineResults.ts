@@ -20,6 +20,8 @@ export type LineResultData = {
   cards: LineResultCard[];
   shortText: string;
   fullText: string;
+  /** 建立當時使用者是否已解鎖（付費或 FB 分享）；控制分享頁與查詢頁是否顯示完整版 */
+  unlocked?: boolean;
   lineUserId?: string | null;
   lineDisplayName?: string | null;
   pushStatus: LinePushStatus;
@@ -49,148 +51,177 @@ export function formatResultCards(cards: LineResultCard[]) {
     .join("\n");
 }
 
-// ── LINE 訊息解析工具（從 fullText 提取關鍵段落）─────────────────────────────
+// ── 伺服器端 AI 解讀文字解析工具 ────────────────────────────────────────────
+// 匹配 AI 實際輸出的中文標題格式（宇宙偷偷話、牌陣總結、第1張牌 …等）
 
-function parseLineSection(fullText: string, emoji: string): string {
-  // 匹配 「{emoji} 標題\n\n{內容}」，取到下一個 emoji 標題前
-  const pattern = new RegExp(`${emoji}[^\n]+\\n+([\\s\\S]*?)(?=\\n\\n[🎯🌙🌟🃏🕯️🌌💫⚠️]|$)`);
-  return fullText.match(pattern)?.[1]?.trim() ?? "";
-}
+/**
+ * 從 AI 解讀全文中提取指定標題關鍵字的段落本文
+ * 支援「行首有 emoji 前綴」的格式，例如：「🌙 宇宙偷偷話：」
+ */
+function extractSection(text: string, ...keywords: string[]): string {
+  const cleaned = text.replace(/\*\*/g, "").trim();
+  if (!cleaned) return "";
 
-function parseLineOverallAnswer(fullText: string): string {
-  const m = fullText.match(/整體答案[：:]\s*\n?([\s\S]*?)(?:\n\n為什麼|$)/);
-  if (m?.[1]) return m[1].trim().slice(0, 200);
-  return parseLineSection(fullText, "🌟").slice(0, 200);
-}
+  // 所有可能的「下一段標題」關鍵字，用於截斷匹配
+  const NEXT_TITLES =
+    "牌陣總結|三張牌整合|第[123一二三]張牌|行動建議|3～7|溫柔提醒|一句專屬祝福|一句祝福|健康提醒|" +
+    "本次問題焦點|宇宙偷偷話|這張牌正在說|你現在的狀態|接下來可以|今天可以|7日能量|針對你的問題|" +
+    "一句話結論|三張牌提醒";
 
-function parseLineDirection(fullText: string): string {
-  const m = fullText.match(/接下來的方向[：:]\s*\n?([\s\S]*?)(?:\n\n🃏|🕯|$)/);
-  return m?.[1]?.trim().slice(0, 130) ?? "";
-}
-
-function parseLineCardOneLiner(fullText: string, cardIndex: number): string {
-  // 先試 shortSummary（格式：「牌名（正逆位）——描述」，去掉「牌名——」前綴）
-  const mSummary = fullText.match(
-    new RegExp(`🃏 第${cardIndex + 1}張牌[\\s\\S]*?摘要：([^\n]+)`)
-  );
-  if (mSummary?.[1]) {
-    const raw = mSummary[1].trim();
-    // 若仍有「牌名——」前綴（舊格式），去掉；新格式不含前綴
-    const stripped = raw.includes("——") ? raw.replace(/^[^——]+——/, "").trim() : raw;
-    return (stripped || raw).slice(0, 55);
+  for (const kw of keywords) {
+    const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(
+      // 行首，允許 emoji 前綴，含關鍵字的標題行
+      `(?:^|\\n)[^\\n]{0,8}${escaped}[^\\n]{0,40}\\n+` +
+      // 段落本文，直到下一個標題行
+      `([\\s\\S]*?)` +
+      `(?=\\n[^\\n]{0,8}(?:${NEXT_TITLES})|$)`,
+      "m",
+    );
+    const m = cleaned.match(pattern);
+    if (m?.[1]?.trim()) return m[1].trim();
   }
-  // 再試牌面重點 section 第一行（新格式：不含牌名/前綴的乾淨句子）
-  const mCore = fullText.match(
-    new RegExp(`🃏 第${cardIndex + 1}張牌[\\s\\S]*?牌面重點[：:]\\s*\\n?([^\n]+)`)
-  );
-  if (mCore?.[1]) {
-    const raw = mCore[1].trim();
-    // 跳過仍有牌名的舊格式行
-    if (!/（(?:正位|逆位)）/.test(raw)) return raw.slice(0, 55);
-  }
-  // 舊格式：「這張牌代表：」後面的第一句
-  const mRepresent = fullText.match(
-    new RegExp(`🃏 第${cardIndex + 1}張牌[\\s\\S]*?這張牌代表：([^\n]+)`)
-  );
-  if (mRepresent?.[1]) return mRepresent[1].trim().slice(0, 55);
-  // fallback: 牌名行後的第一行非空文字
-  const mCard = fullText.match(
-    new RegExp(`🃏 第${cardIndex + 1}張牌：[^\n]+\n+([^\n]+)`)
-  );
-  return mCard?.[1]?.trim().slice(0, 55) ?? "";
+  return "";
 }
 
-function parseLineActionSummary(fullText: string): string {
-  const m = fullText.match(/🕯️ 3～7 天行動建議\s*\n+([\s\S]*?)(?:\n\n🌌|$)/);
-  if (!m?.[1]) return "";
-  const steps = m[1].trim().split(/\n\n/).filter(Boolean);
-  // 只取前三段，每段截斷到第一個換行
-  return steps
-    .slice(0, 3)
-    .map(s => s.split("\n")[0]?.trim() ?? "")
-    .filter(Boolean)
-    .join("　");
+/**
+ * 截取文字，優先在句號/驚歎號/問號斷句，最多 maxChars 字
+ */
+function sliceAtSentence(text: string, maxChars: number): string {
+  if (!text) return "";
+  const s = text.trim();
+  if (s.length <= maxChars) return s;
+  const sub = s.slice(0, maxChars);
+  const last = Math.max(sub.lastIndexOf("。"), sub.lastIndexOf("！"), sub.lastIndexOf("？"));
+  if (last > maxChars * 0.45) return sub.slice(0, last + 1);
+  return sub + "…";
 }
 
-function parseLineBlessing(fullText: string): string {
-  const m = fullText.match(/💫 一句專屬祝福\s*\n+([\s\S]*?)(?:\n\n|$)/);
-  return m?.[1]?.trim().slice(0, 60) ?? "";
+/**
+ * 取文字第一句，不超過 maxChars 字
+ */
+function firstSentence(text: string, maxChars: number): string {
+  if (!text) return "";
+  const s = text.trim().replace(/\n+/g, " ");
+  const m = s.match(/^[\s\S]*?[。！？]/);
+  return sliceAtSentence((m ? m[0] : s).trim(), maxChars);
 }
 
-// ── LINE 三張牌緊湊訊息（≤900字）──────────────────────────────────────────────
+// ── LINE 三張牌訊息（≤900字）────────────────────────────────────────────────
 
 function buildLineThreeCardMessage(
   result: LineResultData,
   questionText: string,
   resultUrl: string,
-  fullText: string
+  fullText: string,
 ): string {
-  const cardList = formatResultCards(result.cards);
-  const overallAnswer = parseLineOverallAnswer(fullText);
-  const direction = parseLineDirection(fullText);
-  const actionSummary = parseLineActionSummary(fullText);
-  const blessing = parseLineBlessing(fullText);
+  // 提取各段落（多組關鍵字依優先順序嘗試）
+  const overallRaw = extractSection(fullText, "牌陣總結", "三張牌整合", "整體答案", "整體判斷");
+  const c1Raw = extractSection(fullText, "第1張牌", "第一張牌");
+  const c2Raw = extractSection(fullText, "第2張牌", "第二張牌");
+  const c3Raw = extractSection(fullText, "第3張牌", "第三張牌");
+  const actionRaw = extractSection(fullText, "3～7 天行動建議", "3～7天行動建議", "行動建議", "接下來可以怎麼做");
 
-  // 每張牌只保留一句重點
-  const cardLines = result.cards.map((card, i) => {
-    const position = card.position ?? `第${i + 1}張`;
-    const name = card.nameZh ?? card.name ?? `牌${i + 1}`;
-    const ori = card.orientationLabel ?? "";
-    const oneLiner = parseLineCardOneLiner(fullText, i) || "這張牌的訊息在完整解讀裡。";
-    return `${position}｜${name}${ori ? `（${ori}）` : ""}：\n${oneLiner}`;
+  const overall = sliceAtSentence(overallRaw || result.shortText || "", 110);
+
+  // 每張牌取第一句關鍵訊息（不回傳「完整解讀裡」類的佔位文字）
+  const getCardInsight = (raw: string): string => firstSentence(raw, 65);
+
+  const c1 = getCardInsight(c1Raw);
+  const c2 = getCardInsight(c2Raw);
+  const c3 = getCardInsight(c3Raw);
+  const action = sliceAtSentence(actionRaw, 80);
+
+  // 牌列表：帶位置與正逆位
+  const DEFAULT_POSITIONS = ["過去", "現在", "未來"];
+  const cardListLines = result.cards.map((card, i) => {
+    const pos = card.position ?? DEFAULT_POSITIONS[i] ?? `第${i + 1}張`;
+    const name = card.nameZh ?? card.name ?? "塔羅牌";
+    const ori = card.orientationLabel ? `（${card.orientationLabel}）` : "";
+    return `${i + 1}. ${pos}｜${name}${ori}`;
   });
 
   const parts: string[] = [
-    `🌙 宇宙偷偷話｜塔羅訊息`,
-    ``,
+    "🌙 宇宙偷偷話｜塔羅訊息",
+    "",
     `你的問題：\n${questionText}`,
-    ``,
-    `你抽到的牌：\n${cardList}`,
+    "",
+    `你抽到的牌：\n${cardListLines.join("\n")}`,
   ];
 
-  if (overallAnswer) parts.push(``, `✨ 整體答案\n${overallAnswer}`);
+  if (overall) parts.push("", `✨ 宇宙給你的重點\n${overall}`);
 
-  if (cardLines.length > 0) {
-    parts.push(``, `🃏 三張牌提醒你\n${cardLines.join("\n\n")}`);
+  // 三張牌個別提醒
+  const cardSections: string[] = [];
+  result.cards.forEach((card, i) => {
+    const pos = card.position ?? DEFAULT_POSITIONS[i] ?? `第${i + 1}張`;
+    const name = card.nameZh ?? card.name ?? "塔羅牌";
+    const insight = [c1, c2, c3][i];
+    if (insight) cardSections.push(`${pos}｜${name}：\n${insight}`);
+  });
+  if (cardSections.length > 0) {
+    parts.push("", `🔮 三張牌提醒你\n${cardSections.join("\n\n")}`);
   }
 
-  const actionText = direction || actionSummary;
-  if (actionText) parts.push(``, `🕯️ 接下來 3～7 天\n${actionText}`);
+  if (action) parts.push("", `🌙 3～7天行動建議\n${action}`);
 
-  if (blessing) parts.push(``, `💫 給你的祝福\n${blessing}`);
-
-  parts.push(``, `🔮 完整解讀請回到網站查看：\n${resultUrl}`);
+  parts.push("", `想看更完整排版與收藏版：\n${resultUrl}`);
 
   return parts.join("\n");
 }
 
-// ── LINE 單張牌緊湊訊息（≤600字）──────────────────────────────────────────────
+// ── LINE 單張牌訊息（≤700字）────────────────────────────────────────────────
 
 function buildLineSingleCardMessage(
   result: LineResultData,
   questionText: string,
   resultUrl: string,
-  fullText: string
+  fullText: string,
 ): string {
-  const cardList = formatResultCards(result.cards);
-  // 取宇宙偷偷話（questionFocus）
-  const cosmic = parseLineSection(fullText, "🌙").slice(0, 100);
-  // 取「今天可以怎麼做」或「3～7 天行動」前兩句
-  const action = fullText.match(/🐾[^\n]+\n+([\s\S]*?)(?:\n\n[🌌💫]|$)/)?.[1]?.trim().slice(0, 120) ?? "";
-  const blessing = parseLineBlessing(fullText);
+  // 提取各段落
+  const cosmicRaw = extractSection(
+    fullText,
+    "宇宙偷偷話",
+    "這張牌正在說什麼",
+    "針對你的問題",
+    "牌陣總結",
+  );
+  const insightRaw = extractSection(
+    fullText,
+    "你現在的狀態",
+    "這張牌正在說什麼",
+    "針對你的問題",
+  );
+  const actionRaw = extractSection(
+    fullText,
+    "接下來可以怎麼做",
+    "今天可以怎麼做",
+    "3～7 天行動建議",
+    "3～7天行動建議",
+    "7日能量提示",
+  );
+
+  const cosmic = sliceAtSentence(cosmicRaw || result.shortText || "", 110);
+  // 避免 insight 與 cosmic 重複
+  const insightCandidate = sliceAtSentence(insightRaw, 80);
+  const insight = insightCandidate !== cosmic ? insightCandidate : "";
+  const action = sliceAtSentence(actionRaw, 80);
+
+  const cardLine = formatResultCards(result.cards);
 
   const parts: string[] = [
-    `🌙 宇宙偷偷話｜塔羅訊息`,
-    ``,
+    "🌙 宇宙偷偷話｜塔羅訊息",
+    "",
     `你的問題：\n${questionText}`,
-    ``,
-    `你抽到的牌：\n${cardList}`,
+    "",
+    `你抽到的牌：\n${cardLine}`,
   ];
 
-  if (cosmic) parts.push(``, `✨ 宇宙說\n${cosmic}`);
-  if (action) parts.push(``, `🐾 今天可以\n${action}`);
-  if (blessing) parts.push(``, `💫 給你的祝福\n${blessing}`);
-  parts.push(``, `🔮 完整解讀請回到網站查看：\n${resultUrl}`);
+  if (cosmic) parts.push("", `✨ 宇宙給你的重點\n${cosmic}`);
+  if (insight) parts.push("", `🔮 這張牌提醒你\n${insight}`);
+  if (action) parts.push("", `🌙 3～7天行動建議\n${action}`);
+
+  parts.push("", `想看更完整排版與收藏版：\n${resultUrl}`);
 
   return parts.join("\n");
 }
@@ -199,18 +230,27 @@ function buildLineSingleCardMessage(
 
 export function buildLineResultMessage(result: LineResultData, resultId: string, siteUrl: string) {
   const questionText = result.question?.trim() || "你把問題放在心裡，宇宙也有聽見。";
-  const resultUrl = result.resultUrl || `${siteUrl}/tarot?result=${encodeURIComponent(resultId)}`;
+  const resultUrl = result.resultUrl || `${siteUrl}/share/${resultId}`;
+  // 優先使用完整 AI 解讀（fullText），fallback 到摘要（shortText）
   const fullText = (result.fullText || result.shortText || "").replace(/\*\*/g, "").trim();
 
-  if (result.cards.length === 3 && fullText) {
+  if (result.cards.length === 3) {
     return buildLineThreeCardMessage(result, questionText, resultUrl, fullText);
   }
-  if (result.cards.length === 1 && fullText) {
+  if (result.cards.length >= 1) {
     return buildLineSingleCardMessage(result, questionText, resultUrl, fullText);
   }
 
-  // 最後兜底：短版
-  return `🌙 宇宙偷偷話｜塔羅訊息\n\n你的問題：\n${questionText}\n\n你抽到的牌：\n${formatResultCards(result.cards)}\n\n🔮 完整解讀請回到網站查看：\n${resultUrl}`;
+  // 兜底（無牌資料）
+  return [
+    "🌙 宇宙偷偷話｜塔羅訊息",
+    "",
+    `你的問題：\n${questionText}`,
+    "",
+    fullText ? `✨ 宇宙給你的重點\n${sliceAtSentence(fullText, 150)}` : "宇宙的訊息正在整理中。",
+    "",
+    `想看更完整排版與收藏版：\n${resultUrl}`,
+  ].join("\n");
 }
 
 export async function pushLineTextMessage(lineUserId: string, message: string) {

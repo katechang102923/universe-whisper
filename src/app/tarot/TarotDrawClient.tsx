@@ -1525,10 +1525,12 @@ export function TarotDrawClient() {
         type: "tarot",
         question,
         cards,
-        // shortText 永遠只存摘要本身，不嵌入「請回網站解鎖」等提示文字
-        // fullText 僅在已解鎖時存入，避免分享頁顯示解鎖提示卻沒有對應按鈕
+        // shortText：永遠只存摘要，供分享頁預覽用
+        // fullText：永遠存完整 AI 解讀，供 LINE 建立精簡訊息用
+        // unlocked：建立當時是否已解鎖，供分享頁決定是否展示完整版
         shortText: freeSummary.message,
-        fullText: hasFullAccess ? fullReading : "",
+        fullText: fullReading,
+        unlocked: hasFullAccess,
       }),
     });
     const data = (await response.json().catch(() => ({}))) as {
@@ -1624,8 +1626,11 @@ export function TarotDrawClient() {
   }
 
   function handleDrawButtonClick() {
-    // 永遠讓使用者先嘗試抽牌；若真的超出每日限制，draw() 會收到 API 429 並顯示錯誤
-    // 不在前端預先攔截跳付款視窗，避免共用 IP 或誤判把新用戶擋掉
+    // 今日免費次數已用完（anonId 基準，已修正共用 IP 誤判問題）→ 直接開付費視窗
+    if (isOutOfFreeDraws) {
+      openPaidDrawModal();
+      return;
+    }
     void draw();
   }
 
@@ -1939,6 +1944,8 @@ export function TarotDrawClient() {
     setFbShareUnlocked(true);
     setFbShareUnlockUsedToday(true);
     setFbSharePending(false);
+    // 清除快取 resultId，讓下次 createOrGetLineResult() 重新建立帶 unlocked:true 的結果
+    setLineResultId("");
   }
 
   // ??? Paid flow ????????????????????????????????????????????????????????????
@@ -2168,7 +2175,9 @@ export function TarotDrawClient() {
         <p className="mt-1 text-sm text-moon/52">
           {isAdmin
             ? "管理員模式：不限抽牌次數"
-            : "今天可免費抽牌 1 次，也可分享 Facebook 解鎖完整解讀。"}
+            : drawsRemaining === 0
+              ? "今日免費抽牌已使用完畢，可付 NT$49 再抽一次完整解讀。"
+              : "今天可免費抽牌 1 次，也可分享 Facebook 解鎖完整解讀。"}
         </p>
       </div>
       <textarea
@@ -2194,7 +2203,11 @@ export function TarotDrawClient() {
         }
         className="relative z-10 mt-5 w-full rounded-full bg-moon px-6 py-3 font-medium text-midnight shadow-[0_0_24px_rgba(247,241,223,0.28)] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
-        {status === "drawing" ? "星光正在流動..." : "開始抽牌"}
+        {status === "drawing"
+          ? "星光正在流動..."
+          : isOutOfFreeDraws
+            ? "🔓 NT$49 再抽一次完整解讀"
+            : "開始抽牌"}
       </button>
 
       {/* ?? Error notice ?? */}
@@ -2507,18 +2520,6 @@ export function TarotDrawClient() {
                 </p>
               </div>
 
-              {/* LINE 驗證碼領取區 */}
-              <div className="mt-5 border-t border-white/10 pt-5">
-                <p className="mb-1 text-sm font-semibold text-moon/70">將本次結果傳送到 LINE</p>
-                <LineClaimSection
-                  status={lineClaimStatus}
-                  claimCode={lineClaimCode}
-                  error={lineClaimError}
-                  onOpen={() => void openLineClaimFlow()}
-                  onCheck={() => void checkLineClaimStatus()}
-                  onReset={() => { setLineClaimStatus("idle"); setLineClaimError(""); setLineClaimCode(""); }}
-                />
-              </div>
             </div>
           ) : (
             /* 4. Full reading (when unlocked) */

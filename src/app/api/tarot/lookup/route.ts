@@ -117,6 +117,7 @@ export async function GET(request: Request) {
         cards: Array.isArray(data.cards) ? data.cards : [],
         shortText: typeof data.shortText === "string" ? data.shortText : "",
         fullText: typeof data.fullText === "string" ? data.fullText : "",
+        unlocked: data.unlocked === true,
         createdAt:
           (data.createdAt as { toDate?: () => Date } | undefined)
             ?.toDate?.()
@@ -149,6 +150,7 @@ export async function GET(request: Request) {
     cards: Array.isArray(data.cards) ? data.cards : [],
     shortText: typeof data.shortText === "string" ? data.shortText : "",
     fullText: typeof data.fullText === "string" ? data.fullText : "",
+    unlocked: data.unlocked === true,
     createdAt:
       (data.createdAt as { toDate?: () => Date } | undefined)
         ?.toDate?.()

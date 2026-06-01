@@ -22,6 +22,7 @@ type LookupResult = {
   cards: CardData[];
   shortText: string;
   fullText: string;
+  unlocked: boolean;
   createdAt: string | null;
 };
 
@@ -50,6 +51,7 @@ export default function TarotLookupPage() {
         cards?: CardData[];
         shortText?: string;
         fullText?: string;
+        unlocked?: boolean;
         createdAt?: string | null;
         error?: string;
       };
@@ -77,6 +79,7 @@ export default function TarotLookupPage() {
         cards: data.cards ?? [],
         shortText: data.shortText ?? "",
         fullText: data.fullText ?? "",
+        unlocked: data.unlocked === true,
         createdAt: data.createdAt ?? null,
       });
       setStatus("found");
@@ -233,19 +236,19 @@ export default function TarotLookupPage() {
               </div>
             )}
 
-            {/* 完整解讀 */}
-            {result.fullText ? (
+            {/* 完整解讀（只在已解鎖時顯示） */}
+            {result.unlocked && result.fullText ? (
               <div className="cosmic-reading-card rounded-[1.75rem] border border-lavender/20 bg-midnight/58 p-5 shadow-glow sm:p-6">
                 <p className="text-sm tracking-[0.22em] text-lavender/70">完整解讀</p>
                 <h3 className="mt-2 text-2xl font-semibold text-moon">完整宇宙訊息</h3>
                 <div className="mt-4 text-base leading-8 text-moon/80 whitespace-pre-wrap">
-                  {result.fullText}
+                  {result.fullText.replace(/\*\*/g, "")}
                 </div>
               </div>
-            ) : (
+            ) : !result.unlocked ? (
               <div className="rounded-2xl border border-[#d8bd70]/20 bg-[#d8bd70]/5 px-5 py-5">
                 <p className="text-sm leading-7 text-moon/70">
-                  本次為免費摘要版，完整解讀需回到抽牌頁解鎖。
+                  本次為免費摘要版，完整解讀需回到抽牌頁分享或解鎖。
                 </p>
                 <Link
                   href="/tarot"
@@ -254,7 +257,7 @@ export default function TarotLookupPage() {
                   回到抽牌頁
                 </Link>
               </div>
-            )}
+            ) : null}
 
             <div className="flex flex-wrap gap-3 pt-2">
               <button
