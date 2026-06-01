@@ -1284,7 +1284,9 @@ export function TarotDrawClient() {
 
   const paymentTimerRef = useRef<number | null>(null);
   const storyCardRef = useRef<HTMLDivElement | null>(null);
+  const readingSectionRef = useRef<HTMLElement | null>(null);
   const savedPaidResultKeyRef = useRef("");
+  const [restoredToastVisible, setRestoredToastVisible] = useState(false);
 
   const cardCount = mode === "three_card" ? 3 : 1;
   const visibleBacks = useMemo(() => Array.from({ length: cardCount }), [cardCount]);
@@ -1983,6 +1985,14 @@ export function TarotDrawClient() {
     setIsRestoredResult(true);
     setError("");
     setFbSharePending(false);
+    // Scroll to reading section after state settles
+    window.setTimeout(() => {
+      if (readingSectionRef.current) {
+        readingSectionRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      setRestoredToastVisible(true);
+      window.setTimeout(() => setRestoredToastVisible(false), 3000);
+    }, 80);
   }
 
   // ??? Story download ???????????????????????????????????????????????????????
@@ -2225,6 +2235,14 @@ export function TarotDrawClient() {
         </div>
       ) : null}
 
+      {/* Toast：恢復成功提示 */}
+      {restoredToastVisible ? (
+        <div className="relative z-10 mt-3 flex items-center gap-2 rounded-2xl border border-aurora/30 bg-aurora/10 px-4 py-2.5 text-sm text-aurora/90 reading-fade-in">
+          <span>✓</span>
+          <span>已恢復上次抽牌結果</span>
+        </div>
+      ) : null}
+
       {error ? (
         <div className="relative z-10 mt-4 rounded-2xl border border-lavender/30 bg-nebula/20 p-4 text-sm text-moon">
           <p>{error}</p>
@@ -2306,7 +2324,7 @@ export function TarotDrawClient() {
           Reading area ??only shown after cards are revealed
           ???????????????????????????????????????????????????????????????????? */}
       {canShowReadings ? (
-        <section className="relative z-10 mt-9 space-y-5">
+        <section ref={readingSectionRef} className="relative z-10 mt-9 space-y-5">
 
           {/* ?? 1. Single-card story image (always shown for download/share) ?? */}
           {isSingleResult && storyCard ? (
@@ -2502,7 +2520,7 @@ export function TarotDrawClient() {
                   onClick={openPaidDrawModal}
                   className="w-full rounded-full border border-[#d8bd70]/40 px-6 py-3 text-sm font-semibold text-[#d8bd70] transition hover:border-[#d8bd70]/70 hover:bg-white/6 active:scale-95 sm:w-auto sm:min-w-[280px]"
                 >
-                  直接付費 NT$49 解鎖，不需分享
+                  🔓 NT$49 解鎖完整宇宙訊息
                 </button>
                 <p className="mt-2 text-xs leading-6 text-moon/40">
                   本服務為即時產生之數位內容，付款完成並成功產出、顯示或發送結果後，恕不接受退費。若付款成功但未收到內容，請於 24 小時內聯繫

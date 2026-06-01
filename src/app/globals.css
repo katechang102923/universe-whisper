@@ -704,6 +704,21 @@ a {
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes cosmic-breathe {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(216,189,112,0.30), 0 0 48px rgba(109,77,242,0.18);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 32px rgba(216,189,112,0.50), 0 0 72px rgba(109,77,242,0.28);
+    transform: scale(1.018);
+  }
+}
+
+.cosmic-cta-primary {
+  animation: cosmic-breathe 3.2s ease-in-out infinite;
+}
+
 @media (max-width: 640px) {
   .ritual-shuffle-card {
     width: min(38vw, 138px);

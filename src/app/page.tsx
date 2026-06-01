@@ -53,24 +53,24 @@ export default function Home() {
               深夜裡，陪你抽一張牌，聽聽宇宙想對你說什麼。
             </p>
 
-            <div className="mt-7 grid gap-3 sm:flex sm:flex-wrap">
+            <div className="mt-7 flex flex-col gap-3">
               <Link
                 href="/tarot"
-                className="rounded-full bg-moon px-7 py-3.5 text-center font-semibold text-midnight shadow-glow transition hover:bg-white"
+                className="cosmic-cta-primary w-full rounded-full px-7 py-4 text-center text-lg font-semibold text-midnight transition hover:brightness-105 active:scale-[0.98] sm:w-auto sm:self-start"
+                style={{
+                  background: "linear-gradient(135deg, #d8bd70 0%, #b89adf 60%, #d8bd70 100%)",
+                  backgroundSize: "200% 200%",
+                }}
               >
-                開始抽牌
+                ✨ 抽一張宇宙訊息
               </Link>
               <a
                 href={lineAddFriendUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-full px-7 py-3.5 text-center font-semibold text-white transition hover:opacity-90 active:scale-95"
-                style={{
-                  background: "#06C755",
-                  boxShadow: "0 0 24px rgba(6,199,85,0.28)",
-                }}
+                className="w-full rounded-full border border-white/15 px-5 py-2.5 text-center text-sm font-medium text-moon/60 transition hover:border-white/30 hover:text-moon/85 active:scale-95 sm:w-auto sm:self-start"
               >
-                加入 LINE 看完整訊息
+                抽完牌可同步收藏至 LINE
               </a>
             </div>
           </div>
