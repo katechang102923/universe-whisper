@@ -1096,12 +1096,19 @@ function LineClaimSection({
   onCheck: () => void;
   onReset: () => void;
 }) {
-  // 優先嘗試 LINE App deep link；1200ms 後若 App 未開啟則 fallback 到網頁版
+  // 優先嘗試 LINE App deep link
+  // 桌機：只觸發瀏覽器「開啟 LINE」提示，不自動 fallback
+  // 手機：2500ms 後若頁面仍 visible（App 未開啟），才 fallback 到網頁版
   function openLineOfficialAccount() {
     window.location.href = LINE_DEEP_LINK;
-    setTimeout(() => {
-      window.location.href = LINE_OFFICIAL_ACCOUNT_URL;
-    }, 1200);
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (isMobile) {
+      setTimeout(() => {
+        if (document.visibilityState === "visible") {
+          window.location.href = LINE_OFFICIAL_ACCOUNT_URL;
+        }
+      }, 2500);
+    }
   }
 
   // ── 已成功兌換 ─────────────────────────────────────────────────────────────
