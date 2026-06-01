@@ -1,4 +1,4 @@
-const LINE_ADD_FRIEND_URL = "https://line.me/R/ti/p/@453gfmok";
+const LINE_ADD_FRIEND_URL = "https://liff.line.me/2010215499-WrEJvUzE";
 
 export function LineCtaBanner() {
   return (

@@ -28,8 +28,12 @@ const FB_SHARE_UNLOCK_STORAGE_KEY = "cosmic_fb_unlock_date";
 const LINE_CONNECT_MESSAGE_KEY = "line-connect-message-payload";
 const PAID_RESULT_STORAGE_KEY = "universeWhisper:lastPaidTarotResult";
 const LINE_OA_ID = process.env.NEXT_PUBLIC_LINE_OA_ID ?? "453gfmok";
-/** 官方帳號加好友連結（直接由 LINE_OA_ID 組出，不依賴可能被設錯的環境變數） */
-const LINE_ADD_FRIEND_URL = `https://line.me/R/ti/p/@${LINE_OA_ID}`;
+/** LINE App deep link — 手機有安裝 LINE 時直接跳 App */
+const LINE_DEEP_LINK = "line://ti/p/@453gfmok";
+/** Web fallback — 桌機或未安裝 LINE 時顯示加好友頁（不跳 QR Code 首頁） */
+const LINE_OFFICIAL_ACCOUNT_URL = "https://line.me/R/ti/p/%40453gfmok";
+/** @deprecated 用 LINE_OFFICIAL_ACCOUNT_URL */
+const LINE_ADD_FRIEND_URL = LINE_OFFICIAL_ACCOUNT_URL;
 
 const modes = [
   { key: "single_tarot", label: "單張牌", description: "接收此刻最靠近你的訊息" },
@@ -1092,8 +1096,13 @@ function LineClaimSection({
   onCheck: () => void;
   onReset: () => void;
 }) {
-  // 按鈕一律開啟加好友頁（oaMessage deep link 在各環境不穩定，會跳轉至 LINE 官網）
-  const oaMessageUrl = LINE_ADD_FRIEND_URL;
+  // 優先嘗試 LINE App deep link；1200ms 後若 App 未開啟則 fallback 到網頁版
+  function openLineOfficialAccount() {
+    window.location.href = LINE_DEEP_LINK;
+    setTimeout(() => {
+      window.location.href = LINE_OFFICIAL_ACCOUNT_URL;
+    }, 1200);
+  }
 
   // ── 已成功兌換 ─────────────────────────────────────────────────────────────
   if (status === "claimed") {
@@ -1145,16 +1154,15 @@ function LineClaimSection({
           </div>
         </div>
 
-        {/* 主要按鈕：開啟 LINE 預填驗證碼 */}
-        <a
-          href={oaMessageUrl}
-          target="_blank"
-          rel="noopener noreferrer"
+        {/* 主要按鈕：優先 LINE App deep link，fallback 到網頁版 */}
+        <button
+          type="button"
+          onClick={openLineOfficialAccount}
           className="flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold text-white shadow-[0_0_20px_rgba(6,199,85,0.28)] transition hover:opacity-90 active:scale-95 sm:w-auto sm:min-w-[240px]"
           style={{ background: "#06C755" }}
         >
           開啟 LINE 並送出驗證碼
-        </a>
+        </button>
         <p className="text-xs leading-6 text-moon/45">
           開啟 LINE 後，請按「送出」，系統才會回覆結果。
         </p>
@@ -1163,7 +1171,7 @@ function LineClaimSection({
         <p className="text-xs text-moon/38">
           無法開啟？
           <a
-            href={LINE_ADD_FRIEND_URL}
+            href={LINE_OFFICIAL_ACCOUNT_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="ml-1 underline underline-offset-2 hover:text-moon/60"
