@@ -1525,10 +1525,9 @@ export function TarotDrawClient() {
         type: "tarot",
         question,
         cards,
-        // Only send full reading when user has unlocked; otherwise send free summary with unlock hint
-        shortText: hasFullAccess
-          ? freeSummary.message
-          : freeSummary.message + "\n\n完整解讀請回網站分享 Facebook 解鎖。",
+        // shortText 永遠只存摘要本身，不嵌入「請回網站解鎖」等提示文字
+        // fullText 僅在已解鎖時存入，避免分享頁顯示解鎖提示卻沒有對應按鈕
+        shortText: freeSummary.message,
         fullText: hasFullAccess ? fullReading : "",
       }),
     });
@@ -1625,10 +1624,8 @@ export function TarotDrawClient() {
   }
 
   function handleDrawButtonClick() {
-    if (isOutOfFreeDraws) {
-      openPaidDrawModal();
-      return;
-    }
+    // 永遠讓使用者先嘗試抽牌；若真的超出每日限制，draw() 會收到 API 429 並顯示錯誤
+    // 不在前端預先攔截跳付款視窗，避免共用 IP 或誤判把新用戶擋掉
     void draw();
   }
 
@@ -2171,11 +2168,7 @@ export function TarotDrawClient() {
         <p className="mt-1 text-sm text-moon/52">
           {isAdmin
             ? "管理員模式：不限抽牌次數"
-            : drawsRemaining === null
-              ? "今天可免費抽牌 1 次，也可分享 Facebook 解鎖完整解讀。"
-              : drawsRemaining === 0
-                ? "今日免費抽牌已使用完畢，可使用 NT$49 再抽一次完整解讀。"
-                : "今日剩餘免費抽牌：" + drawsRemaining + " 次"}
+            : "今天可免費抽牌 1 次，也可分享 Facebook 解鎖完整解讀。"}
         </p>
       </div>
       <textarea
@@ -2201,11 +2194,7 @@ export function TarotDrawClient() {
         }
         className="relative z-10 mt-5 w-full rounded-full bg-moon px-6 py-3 font-medium text-midnight shadow-[0_0_24px_rgba(247,241,223,0.28)] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
-        {status === "drawing"
-          ? "星光正在流動..."
-          : isOutOfFreeDraws
-            ? "NT$49 再抽一次"
-            : "開始抽牌"}
+        {status === "drawing" ? "星光正在流動..." : "開始抽牌"}
       </button>
 
       {/* ?? Error notice ?? */}

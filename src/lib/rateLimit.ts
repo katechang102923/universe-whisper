@@ -133,9 +133,13 @@ export async function getDrawUsage(params: {
     } else {
       const ipKey = encodeKey(ip || "unknown");
       const anonKey = anonymousId ? encodeKey(anonymousId) : null;
-      const ipUsed = data.ip_usage?.[ipKey] ?? 0;
-      const anonUsed = anonKey ? (data.anon_usage?.[anonKey] ?? 0) : 0;
-      used = Math.max(ipUsed, anonUsed);
+      // 優先以 anonymousId 判斷（各瀏覽器獨立），避免共用 IP 誤傷新用戶
+      // 只在沒有 anonymousId 時才回退到 IP 判斷
+      if (anonKey) {
+        used = data.anon_usage?.[anonKey] ?? 0;
+      } else {
+        used = data.ip_usage?.[ipKey] ?? 0;
+      }
     }
 
     return { used, limit, remaining: Math.max(0, limit - used), isLineUser };
@@ -207,7 +211,9 @@ export async function checkAndIncrementLimit(params: RateLimitParams, collection
     const ipCount = ipUsage[ipKey] ?? 0;
     const anonCount = anonKey ? anonUsage[anonKey] ?? 0 : 0;
 
-    if (ipCount >= UNAUTH_DAILY_LIMIT || anonCount >= UNAUTH_DAILY_LIMIT) {
+    // 優先以 anonymousId 判斷（各瀏覽器獨立），避免共用 IP 誤傷新用戶
+    const limitCount = anonKey ? anonCount : ipCount;
+    if (limitCount >= UNAUTH_DAILY_LIMIT) {
       tx.set(docRef, { total_blocked: totalBlocked + 1 }, { merge: true });
       return;
     }

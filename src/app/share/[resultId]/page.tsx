@@ -128,7 +128,12 @@ export default async function ShareResultPage({
     })
     .join("　");
 
-  const previewText = cleanText(result.shortText || result.fullText || "", 320);
+  // shortText 顯示摘要，fullText 若有則完整顯示（已解鎖結果）
+  const summaryText = cleanText(result.shortText || "", 400);
+  const hasFullReading = typeof result.fullText === "string" && result.fullText.trim().length > 0;
+  const fullReadingText = hasFullReading
+    ? result.fullText.replace(/\*\*/g, "").trim()
+    : "";
 
   return (
     <AppShell>
@@ -163,13 +168,25 @@ export default async function ShareResultPage({
           </div>
         ) : null}
 
-        {/* Reading preview */}
-        <div className="mt-5 rounded-[1.5rem] border border-[#d8bd70]/22 bg-midnight/58 p-5 shadow-glow sm:p-6">
-          <p className="mb-3 text-sm tracking-[0.22em] text-[#d8bd70]/78">宇宙給你的訊息</p>
-          <p className="whitespace-pre-line text-base leading-8 text-moon/84">
-            {previewText || "宇宙的訊息正在整理中。"}
-          </p>
-        </div>
+        {/* 摘要（free summary） */}
+        {summaryText ? (
+          <div className="mt-5 rounded-[1.5rem] border border-[#d8bd70]/22 bg-midnight/58 p-5 shadow-glow sm:p-6">
+            <p className="mb-3 text-sm tracking-[0.22em] text-[#d8bd70]/78">宇宙給你的訊息</p>
+            <p className="whitespace-pre-line text-base leading-8 text-moon/84">
+              {summaryText}
+            </p>
+          </div>
+        ) : null}
+
+        {/* 完整解讀（已解鎖時才顯示） */}
+        {hasFullReading ? (
+          <div className="mt-5 rounded-[1.5rem] border border-lavender/20 bg-midnight/58 p-5 shadow-glow sm:p-6">
+            <p className="mb-3 text-sm tracking-[0.22em] text-lavender/70">完整解讀</p>
+            <p className="whitespace-pre-line text-base leading-8 text-moon/84">
+              {fullReadingText}
+            </p>
+          </div>
+        ) : null}
 
         {/* CTA */}
         <div className="mt-8 flex flex-wrap gap-3">
@@ -189,7 +206,7 @@ export default async function ShareResultPage({
             href="/tarot/lookup"
             className="rounded-full border border-white/20 px-5 py-3 text-moon/70 transition hover:bg-white/8"
           >
-            輸入序號看原本結果
+            查詢驗證碼結果
           </Link>
         </div>
 
