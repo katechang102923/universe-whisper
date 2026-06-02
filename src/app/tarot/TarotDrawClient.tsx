@@ -1014,13 +1014,12 @@ async function generateStoryImage(
 async function generateThreeCardStoryImage(
   questionText: string,
   spreadCards: TarotCardFaceData[],
-  cardInsights: string[],
+  _cardInsights: string[],
   overallAnswer: string,
   siteUrl: string,
 ): Promise<Blob> {
   const W = 1080;
   const H = 1920;
-  const PAD = 72;
 
   const canvas = document.createElement("canvas");
   canvas.width = W;
@@ -1030,10 +1029,11 @@ async function generateThreeCardStoryImage(
 
   const ff = "'PingFang TC', 'Microsoft JhengHei', 'Noto Sans TC', sans-serif";
   const GOLD  = "#d8bd70";
-  const MOON  = "rgba(255,247,230,0.92)";
-  const DIM   = "rgba(255,247,230,0.64)";
+  const MOON  = "rgba(255,247,230,0.95)";
+  const DIM   = "rgba(255,247,230,0.65)";
   const FAINT = "rgba(255,247,230,0.36)";
 
+  // ── 背景 ──────────────────────────────────────────────────────────────────
   const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
   bgGrad.addColorStop(0,    "#05071d");
   bgGrad.addColorStop(0.45, "#0d0b2a");
@@ -1047,9 +1047,12 @@ async function generateThreeCardStoryImage(
     ctx.globalAlpha = 1;
   } catch { /* gradient fallback */ }
 
+  // ── 星星裝飾 ──────────────────────────────────────────────────────────────
   const starDefs = [
-    { x: 88, y: 88, sz: 22, a: 0.55 }, { x: W - 108, y: 118, sz: 18, a: 0.40 },
-    { x: 84, y: H - 210, sz: 20, a: 0.45 }, { x: W - 96, y: H - 240, sz: 16, a: 0.38 },
+    { x: 88,      y: 88,      sz: 22, a: 0.55 },
+    { x: W - 108, y: 118,     sz: 18, a: 0.40 },
+    { x: 84,      y: H - 210, sz: 20, a: 0.45 },
+    { x: W - 96,  y: H - 240, sz: 16, a: 0.38 },
   ];
   for (const s of starDefs) {
     ctx.font = s.sz + "px serif";
@@ -1062,114 +1065,238 @@ async function generateThreeCardStoryImage(
     ctx.strokeStyle = "rgba(216,189,112," + alpha + ")";
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(PAD, y);
-    ctx.lineTo(W - PAD, y);
+    ctx.moveTo(72, y);
+    ctx.lineTo(W - 72, y);
     ctx.stroke();
   };
 
-  // Header
+  // ── 品牌標題 ──────────────────────────────────────────────────────────────
   ctx.textAlign = "center";
-  ctx.font = "600 26px " + ff;
+  ctx.font = "600 28px " + ff;
   ctx.fillStyle = "rgba(216,189,112,0.78)";
-  ctx.fillText("UNIVERSE WHISPER", W / 2, 106);
+  ctx.fillText("UNIVERSE WHISPER", W / 2, 108);
 
-  ctx.font = "700 68px " + ff;
+  ctx.font = "700 62px " + ff;
   ctx.fillStyle = GOLD;
-  ctx.shadowBlur = 22;
-  ctx.shadowColor = "rgba(216,189,112,0.34)";
-  ctx.fillText("我抄到的宇宙訊息", W / 2, 186);
+  ctx.shadowBlur = 24;
+  ctx.shadowColor = "rgba(216,189,112,0.36)";
+  ctx.fillText("我抽到的宇宙訊息", W / 2, 178);
   ctx.shadowBlur = 0;
 
-  hLine(222);
+  hLine(214);
 
-  // Question
-  ctx.font = "400 26px " + ff;
-  ctx.fillStyle = "rgba(216,189,112,0.68)";
-  ctx.fillText("我的問題", W / 2, 264);
+  // ── 問題區（精簡單行）────────────────────────────────────────────────────
+  ctx.font = "400 24px " + ff;
+  ctx.fillStyle = "rgba(216,189,112,0.65)";
+  ctx.fillText("我的問題", W / 2, 250);
 
-  const qText = questionText.length > 40 ? questionText.slice(0, 38) + "…" : questionText;
-  ctx.font = "400 32px " + ff;
+  const qRaw  = questionText.length > 28 ? questionText.slice(0, 26) + "…" : questionText;
+  const qText = "「" + qRaw + "」";
+  ctx.font = "400 30px " + ff;
   ctx.fillStyle = DIM;
-  const qLines = wrapCanvasText(ctx, qText, W - PAD * 2 - 16);
-  qLines.slice(0, 2).forEach((l: string, i: number) => ctx.fillText(l, W / 2, 308 + i * 46));
+  ctx.fillText(qText, W / 2, 292);
 
-  hLine(390);
+  hLine(318, 0.14);
 
-  // Three card blocks
-  const DEFAULT_POS_LABELS = ["過去", "現在", "未來"];
-  const CARD_START = 412;
-  const CARD_BLOCK = 296;
-
-  spreadCards.slice(0, 3).forEach((card: TarotCardFaceData, i: number) => {
-    const by   = CARD_START + i * CARD_BLOCK;
-    const pos  = card.position ?? DEFAULT_POS_LABELS[i] ?? "";
-    const name = card.nameZh ?? card.name ?? "";
-    const ori  = card.orientationLabel ?? "";
-    const tip  = cardInsights[i] || "";
-
-    ctx.textAlign = "left";
-    ctx.font = "600 26px " + ff;
-    ctx.fillStyle = GOLD;
-    ctx.fillText("第 " + (i + 1) + " 張｜" + pos, PAD, by + 36);
-
-    ctx.font = "700 44px " + ff;
-    ctx.fillStyle = MOON;
-    ctx.fillText(name + "（" + ori + "）", PAD, by + 92);
-
-    if (tip) {
-      ctx.font = "400 30px " + ff;
-      ctx.fillStyle = DIM;
-      const tipLines = wrapCanvasText(ctx, tip, W - PAD * 2);
-      tipLines.slice(0, 2).forEach((l: string, li: number) =>
-        ctx.fillText(l, PAD, by + 144 + li * 42)
-      );
-    }
-
-    if (i < 2) hLine(by + CARD_BLOCK - 4, 0.13);
-  });
-
-  // Overall answer
-  const SUMMARY_Y = CARD_START + 3 * CARD_BLOCK + 16;
-  hLine(SUMMARY_Y);
-
-  ctx.textAlign = "center";
-  ctx.font = "600 27px " + ff;
-  ctx.fillStyle = "rgba(216,189,112,0.72)";
-  ctx.fillText("✨ 整體答案", W / 2, SUMMARY_Y + 52);
-
-  const ansText = overallAnswer.length > 80 ? overallAnswer.slice(0, 78) + "…" : overallAnswer;
-  ctx.font = "400 32px " + ff;
-  ctx.fillStyle = DIM;
-  const ansLines = wrapCanvasText(ctx, ansText, W - PAD * 2 - 16);
-  ansLines.slice(0, 4).forEach((l: string, i: number) =>
-    ctx.fillText(l, W / 2, SUMMARY_Y + 104 + i * 48)
+  // ── 預先載入三張牌圖片 ───────────────────────────────────────────────────
+  const cardImgs = await Promise.all(
+    spreadCards.slice(0, 3).map((c) =>
+      loadImage(c.image).catch(() => null)
+    )
   );
 
-  // CTA
-  const CTA_Y = Math.max(SUMMARY_Y + 104 + Math.min(ansLines.length, 4) * 48 + 60, 1640);
+  // ── 三張牌主視覺 ──────────────────────────────────────────────────────────
+  // 側牌 222×333，中牌 254×381（比例 2:3，中間較大較高）
+  const SIDE_W = 222, SIDE_H = 333;
+  const CTR_W  = 254, CTR_H  = 381;
+  const CARD_GAP = 18;
+  const TOTAL_CARD_W = SIDE_W + CARD_GAP + CTR_W + CARD_GAP + SIDE_W; // 734
+  const CARD_LEFT = Math.round((W - TOTAL_CARD_W) / 2);                // 173
+
+  const cardLayouts = [
+    { x: CARD_LEFT,                                       y: 345, w: SIDE_W, h: SIDE_H },
+    { x: CARD_LEFT + SIDE_W + CARD_GAP,                   y: 324, w: CTR_W,  h: CTR_H  },
+    { x: CARD_LEFT + SIDE_W + CARD_GAP + CTR_W + CARD_GAP, y: 345, w: SIDE_W, h: SIDE_H },
+  ];
+  const DEFAULT_POS = ["過去", "現在", "未來"];
+
+  for (let i = 0; i < 3; i++) {
+    const { x, y, w, h } = cardLayouts[i];
+    const card = spreadCards[i];
+    const img  = cardImgs[i];
+
+    // 金色光暈
+    ctx.save();
+    ctx.shadowBlur = 44;
+    ctx.shadowColor = "rgba(216,189,112,0.42)";
+    ctx.fillStyle   = "rgba(216,189,112,0.12)";
+    canvasRoundRect(ctx, x - 12, y - 12, w + 24, h + 24, 28);
+    ctx.fill();
+    ctx.restore();
+
+    // 牌面（裁切圓角）
+    ctx.save();
+    canvasRoundRect(ctx, x, y, w, h, 18);
+    ctx.clip();
+    ctx.fillStyle = "#130b32";
+    ctx.fillRect(x, y, w, h);
+    if (img) {
+      ctx.drawImage(img, x, y, w, h);
+    } else {
+      ctx.font = "72px serif";
+      ctx.fillStyle = "rgba(216,189,112,0.5)";
+      ctx.textAlign = "center";
+      ctx.fillText("✦", x + w / 2, y + h / 2 + 24);
+    }
+    ctx.restore();
+
+    // 金色細框
+    ctx.save();
+    ctx.strokeStyle = "rgba(216,189,112,0.48)";
+    ctx.lineWidth = 2;
+    canvasRoundRect(ctx, x, y, w, h, 18);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // ── 牌名標籤（三欄）─────────────────────────────────────────────────────
+  const colCX = [
+    cardLayouts[0].x + SIDE_W / 2,
+    cardLayouts[1].x + CTR_W  / 2,
+    cardLayouts[2].x + SIDE_W / 2,
+  ];
+  const LABEL_TOP = 345 + SIDE_H + 20; // ~698
+
+  for (let i = 0; i < 3; i++) {
+    const card = spreadCards[i];
+    const pos  = card.position  ?? DEFAULT_POS[i] ?? "";
+    const name = card.nameZh   ?? card.name       ?? "";
+    const ori  = card.orientationLabel            ?? "";
+    const cx   = colCX[i];
+
+    ctx.textAlign = "center";
+
+    ctx.font      = "600 22px " + ff;
+    ctx.fillStyle = "rgba(216,189,112,0.75)";
+    ctx.fillText(pos, cx, LABEL_TOP);
+
+    ctx.font      = "700 28px " + ff;
+    ctx.fillStyle = MOON;
+    ctx.fillText(name, cx, LABEL_TOP + 36);
+
+    ctx.font      = "400 21px " + ff;
+    ctx.fillStyle = ori === "逆位"
+      ? "rgba(255,176,96,0.80)"
+      : "rgba(216,189,112,0.60)";
+    ctx.fillText(ori, cx, LABEL_TOP + 66);
+  }
+
+  // ── 主金句卡片（霧面玻璃面板）───────────────────────────────────────────
+  const PANEL_X = 88;
+  const PANEL_Y = 840;
+  const PANEL_W = W - 176;
+  const PANEL_H = 292;
+  const PANEL_R = 24;
+
+  ctx.save();
+  canvasRoundRect(ctx, PANEL_X, PANEL_Y, PANEL_W, PANEL_H, PANEL_R);
+  ctx.fillStyle = "rgba(5,7,29,0.76)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(216,189,112,0.30)";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.restore();
+
+  // ✦ 小裝飾
+  ctx.textAlign = "center";
+  ctx.font      = "20px serif";
+  ctx.fillStyle = "rgba(216,189,112,0.55)";
+  ctx.fillText("✦", W / 2, PANEL_Y + 36);
+
+  // 從整體答案萃取最佳金句（不重新呼叫 AI）
+  const rawAnswer = overallAnswer.replace(/\n+/g, " ").trim();
+  const sentences = rawAnswer.match(/[^。！？]+[。！？]/g) ?? [];
+  let quote = rawAnswer;
+  if (sentences.length > 0) {
+    const best = sentences.find((s) => s.trim().length >= 12 && s.trim().length <= 55);
+    quote = (best ?? sentences[0]!).trim();
+  }
+  if (quote.length > 55) quote = quote.slice(0, 53) + "…";
+
+  ctx.font      = "500 36px " + ff;
+  ctx.fillStyle = MOON;
+  const quoteLines = wrapCanvasText(ctx, quote, PANEL_W - 100);
+  const maxQ   = Math.min(quoteLines.length, 3);
+  const totalQH = (maxQ - 1) * 52 + 36;
+  const quoteStartY = PANEL_Y + Math.round((PANEL_H - totalQH) / 2) + 16;
+  quoteLines.slice(0, 3).forEach((line, i) => {
+    ctx.fillText(line, W / 2, quoteStartY + i * 52);
+  });
+
+  // ── 關鍵字 Chip ───────────────────────────────────────────────────────────
+  const CHIPS_Y = PANEL_Y + PANEL_H + 44; // ~1176
+  const chips = spreadCards.slice(0, 3).map((card) => {
+    const kws = card.orientation === "upright"
+      ? card.uprightKeywords
+      : card.reversedKeywords;
+    const kw = (kws?.[0] ?? card.keywords?.[0] ?? card.position ?? "宇宙") as string;
+    return kw.length > 6 ? kw.slice(0, 6) : kw;
+  });
+
+  const CHIP_PAD_X = 30;
+  const CHIP_H     = 52;
+  const CHIP_R     = 26;
+  const CHIP_GAP   = 20;
+  ctx.font = "500 24px " + ff;
+  const chipWidths = chips.map((c) => ctx.measureText(c).width + CHIP_PAD_X * 2);
+  const totalChipW = chipWidths.reduce((a, b) => a + b, 0) + CHIP_GAP * (chips.length - 1);
+  let chipX = Math.round((W - totalChipW) / 2);
+
+  chips.forEach((chip, i) => {
+    const cw = chipWidths[i];
+    ctx.save();
+    canvasRoundRect(ctx, chipX, CHIPS_Y, cw, CHIP_H, CHIP_R);
+    ctx.fillStyle   = "rgba(216,189,112,0.11)";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(216,189,112,0.44)";
+    ctx.lineWidth   = 1.5;
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.textAlign = "center";
+    ctx.font      = "500 24px " + ff;
+    ctx.fillStyle = GOLD;
+    ctx.fillText(chip, chipX + cw / 2, CHIPS_Y + CHIP_H / 2 + 9);
+
+    chipX += cw + CHIP_GAP;
+  });
+
+  // ── CTA ───────────────────────────────────────────────────────────────────
+  const CTA_Y = 1500;
   hLine(CTA_Y);
 
   ctx.textAlign = "center";
-  ctx.font = "700 44px " + ff;
+  ctx.font      = "700 46px " + ff;
   ctx.fillStyle = MOON;
-  ctx.shadowBlur = 16;
-  ctx.shadowColor = "rgba(216,189,112,0.26)";
-  ctx.fillText("來抄你的三張牌 ✨", W / 2, CTA_Y + 76);
+  ctx.shadowBlur = 18;
+  ctx.shadowColor = "rgba(216,189,112,0.28)";
+  ctx.fillText("來抽你的三張牌 ✨", W / 2, CTA_Y + 78);
   ctx.shadowBlur = 0;
 
-  ctx.font = "600 30px " + ff;
+  ctx.font      = "600 28px " + ff;
   ctx.fillStyle = GOLD;
-  ctx.fillText("Universe Whisper", W / 2, CTA_Y + 132);
+  ctx.fillText("Universe Whisper", W / 2, CTA_Y + 134);
 
-  ctx.font = "400 22px " + ff;
+  ctx.font      = "400 22px " + ff;
   ctx.fillStyle = FAINT;
   ctx.fillText(siteUrl.replace(/^https?:\/\//, ""), W / 2, CTA_Y + 180);
 
-  const vg = ctx.createLinearGradient(0, H - 160, 0, H);
+  // 底部漸層
+  const vg = ctx.createLinearGradient(0, H - 180, 0, H);
   vg.addColorStop(0, "rgba(5,7,29,0)");
-  vg.addColorStop(1, "rgba(5,7,29,0.60)");
+  vg.addColorStop(1, "rgba(5,7,29,0.55)");
   ctx.fillStyle = vg;
-  ctx.fillRect(0, H - 160, W, 160);
+  ctx.fillRect(0, H - 180, W, 180);
 
   return new Promise((resolve, reject) => {
     canvas.toBlob(
