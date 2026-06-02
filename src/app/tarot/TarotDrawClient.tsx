@@ -2494,15 +2494,20 @@ export function TarotDrawClient() {
     setThreeCardStoryModalOpen(false);
   }
 
-  // Modal 開啟時鎖住 body scroll，關閉後恢復
+  // Modal 開啟時鎖住 body scroll + ESC 關閉，關閉後恢復
   useEffect(() => {
-    if (threeCardStoryModalOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
+    if (!threeCardStoryModalOpen) {
       document.body.style.overflow = "";
+      return;
     }
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeThreeCardStoryModal();
+    };
+    document.addEventListener("keydown", onKey);
     return () => {
       document.body.style.overflow = "";
+      document.removeEventListener("keydown", onKey);
     };
   }, [threeCardStoryModalOpen]);
 
@@ -3134,63 +3139,65 @@ export function TarotDrawClient() {
 
       {/* 三張牌限動圖 Modal */}
       {threeCardStoryModalOpen ? (
+        /* ── Overlay：fixed 全螢幕，置中顯示 Panel ─────────────────────── */
         <div
-          className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/80 backdrop-blur-sm sm:items-center sm:px-4"
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.78)", backdropFilter: "blur(4px)", height: "100dvh", width: "100vw" }}
           onClick={closeThreeCardStoryModal}
         >
-          {/* Modal 卡片：手機版從底部升起，桌機置中；高度不超過視窗 */}
+          {/* ── Panel：flex-col，不整體捲動，操作區永遠可見 ─────────────── */}
           <div
-            className="relative flex w-full max-w-sm flex-col rounded-t-[1.75rem] border border-[#d8bd70]/24 bg-midnight shadow-glow sm:max-h-[92dvh] sm:rounded-[1.75rem]"
-            style={{ maxHeight: "92dvh" }}
+            className={[
+              "relative flex flex-col overflow-hidden",
+              "rounded-3xl border border-[rgba(216,189,112,0.22)] bg-[#0d0b2a]",
+              "shadow-[0_0_60px_rgba(0,0,0,0.6)]",
+              "w-[min(92vw,420px)] max-h-[92dvh]",
+              "sm:w-[min(92vw,560px)] sm:max-h-[92vh]",
+            ].join(" ")}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* ── Header（shrink-0，永遠可見）─────────────────────────────── */}
-            <div className="relative shrink-0 px-5 pb-0 pt-5">
+            {/* ── Header：標題 + X 關閉 ────────────────────────────────── */}
+            <div className="relative shrink-0 px-10 pb-2 pt-5 text-center">
+              <p className="m-0 text-[13px] tracking-[0.22em] text-[rgba(216,189,112,0.78)]">
+                你的三張牌限動圖
+              </p>
               <button
                 type="button"
                 onClick={closeThreeCardStoryModal}
-                className="absolute right-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-white/14 text-moon/50 transition hover:bg-white/10 hover:text-moon/80"
                 aria-label="關閉"
+                className="absolute right-3 top-3 z-20 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-[rgba(255,255,255,0.14)] bg-transparent text-sm text-[rgba(255,247,230,0.5)] transition hover:text-[rgba(255,247,230,0.8)]"
               >
                 ✕
               </button>
-              <p className="text-center text-sm tracking-[0.22em] text-[#d8bd70]/78">你的三張牌限動圖</p>
             </div>
 
-            {/* ── 預覽圖：高度限制，不讓它撐爆 Modal ─────────────────────── */}
-            <div className="mt-3 shrink-0 px-5">
-              <div className="mx-auto overflow-hidden rounded-2xl bg-midnight/60">
-                {threeCardStoryBlobUrl ? (
-                  <img
-                    src={threeCardStoryBlobUrl}
-                    alt="三張牌限動分享圖"
-                    className="mx-auto block rounded-2xl object-contain"
-                    style={{
-                      maxHeight: "52dvh",
-                      width: "auto",
-                      aspectRatio: "9 / 16",
-                    }}
-                  />
-                ) : null}
-              </div>
+            {/* ── 預覽圖：flex-1 撐滿剩餘高度，圖片 contain ───────────── */}
+            <div className="mx-5 mb-0 mt-2 flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-2xl bg-[rgba(13,11,42,0.6)]">
+              {threeCardStoryBlobUrl ? (
+                <img
+                  src={threeCardStoryBlobUrl}
+                  alt="三張牌限動分享圖"
+                  className="block aspect-[9/16] w-auto max-w-full rounded-2xl object-contain max-h-[55dvh] sm:max-h-[70vh] sm:w-[min(420px,80vw)]"
+                />
+              ) : null}
             </div>
 
-            {/* ── 操作區（shrink-0，黏在底部）──────────────────────────────── */}
-            <div className="shrink-0 px-5 pb-6 pt-4">
+            {/* ── 操作區：shrink-0，永遠固定在 Panel 底部 ─────────────── */}
+            <div className="shrink-0 flex flex-col gap-2 bg-[#0d0b2a] px-5 pb-5 pt-3">
               <button
                 type="button"
                 onClick={downloadThreeCardStoryImage}
-                className="w-full rounded-full bg-[#d8bd70] py-3 text-sm font-semibold text-midnight shadow-[0_0_20px_rgba(216,189,112,0.24)] transition hover:bg-moon active:scale-95"
+                className="w-full cursor-pointer rounded-full border-none bg-[#d8bd70] py-3 text-sm font-semibold text-[#0d0b2a] shadow-[0_0_20px_rgba(216,189,112,0.24)] transition hover:opacity-90 active:scale-95"
               >
                 下載限動圖
               </button>
-              <p className="mt-2 text-center text-xs leading-5 text-moon/40">
+              <p className="m-0 text-center text-xs leading-relaxed text-[rgba(255,247,230,0.38)]">
                 下載後可分享到 IG / FB / Threads 限動。
               </p>
               <button
                 type="button"
                 onClick={closeThreeCardStoryModal}
-                className="mt-2 w-full rounded-full border border-moon/20 py-2.5 text-sm text-moon/55 transition hover:bg-white/8"
+                className="w-full cursor-pointer rounded-full border border-[rgba(255,247,230,0.20)] bg-transparent py-2.5 text-sm text-[rgba(255,247,230,0.55)] transition hover:text-[rgba(255,247,230,0.8)]"
               >
                 關閉
               </button>
