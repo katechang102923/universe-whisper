@@ -1191,11 +1191,11 @@ async function generateThreeCardStoryImage(
     ctx.fillText(ori, cx, LABEL_TOP + 66);
   }
 
-  // ── 主金句卡片（霧面玻璃面板）───────────────────────────────────────────
+  // ── 主金句卡片（霧面玻璃面板，擴展為 2～3 行）───────────────────────────
   const PANEL_X = 88;
-  const PANEL_Y = 840;
+  const PANEL_Y = 832;
   const PANEL_W = W - 176;
-  const PANEL_H = 292;
+  const PANEL_H = 340;   // 擴大面板讓文字更完整
   const PANEL_R = 24;
 
   ctx.save();
@@ -1211,30 +1211,40 @@ async function generateThreeCardStoryImage(
   ctx.textAlign = "center";
   ctx.font      = "20px serif";
   ctx.fillStyle = "rgba(216,189,112,0.55)";
-  ctx.fillText("✦", W / 2, PANEL_Y + 36);
+  ctx.fillText("✦", W / 2, PANEL_Y + 34);
 
-  // 從整體答案萃取最佳金句（不重新呼叫 AI）
+  // 從整體答案組出 2～3 行文字（不重新呼叫 AI，優先取前兩句）
   const rawAnswer = overallAnswer.replace(/\n+/g, " ").trim();
   const sentences = rawAnswer.match(/[^。！？]+[。！？]/g) ?? [];
-  let quote = rawAnswer;
-  if (sentences.length > 0) {
-    const best = sentences.find((s) => s.trim().length >= 12 && s.trim().length <= 55);
-    quote = (best ?? sentences[0]!).trim();
+  let quote: string;
+  if (sentences.length >= 2) {
+    const s0 = sentences[0]!.trim();
+    const s1 = sentences[1]!.trim();
+    const combined = s0 + s1;
+    quote = combined.length <= 88 ? combined : s0;
+  } else if (sentences.length === 1) {
+    quote = sentences[0]!.trim();
+  } else {
+    quote = rawAnswer;
   }
-  if (quote.length > 55) quote = quote.slice(0, 53) + "…";
+  if (quote.length > 90) quote = quote.slice(0, 88) + "…";
 
-  ctx.font      = "500 36px " + ff;
+  ctx.font      = "500 34px " + ff;
   ctx.fillStyle = MOON;
-  const quoteLines = wrapCanvasText(ctx, quote, PANEL_W - 100);
-  const maxQ   = Math.min(quoteLines.length, 3);
-  const totalQH = (maxQ - 1) * 52 + 36;
-  const quoteStartY = PANEL_Y + Math.round((PANEL_H - totalQH) / 2) + 16;
-  quoteLines.slice(0, 3).forEach((line, i) => {
-    ctx.fillText(line, W / 2, quoteStartY + i * 52);
+  const quoteLines = wrapCanvasText(ctx, quote, PANEL_W - 96);
+  const maxQ      = Math.min(quoteLines.length, 4);
+  const LINE_H_Q  = 50;
+  const totalQH   = (maxQ - 1) * LINE_H_Q + 34;
+  // 留出頂部裝飾空間，然後垂直置中
+  const panelInnerTop = PANEL_Y + 52;
+  const panelInnerH   = PANEL_H - 62;
+  const quoteStartY   = panelInnerTop + Math.round((panelInnerH - totalQH) / 2) + 28;
+  quoteLines.slice(0, 4).forEach((line, i) => {
+    ctx.fillText(line, W / 2, quoteStartY + i * LINE_H_Q);
   });
 
-  // ── 關鍵字 Chip ───────────────────────────────────────────────────────────
-  const CHIPS_Y = PANEL_Y + PANEL_H + 44; // ~1176
+  // ── 關鍵字 Chip（微調間距）──────────────────────────────────────────────
+  const CHIPS_Y = PANEL_Y + PANEL_H + 38; // ~1210
   const chips = spreadCards.slice(0, 3).map((card) => {
     const kws = card.orientation === "upright"
       ? card.uprightKeywords
@@ -1244,10 +1254,10 @@ async function generateThreeCardStoryImage(
   });
 
   const CHIP_PAD_X = 30;
-  const CHIP_H     = 52;
-  const CHIP_R     = 26;
+  const CHIP_H     = 50;
+  const CHIP_R     = 25;
   const CHIP_GAP   = 20;
-  ctx.font = "500 24px " + ff;
+  ctx.font = "500 23px " + ff;
   const chipWidths = chips.map((c) => ctx.measureText(c).width + CHIP_PAD_X * 2);
   const totalChipW = chipWidths.reduce((a, b) => a + b, 0) + CHIP_GAP * (chips.length - 1);
   let chipX = Math.round((W - totalChipW) / 2);
@@ -1264,15 +1274,59 @@ async function generateThreeCardStoryImage(
     ctx.restore();
 
     ctx.textAlign = "center";
-    ctx.font      = "500 24px " + ff;
+    ctx.font      = "500 23px " + ff;
     ctx.fillStyle = GOLD;
-    ctx.fillText(chip, chipX + cw / 2, CHIPS_Y + CHIP_H / 2 + 9);
+    ctx.fillText(chip, chipX + cw / 2, CHIPS_Y + CHIP_H / 2 + 8);
 
     chipX += cw + CHIP_GAP;
   });
 
+  // ── 小型 LINE QR 導流區（右下角，不搶主視覺）───────────────────────────
+  const QR_SIZE   = 124;
+  const QR_PAD    = 8;          // QR 白底內縮邊距
+  const QR_BOX    = QR_SIZE + QR_PAD * 2;
+  const QR_X      = W - 80 - QR_BOX;  // 右邊對齊
+  const QR_Y      = 1310;
+  const QR_R      = 12;
+
+  try {
+    const { default: QRCode } = await import("qrcode");
+    const qrDataUrl = await QRCode.toDataURL("https://lin.ee/ObZxFcx", {
+      width: QR_SIZE,
+      margin: 1,
+      color: { dark: "#1a0e2e", light: "#fdf6e8" },
+    });
+    const qrImg = await loadImage(qrDataUrl);
+
+    // 圓角奶白底座
+    ctx.save();
+    canvasRoundRect(ctx, QR_X, QR_Y, QR_BOX, QR_BOX, QR_R);
+    ctx.fillStyle = "#fdf6e8";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(216,189,112,0.38)";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.restore();
+
+    // QR 圖片
+    ctx.drawImage(qrImg, QR_X + QR_PAD, QR_Y + QR_PAD, QR_SIZE, QR_SIZE);
+
+    // QR 下方文字
+    ctx.textAlign = "center";
+    const qrCX = QR_X + QR_BOX / 2;
+    ctx.font      = "600 19px " + ff;
+    ctx.fillStyle = "rgba(216,189,112,0.85)";
+    ctx.fillText("加入官方 LINE", qrCX, QR_Y + QR_BOX + 26);
+
+    ctx.font      = "400 16px " + ff;
+    ctx.fillStyle = "rgba(255,247,230,0.45)";
+    ctx.fillText("領取你的宇宙訊息", qrCX, QR_Y + QR_BOX + 48);
+  } catch {
+    /* QR 產生失敗時靜默跳過，不影響其他內容 */
+  }
+
   // ── CTA ───────────────────────────────────────────────────────────────────
-  const CTA_Y = 1500;
+  const CTA_Y = 1490;
   hLine(CTA_Y);
 
   ctx.textAlign = "center";
