@@ -110,8 +110,8 @@ export function TarotCardFace({ card, topic }: { card: TarotCardFaceData; topic:
   );
 }
 
-// ── 三張牌 compact 版（移除宇宙訊息長文，只顯示關鍵資訊）───────────────────────
-// 設計目標：使用者快速掃過三張牌，不在上方閱讀大量內容
+// ── 三張牌 compact 版（結構：圖片 → 位置/牌名/正逆位/關鍵字/摘要）────────────
+// 設計原則：牌圖在上、資訊在下、無任何頂部 header bar
 
 export function TarotCardFaceCompact({
   card,
@@ -146,9 +146,9 @@ export function TarotCardFaceCompact({
         isUpright ? "tarot-card-face-upright" : "tarot-card-face-reversed"
       }`}
     >
-      {/* ── 牌圖區（乾淨，無任何 overlay 標籤）──────────────────────────── */}
-      <div className="tarot-image-stage" style={{ padding: "14px 14px 12px" }}>
-        <div className="tarot-image-shell" style={{ width: "min(100%, 260px)" }}>
+      {/* ══ 1. 牌圖：最頂層，乾淨無任何文字 ══════════════════════════════════ */}
+      <div className="tarot-image-stage" style={{ padding: "16px 16px 14px" }}>
+        <div className="tarot-image-shell" style={{ width: "min(100%, 240px)" }}>
           <Image
             src={card.image}
             alt={`${card.name} 塔羅牌`}
@@ -163,45 +163,87 @@ export function TarotCardFaceCompact({
             onError={() => setImageFailed(true)}
           />
         </div>
-        <div className="pointer-events-none absolute inset-0 rounded-[28px] ring-1 ring-[#d8bd70]/45" />
+        <div className="pointer-events-none absolute inset-0 rounded-[28px] ring-1 ring-[#d8bd70]/35" />
       </div>
 
-      {/* ── 資訊區：位置 → 牌名 + 正逆位 → 關鍵字 → 摘要 ─────────────────── */}
-      <div className="px-4 pb-4 pt-3">
+      {/* ══ 2. 牌圖下方資訊：位置 → 牌名 → 正逆位 → 關鍵字 → 摘要 ══════════ */}
+      <div className="px-4 pb-5 pt-3.5">
 
-        {/* 位置標籤（淡金色小字，含第幾張） */}
-        <p className="mb-1.5 text-xs tracking-[0.18em] text-[#d8bd70]/70">
-          {card.position
-            ? `第 ${cardIndex + 1} 張｜${card.position}`
-            : `第 ${cardIndex + 1} 張`}
+        {/* 第 N 張｜位置 — 淡金色小字，在牌名之上 */}
+        <p
+          style={{
+            fontSize: 11,
+            letterSpacing: "0.16em",
+            color: "rgba(216,189,112,0.65)",
+            marginBottom: 6,
+            marginTop: 0,
+          }}
+        >
+          {card.position ? `第 ${cardIndex + 1} 張｜${card.position}` : `第 ${cardIndex + 1} 張`}
         </p>
 
-        {/* 牌名 + 正逆位 badge */}
-        <div className="flex items-center gap-2">
-          <h3 className="text-xl font-semibold leading-tight text-moon sm:text-2xl">
+        {/* 牌名（大字） + 正逆位 badge（右側） */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <h3
+            style={{
+              fontSize: 22,
+              fontWeight: 700,
+              color: "rgba(255,247,230,0.96)",
+              lineHeight: 1.2,
+              margin: 0,
+            }}
+          >
             {card.name}
           </h3>
           <span
-            className={`shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-medium ${
-              isUpright
-                ? "border-aurora/40 bg-aurora/12 text-aurora"
-                : "border-lavender/44 bg-lavender/14 text-lavender"
-            }`}
+            style={{
+              flexShrink: 0,
+              borderRadius: 9999,
+              border: isUpright
+                ? "1px solid rgba(142,240,221,0.40)"
+                : "1px solid rgba(203,184,255,0.44)",
+              background: isUpright
+                ? "rgba(142,240,221,0.10)"
+                : "rgba(203,184,255,0.10)",
+              color: isUpright ? "rgb(142,240,221)" : "rgb(203,184,255)",
+              fontSize: 11,
+              fontWeight: 500,
+              padding: "2px 10px",
+            }}
           >
             {card.orientationLabel}
           </span>
         </div>
 
-        {/* 3 個關鍵字 */}
+        {/* 關鍵字 */}
         {kw.length > 0 && (
-          <p className="mt-2 text-sm leading-5 text-lavender/75">
+          <p
+            style={{
+              marginTop: 8,
+              fontSize: 13,
+              lineHeight: 1.5,
+              color: "rgba(203,184,255,0.70)",
+              letterSpacing: "0.04em",
+            }}
+          >
             {kw.join("・")}
           </p>
         )}
 
         {/* 一句話摘要 */}
         {shortMsg && (
-          <p className="mt-2.5 rounded-xl border border-white/8 bg-midnight/40 px-3 py-2 text-sm leading-6 text-moon/72">
+          <p
+            style={{
+              marginTop: 10,
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.08)",
+              background: "rgba(7,11,30,0.45)",
+              padding: "8px 12px",
+              fontSize: 13,
+              lineHeight: 1.7,
+              color: "rgba(255,247,230,0.70)",
+            }}
+          >
             {shortMsg}
           </p>
         )}
