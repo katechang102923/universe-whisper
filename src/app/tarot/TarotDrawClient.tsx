@@ -1229,12 +1229,12 @@ async function generateThreeCardStoryImage(
   }
   if (quote.length > 90) quote = quote.slice(0, 88) + "…";
 
-  ctx.font      = "500 34px " + ff;
+  ctx.font      = "500 38px " + ff;   // 放大一級（34→38px）
   ctx.fillStyle = MOON;
   const quoteLines = wrapCanvasText(ctx, quote, PANEL_W - 96);
   const maxQ      = Math.min(quoteLines.length, 4);
-  const LINE_H_Q  = 50;
-  const totalQH   = (maxQ - 1) * LINE_H_Q + 34;
+  const LINE_H_Q  = 56;               // 行距一起調整（50→56px）
+  const totalQH   = (maxQ - 1) * LINE_H_Q + 38;
   // 留出頂部裝飾空間，然後垂直置中
   const panelInnerTop = PANEL_Y + 52;
   const panelInnerH   = PANEL_H - 62;
@@ -1243,7 +1243,7 @@ async function generateThreeCardStoryImage(
     ctx.fillText(line, W / 2, quoteStartY + i * LINE_H_Q);
   });
 
-  // ── 關鍵字 Chip（微調間距）──────────────────────────────────────────────
+  // ── 關鍵字 Chip ───────────────────────────────────────────────────────────
   const CHIPS_Y = PANEL_Y + PANEL_H + 38; // ~1210
   const chips = spreadCards.slice(0, 3).map((card) => {
     const kws = card.orientation === "upright"
@@ -1281,52 +1281,26 @@ async function generateThreeCardStoryImage(
     chipX += cw + CHIP_GAP;
   });
 
-  // ── 小型 LINE QR 導流區（右下角，不搶主視覺）───────────────────────────
-  const QR_SIZE   = 124;
-  const QR_PAD    = 8;          // QR 白底內縮邊距
-  const QR_BOX    = QR_SIZE + QR_PAD * 2;
-  const QR_X      = W - 80 - QR_BOX;  // 右邊對齊
-  const QR_Y      = 1310;
-  const QR_R      = 12;
+  // ── 心靈收束短句（標籤列下方，不重新呼叫 AI）────────────────────────────
+  const CLOSING_LINES = [
+    "先別急著逼自己決定，答案會在你慢下來之後更清楚。",
+    "有些路不是不能走，而是要先學會不再勉強自己。",
+    "當你願意停下來整理內心，下一步就會比現在更清晰。",
+    "不是沒有答案，只是現在還不是最好的時間點。",
+    "讓自己呼吸一下，宇宙的訊息會在你準備好時更清楚。",
+  ];
+  // 根據答案內容決定性地選一句（同樣答案永遠選同一句）
+  const closingIdx  = rawAnswer.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) % CLOSING_LINES.length;
+  const closingLine = CLOSING_LINES[closingIdx]!;
 
-  try {
-    const { default: QRCode } = await import("qrcode");
-    const qrDataUrl = await QRCode.toDataURL("https://lin.ee/ObZxFcx", {
-      width: QR_SIZE,
-      margin: 1,
-      color: { dark: "#1a0e2e", light: "#fdf6e8" },
-    });
-    const qrImg = await loadImage(qrDataUrl);
-
-    // 圓角奶白底座
-    ctx.save();
-    canvasRoundRect(ctx, QR_X, QR_Y, QR_BOX, QR_BOX, QR_R);
-    ctx.fillStyle = "#fdf6e8";
-    ctx.fill();
-    ctx.strokeStyle = "rgba(216,189,112,0.38)";
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    ctx.restore();
-
-    // QR 圖片
-    ctx.drawImage(qrImg, QR_X + QR_PAD, QR_Y + QR_PAD, QR_SIZE, QR_SIZE);
-
-    // QR 下方文字
-    ctx.textAlign = "center";
-    const qrCX = QR_X + QR_BOX / 2;
-    ctx.font      = "600 19px " + ff;
-    ctx.fillStyle = "rgba(216,189,112,0.85)";
-    ctx.fillText("加入官方 LINE", qrCX, QR_Y + QR_BOX + 26);
-
-    ctx.font      = "400 16px " + ff;
-    ctx.fillStyle = "rgba(255,247,230,0.45)";
-    ctx.fillText("領取你的宇宙訊息", qrCX, QR_Y + QR_BOX + 48);
-  } catch {
-    /* QR 產生失敗時靜默跳過，不影響其他內容 */
-  }
+  const CLOSING_Y = CHIPS_Y + CHIP_H + 44; // ~1304
+  ctx.textAlign = "center";
+  ctx.font      = "400 24px " + ff;
+  ctx.fillStyle = "rgba(255,247,230,0.52)";
+  ctx.fillText(closingLine, W / 2, CLOSING_Y);
 
   // ── CTA ───────────────────────────────────────────────────────────────────
-  const CTA_Y = 1490;
+  const CTA_Y = 1440;
   hLine(CTA_Y);
 
   ctx.textAlign = "center";
@@ -1344,6 +1318,50 @@ async function generateThreeCardStoryImage(
   ctx.font      = "400 22px " + ff;
   ctx.fillStyle = FAINT;
   ctx.fillText(siteUrl.replace(/^https?:\/\//, ""), W / 2, CTA_Y + 180);
+
+  // ── 小型 LINE QR（底部 CTA 右下角，靠近城堡，不壓主文）─────────────────
+  const QR_SIZE   = 104;
+  const QR_PAD    = 7;
+  const QR_BOX    = QR_SIZE + QR_PAD * 2;
+  const QR_X      = W - 64 - QR_BOX;      // 右對齊
+  const QR_Y      = CTA_Y + 36;           // 與 CTA 區並排，不壓到網址
+  const QR_R      = 10;
+
+  try {
+    const { default: QRCode } = await import("qrcode");
+    const qrDataUrl = await QRCode.toDataURL("https://lin.ee/ObZxFcx", {
+      width: QR_SIZE,
+      margin: 1,
+      color: { dark: "#1a0e2e", light: "#fdf6e8" },
+    });
+    const qrImg = await loadImage(qrDataUrl);
+
+    // 圓角奶白底座
+    ctx.save();
+    canvasRoundRect(ctx, QR_X, QR_Y, QR_BOX, QR_BOX, QR_R);
+    ctx.fillStyle   = "#fdf6e8";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(216,189,112,0.36)";
+    ctx.lineWidth   = 1.5;
+    ctx.stroke();
+    ctx.restore();
+
+    // QR 圖片
+    ctx.drawImage(qrImg, QR_X + QR_PAD, QR_Y + QR_PAD, QR_SIZE, QR_SIZE);
+
+    // QR 下方小字
+    ctx.textAlign = "center";
+    const qrCX = QR_X + QR_BOX / 2;
+    ctx.font      = "600 17px " + ff;
+    ctx.fillStyle = "rgba(216,189,112,0.82)";
+    ctx.fillText("加入官方 LINE", qrCX, QR_Y + QR_BOX + 22);
+
+    ctx.font      = "400 14px " + ff;
+    ctx.fillStyle = "rgba(255,247,230,0.40)";
+    ctx.fillText("領取你的宇宙訊息", qrCX, QR_Y + QR_BOX + 42);
+  } catch {
+    /* QR 產生失敗時靜默跳過 */
+  }
 
   // 底部漸層
   const vg = ctx.createLinearGradient(0, H - 180, 0, H);
