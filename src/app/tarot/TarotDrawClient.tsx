@@ -3139,71 +3139,172 @@ export function TarotDrawClient() {
 
       {/* 三張牌限動圖 Modal */}
       {threeCardStoryModalOpen ? (
-        /* ── Overlay：fixed 全螢幕，置中顯示 Panel ─────────────────────── */
-        <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
-          style={{ background: "rgba(0,0,0,0.78)", backdropFilter: "blur(4px)", height: "100dvh", width: "100vw" }}
-          onClick={closeThreeCardStoryModal}
-        >
-          {/* ── Panel：flex-col，不整體捲動，操作區永遠可見 ─────────────── */}
+        <>
+          {/* responsive override: mobile preview max-height */}
+          <style>{`
+            @media (max-width: 639px) {
+              .three-card-modal-img { max-height: 58dvh !important; }
+            }
+          `}</style>
+
+          {/* Overlay */}
           <div
-            className={[
-              "relative flex flex-col overflow-hidden",
-              "rounded-3xl border border-[rgba(216,189,112,0.22)] bg-[#0d0b2a]",
-              "shadow-[0_0_60px_rgba(0,0,0,0.6)]",
-              "w-[min(92vw,420px)] max-h-[92dvh]",
-              "sm:w-[min(92vw,560px)] sm:max-h-[92vh]",
-            ].join(" ")}
-            onClick={(e) => e.stopPropagation()}
+            onClick={closeThreeCardStoryModal}
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 9999,
+              width: "100vw",
+              height: "100dvh",
+              background: "rgba(0,0,0,0.75)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "16px",
+              boxSizing: "border-box",
+            }}
           >
-            {/* ── Header：標題 + X 關閉 ────────────────────────────────── */}
-            <div className="relative shrink-0 px-10 pb-2 pt-5 text-center">
-              <p className="m-0 text-[13px] tracking-[0.22em] text-[rgba(216,189,112,0.78)]">
-                你的三張牌限動圖
-              </p>
+            {/* Panel */}
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                position: "relative",
+                zIndex: 10000,
+                width: "min(92vw, 520px)",
+                maxHeight: "92dvh",
+                overflowY: "auto",
+                borderRadius: "24px",
+                border: "1px solid rgba(216,189,112,0.22)",
+                background: "#0d0b2a",
+                boxShadow: "0 0 60px rgba(0,0,0,0.6)",
+                WebkitOverflowScrolling: "touch",
+              }}
+            >
+              {/* X 關閉 */}
               <button
                 type="button"
                 onClick={closeThreeCardStoryModal}
                 aria-label="關閉"
-                className="absolute right-3 top-3 z-20 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-[rgba(255,255,255,0.14)] bg-transparent text-sm text-[rgba(255,247,230,0.5)] transition hover:text-[rgba(255,247,230,0.8)]"
+                style={{
+                  position: "absolute",
+                  top: 12,
+                  right: 12,
+                  zIndex: 20,
+                  width: 32,
+                  height: 32,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: "50%",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "transparent",
+                  color: "rgba(255,247,230,0.55)",
+                  cursor: "pointer",
+                  fontSize: 14,
+                  padding: 0,
+                }}
               >
                 ✕
               </button>
-            </div>
 
-            {/* ── 預覽圖：flex-1 撐滿剩餘高度，圖片 contain ───────────── */}
-            <div className="mx-5 mb-0 mt-2 flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-2xl bg-[rgba(13,11,42,0.6)]">
-              {threeCardStoryBlobUrl ? (
-                <img
-                  src={threeCardStoryBlobUrl}
-                  alt="三張牌限動分享圖"
-                  className="block aspect-[9/16] w-auto max-w-full rounded-2xl object-contain max-h-[55dvh] sm:max-h-[70vh] sm:w-[min(420px,80vw)]"
-                />
-              ) : null}
-            </div>
-
-            {/* ── 操作區：shrink-0，永遠固定在 Panel 底部 ─────────────── */}
-            <div className="shrink-0 flex flex-col gap-2 bg-[#0d0b2a] px-5 pb-5 pt-3">
-              <button
-                type="button"
-                onClick={downloadThreeCardStoryImage}
-                className="w-full cursor-pointer rounded-full border-none bg-[#d8bd70] py-3 text-sm font-semibold text-[#0d0b2a] shadow-[0_0_20px_rgba(216,189,112,0.24)] transition hover:opacity-90 active:scale-95"
+              {/* 標題 */}
+              <p
+                style={{
+                  textAlign: "center",
+                  fontSize: 13,
+                  letterSpacing: "0.22em",
+                  color: "rgba(216,189,112,0.78)",
+                  paddingTop: 20,
+                  paddingBottom: 0,
+                  margin: 0,
+                }}
               >
-                下載限動圖
-              </button>
-              <p className="m-0 text-center text-xs leading-relaxed text-[rgba(255,247,230,0.38)]">
-                下載後可分享到 IG / FB / Threads 限動。
+                你的三張牌限動圖
               </p>
-              <button
-                type="button"
-                onClick={closeThreeCardStoryModal}
-                className="w-full cursor-pointer rounded-full border border-[rgba(255,247,230,0.20)] bg-transparent py-2.5 text-sm text-[rgba(255,247,230,0.55)] transition hover:text-[rgba(255,247,230,0.8)]"
+
+              {/* 預覽圖 */}
+              <div
+                style={{
+                  margin: "12px 20px 0",
+                  overflow: "hidden",
+                  borderRadius: 16,
+                  background: "rgba(13,11,42,0.6)",
+                }}
               >
-                關閉
-              </button>
+                {threeCardStoryBlobUrl ? (
+                  <img
+                    src={threeCardStoryBlobUrl}
+                    alt="三張牌限動分享圖"
+                    className="three-card-modal-img"
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      maxHeight: "70dvh",
+                      objectFit: "contain",
+                      borderRadius: 16,
+                    }}
+                  />
+                ) : null}
+              </div>
+
+              {/* 操作區 */}
+              <div
+                style={{
+                  padding: "16px 20px 24px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 10,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={downloadThreeCardStoryImage}
+                  style={{
+                    width: "100%",
+                    borderRadius: 9999,
+                    background: "#d8bd70",
+                    padding: "12px 0",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: "#0d0b2a",
+                    border: "none",
+                    cursor: "pointer",
+                    boxShadow: "0 0 20px rgba(216,189,112,0.24)",
+                  }}
+                >
+                  下載限動圖
+                </button>
+                <p
+                  style={{
+                    textAlign: "center",
+                    fontSize: 12,
+                    color: "rgba(255,247,230,0.38)",
+                    margin: 0,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  下載後可分享到 IG / FB / Threads 限動。
+                </p>
+                <button
+                  type="button"
+                  onClick={closeThreeCardStoryModal}
+                  style={{
+                    width: "100%",
+                    borderRadius: 9999,
+                    border: "1px solid rgba(255,247,230,0.20)",
+                    background: "transparent",
+                    padding: "10px 0",
+                    fontSize: 14,
+                    color: "rgba(255,247,230,0.55)",
+                    cursor: "pointer",
+                  }}
+                >
+                  關閉
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </>
       ) : null}
     </div>
   );
