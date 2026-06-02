@@ -2882,7 +2882,7 @@ export function TarotDrawClient() {
           onClick={closeThreeCardStoryModal}
         >
           <div
-            className="relative flex max-h-[92dvh] w-full max-w-sm flex-col overflow-hidden rounded-[1.75rem] border border-[#d8bd70]/24 bg-midnight p-5 shadow-glow"
+            className="relative w-full max-w-[340px] rounded-[1.75rem] border border-[#d8bd70]/24 bg-midnight p-5 shadow-glow"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -2891,16 +2891,18 @@ export function TarotDrawClient() {
               className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full border border-white/14 text-moon/50 transition hover:bg-white/10 hover:text-moon/80"
               aria-label="關閉"
             >
-              ×
+              ✕
             </button>
-            <p className="mb-3 text-center text-sm tracking-[0.22em] text-[#d8bd70]/78">你的三張牌限動圖</p>
-            <div className="flex-1 overflow-y-auto rounded-2xl bg-midnight/60">
+            <p className="mb-4 text-center text-sm tracking-[0.22em] text-[#d8bd70]/78">你的三張牌限動圖</p>
+            <div
+              className="mx-auto overflow-hidden rounded-2xl bg-midnight/60"
+              style={{ width: "100%", aspectRatio: "9 / 16" }}
+            >
               {threeCardStoryBlobUrl ? (
                 <img
                   src={threeCardStoryBlobUrl}
                   alt="三張牌限動分享圖"
-                  className="w-full rounded-2xl object-contain"
-                  style={{ aspectRatio: "9/16" }}
+                  className="h-full w-full object-cover"
                 />
               ) : null}
             </div>
@@ -2913,7 +2915,7 @@ export function TarotDrawClient() {
                 下載限動圖
               </button>
               <p className="text-center text-xs leading-6 text-moon/45">
-                下載後可以分享到 IG / FB / Threads 限動，讓朋友也來抄一組宇宙訊息。
+                下載後可以分享到 IG / FB / Threads 限動，讓朋友也來抽一組宇宙訊息。
               </p>
               <p className="text-center text-xs text-moon/30">
                 手機可下載後分享到 IG / FB / Threads 限動。
