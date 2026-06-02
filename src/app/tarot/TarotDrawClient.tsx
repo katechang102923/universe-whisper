@@ -1008,6 +1008,180 @@ async function generateStoryImage(
   });
 }
 
+
+// ── 三張牌限動分享圖（9:16，1080x1920）─────────────────────────────────────────
+
+async function generateThreeCardStoryImage(
+  questionText: string,
+  spreadCards: TarotCardFaceData[],
+  cardInsights: string[],
+  overallAnswer: string,
+  siteUrl: string,
+): Promise<Blob> {
+  const W = 1080;
+  const H = 1920;
+  const PAD = 72;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas is unavailable.");
+
+  const ff = "'PingFang TC', 'Microsoft JhengHei', 'Noto Sans TC', sans-serif";
+  const GOLD  = "#d8bd70";
+  const MOON  = "rgba(255,247,230,0.92)";
+  const DIM   = "rgba(255,247,230,0.64)";
+  const FAINT = "rgba(255,247,230,0.36)";
+
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+  bgGrad.addColorStop(0,    "#05071d");
+  bgGrad.addColorStop(0.45, "#0d0b2a");
+  bgGrad.addColorStop(1,    "#1a0e2e");
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+  try {
+    const bgImg = await loadImage("/reference/story-bg.png");
+    ctx.globalAlpha = 0.7;
+    ctx.drawImage(bgImg, 0, 0, W, H);
+    ctx.globalAlpha = 1;
+  } catch { /* gradient fallback */ }
+
+  const starDefs = [
+    { x: 88, y: 88, sz: 22, a: 0.55 }, { x: W - 108, y: 118, sz: 18, a: 0.40 },
+    { x: 84, y: H - 210, sz: 20, a: 0.45 }, { x: W - 96, y: H - 240, sz: 16, a: 0.38 },
+  ];
+  for (const s of starDefs) {
+    ctx.font = s.sz + "px serif";
+    ctx.fillStyle = "rgba(216,189,112," + s.a + ")";
+    ctx.textAlign = "left";
+    ctx.fillText("✦", s.x, s.y + s.sz);
+  }
+
+  const hLine = (y: number, alpha = 0.20) => {
+    ctx.strokeStyle = "rgba(216,189,112," + alpha + ")";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(PAD, y);
+    ctx.lineTo(W - PAD, y);
+    ctx.stroke();
+  };
+
+  // Header
+  ctx.textAlign = "center";
+  ctx.font = "600 26px " + ff;
+  ctx.fillStyle = "rgba(216,189,112,0.78)";
+  ctx.fillText("UNIVERSE WHISPER", W / 2, 106);
+
+  ctx.font = "700 68px " + ff;
+  ctx.fillStyle = GOLD;
+  ctx.shadowBlur = 22;
+  ctx.shadowColor = "rgba(216,189,112,0.34)";
+  ctx.fillText("我抄到的宇宙訊息", W / 2, 186);
+  ctx.shadowBlur = 0;
+
+  hLine(222);
+
+  // Question
+  ctx.font = "400 26px " + ff;
+  ctx.fillStyle = "rgba(216,189,112,0.68)";
+  ctx.fillText("我的問題", W / 2, 264);
+
+  const qText = questionText.length > 40 ? questionText.slice(0, 38) + "…" : questionText;
+  ctx.font = "400 32px " + ff;
+  ctx.fillStyle = DIM;
+  const qLines = wrapCanvasText(ctx, qText, W - PAD * 2 - 16);
+  qLines.slice(0, 2).forEach((l: string, i: number) => ctx.fillText(l, W / 2, 308 + i * 46));
+
+  hLine(390);
+
+  // Three card blocks
+  const DEFAULT_POS_LABELS = ["過去", "現在", "未來"];
+  const CARD_START = 412;
+  const CARD_BLOCK = 296;
+
+  spreadCards.slice(0, 3).forEach((card: TarotCardFaceData, i: number) => {
+    const by   = CARD_START + i * CARD_BLOCK;
+    const pos  = card.position ?? DEFAULT_POS_LABELS[i] ?? "";
+    const name = card.nameZh ?? card.name ?? "";
+    const ori  = card.orientationLabel ?? "";
+    const tip  = cardInsights[i] || "";
+
+    ctx.textAlign = "left";
+    ctx.font = "600 26px " + ff;
+    ctx.fillStyle = GOLD;
+    ctx.fillText("第 " + (i + 1) + " 張｜" + pos, PAD, by + 36);
+
+    ctx.font = "700 44px " + ff;
+    ctx.fillStyle = MOON;
+    ctx.fillText(name + "（" + ori + "）", PAD, by + 92);
+
+    if (tip) {
+      ctx.font = "400 30px " + ff;
+      ctx.fillStyle = DIM;
+      const tipLines = wrapCanvasText(ctx, tip, W - PAD * 2);
+      tipLines.slice(0, 2).forEach((l: string, li: number) =>
+        ctx.fillText(l, PAD, by + 144 + li * 42)
+      );
+    }
+
+    if (i < 2) hLine(by + CARD_BLOCK - 4, 0.13);
+  });
+
+  // Overall answer
+  const SUMMARY_Y = CARD_START + 3 * CARD_BLOCK + 16;
+  hLine(SUMMARY_Y);
+
+  ctx.textAlign = "center";
+  ctx.font = "600 27px " + ff;
+  ctx.fillStyle = "rgba(216,189,112,0.72)";
+  ctx.fillText("✨ 整體答案", W / 2, SUMMARY_Y + 52);
+
+  const ansText = overallAnswer.length > 80 ? overallAnswer.slice(0, 78) + "…" : overallAnswer;
+  ctx.font = "400 32px " + ff;
+  ctx.fillStyle = DIM;
+  const ansLines = wrapCanvasText(ctx, ansText, W - PAD * 2 - 16);
+  ansLines.slice(0, 4).forEach((l: string, i: number) =>
+    ctx.fillText(l, W / 2, SUMMARY_Y + 104 + i * 48)
+  );
+
+  // CTA
+  const CTA_Y = Math.max(SUMMARY_Y + 104 + Math.min(ansLines.length, 4) * 48 + 60, 1640);
+  hLine(CTA_Y);
+
+  ctx.textAlign = "center";
+  ctx.font = "700 44px " + ff;
+  ctx.fillStyle = MOON;
+  ctx.shadowBlur = 16;
+  ctx.shadowColor = "rgba(216,189,112,0.26)";
+  ctx.fillText("來抄你的三張牌 ✨", W / 2, CTA_Y + 76);
+  ctx.shadowBlur = 0;
+
+  ctx.font = "600 30px " + ff;
+  ctx.fillStyle = GOLD;
+  ctx.fillText("Universe Whisper", W / 2, CTA_Y + 132);
+
+  ctx.font = "400 22px " + ff;
+  ctx.fillStyle = FAINT;
+  ctx.fillText(siteUrl.replace(/^https?:\/\//, ""), W / 2, CTA_Y + 180);
+
+  const vg = ctx.createLinearGradient(0, H - 160, 0, H);
+  vg.addColorStop(0, "rgba(5,7,29,0)");
+  vg.addColorStop(1, "rgba(5,7,29,0.60)");
+  ctx.fillStyle = vg;
+  ctx.fillRect(0, H - 160, W, 160);
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("Three-card story image generation failed."));
+      },
+      "image/png",
+    );
+  });
+}
+
 // ?????????????????????????????????????????????????????????????????????????????
 // Main component
 // ?????????????????????????????????????????????????????????????????????????????
@@ -1275,6 +1449,13 @@ export function TarotDrawClient() {
     "idle" | "working" | "done" | "error"
   >("idle");
   const [storyError, setStoryError] = useState("");
+  // 三張牌限動圖狀態
+  const [threeCardStoryStatus, setThreeCardStoryStatus] = useState<
+    "idle" | "working" | "done" | "error"
+  >("idle");
+  const [threeCardStoryError, setThreeCardStoryError] = useState("");
+  const [threeCardStoryBlobUrl, setThreeCardStoryBlobUrl] = useState("");
+  const [threeCardStoryModalOpen, setThreeCardStoryModalOpen] = useState(false);
   // 最近一次付費結果（從 localStorage 載入；付費完成後存入）
   const [lastPaidResult, setLastPaidResult] = useState<LastPaidResult | null>(null);
   const [isRestoredResult, setIsRestoredResult] = useState(false);
@@ -1300,6 +1481,40 @@ export function TarotDrawClient() {
   );
   const siteUrl =
     process.env.NEXT_PUBLIC_SITE_URL || "https://universe-whisper.vercel.app";
+
+  // ── 三張牌限動圖用：每張牌精簡提示（最多 36 字）─────────────────────────────
+  const threeCardInsights = useMemo(() => {
+    if (!fullReading || cards.length < 3) {
+      return cards.slice(0, 3).map((c) => {
+        const msg = c.cosmicMessage || "";
+        const m = msg.match(/^[\s\S]*?[。！？]/);
+        const s = (m ? m[0] : msg).trim().replace(/\n+/g, " ");
+        return s.length > 36 ? s.slice(0, 34) + "…" : s;
+      });
+    }
+    const s = parseThreeCardSections(fullReading);
+    return [s.card1, s.card2, s.card3].map((section, idx) => {
+      const sub = parseCardSubsections(section.body);
+      const raw = (sub.core || sub.question || sub.rawContent || cards[idx]?.cosmicMessage || "")
+        .replace(/\n+/g, " ").trim();
+      const m = raw.match(/^[\s\S]*?[。！？]/);
+      const sentence = (m ? m[0] : raw).trim();
+      return sentence.length > 36 ? sentence.slice(0, 34) + "…" : sentence;
+    });
+  }, [cards, fullReading]);
+
+  // ── 三張牌限動圖用：整體答案（最多 80 字）───────────────────────────────────
+  const threeCardOverallAnswer = useMemo(() => {
+    if (!fullReading || cards.length < 3) {
+      const msg = freeSummary.message || "";
+      return msg.length > 80 ? msg.slice(0, 78) + "…" : msg;
+    }
+    const s = parseThreeCardSections(fullReading);
+    const parsed = parseOverallSummary(s.overallSummary);
+    const raw = (parsed.verdict || parsed.raw || freeSummary.message || "")
+      .replace(/\n+/g, " ").trim();
+    return raw.length > 80 ? raw.slice(0, 78) + "…" : raw;
+  }, [cards, fullReading, freeSummary]);
 
   // Cleanup timers
   useEffect(() => {
@@ -1414,6 +1629,11 @@ export function TarotDrawClient() {
     setLineClaimError("");
     setStoryDownloadStatus("idle");
     setStoryError("");
+    // 三張牌限動圖：清除 blob URL 並重置狀態
+    setThreeCardStoryBlobUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return ""; });
+    setThreeCardStoryStatus("idle");
+    setThreeCardStoryError("");
+    setThreeCardStoryModalOpen(false);
   }
 
   // ??? API helpers ??????????????????????????????????????????????????????????
@@ -2038,6 +2258,54 @@ export function TarotDrawClient() {
     }
   }
 
+  // -- 三張牌限動圖 handlers -------------------------------------------------
+
+  async function openThreeCardStoryModal() {
+    if (threeCardStoryStatus === "working") return;
+    setThreeCardStoryError("");
+
+    // 已產生過則直接開 modal
+    if (threeCardStoryBlobUrl && threeCardStoryStatus === "done") {
+      setThreeCardStoryModalOpen(true);
+      return;
+    }
+
+    setThreeCardStoryStatus("working");
+    try {
+      const qText = question.trim() || "你把問題放在心裡，宇宙也有聽見。";
+      const blob = await generateThreeCardStoryImage(
+        qText,
+        cards,
+        threeCardInsights,
+        threeCardOverallAnswer,
+        siteUrl,
+      );
+      const url = URL.createObjectURL(blob);
+      setThreeCardStoryBlobUrl(url);
+      setThreeCardStoryStatus("done");
+      setThreeCardStoryModalOpen(true);
+    } catch (err) {
+      console.error("[three-card-story] Canvas generation failed", err);
+      setThreeCardStoryError(err instanceof Error ? err.message : String(err));
+      setThreeCardStoryStatus("error");
+    }
+  }
+
+  function closeThreeCardStoryModal() {
+    setThreeCardStoryModalOpen(false);
+  }
+
+  function downloadThreeCardStoryImage() {
+    if (!threeCardStoryBlobUrl) return;
+    const link = document.createElement("a");
+    link.href = threeCardStoryBlobUrl;
+    link.download = "universe-whisper-three-card.png";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+
   // ??? Mode / topic helpers ?????????????????????????????????????????????????
 
   function handleModeChange(nextMode: (typeof modes)[number]["key"]) {
@@ -2369,6 +2637,25 @@ export function TarotDrawClient() {
             </div>
           ) : null}
 
+          {/* 三張牌限動圖產生按鈕（cards revealed + three-card mode）*/}
+          {!isSingleResult && cards.length === 3 ? (
+            <div className="cosmic-reading-card rounded-[1.75rem] border border-[#d8bd70]/20 bg-midnight/50 p-5 shadow-glow sm:p-6 text-center">
+              <p className="text-sm tracking-[0.22em] text-[#d8bd70]/70 mb-3">你的三張牌限動圖</p>
+              <button
+                type="button"
+                onClick={() => void openThreeCardStoryModal()}
+                disabled={threeCardStoryStatus === "working"}
+                className="rounded-full bg-[#d8bd70] px-6 py-3 text-sm font-semibold text-midnight shadow-[0_0_20px_rgba(216,189,112,0.24)] transition hover:bg-moon active:scale-95 disabled:cursor-wait disabled:opacity-70"
+              >
+                {threeCardStoryStatus === "working" ? "正在產生圖片..." : "產生限動圖"}
+              </button>
+              {threeCardStoryStatus === "error" ? (
+                <p className="mt-2 text-xs text-[#ffb4b4]">{threeCardStoryError || "圖片產生失敗，請稍後再試。"}</p>
+              ) : null}
+              <p className="mt-2 text-xs text-moon/40">9:16 直式圖，適合 IG / FB / Threads 限動分享。</p>
+            </div>
+          ) : null}
+
           {/* 2a. Three-card locked: 每張牌名 + 短解 + freeSummary — NO fullReading content */}
           {!isSingleResult && !hasFullAccess ? (
             <div className="cosmic-reading-card rounded-[1.75rem] border border-lavender/20 bg-midnight/58 p-5 shadow-glow sm:p-6">
@@ -2588,6 +2875,61 @@ export function TarotDrawClient() {
         </section>
       ) : null}
 
+      {/* 三張牌限動圖 Modal */}
+      {threeCardStoryModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm"
+          onClick={closeThreeCardStoryModal}
+        >
+          <div
+            className="relative flex max-h-[92dvh] w-full max-w-sm flex-col overflow-hidden rounded-[1.75rem] border border-[#d8bd70]/24 bg-midnight p-5 shadow-glow"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={closeThreeCardStoryModal}
+              className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full border border-white/14 text-moon/50 transition hover:bg-white/10 hover:text-moon/80"
+              aria-label="關閉"
+            >
+              ×
+            </button>
+            <p className="mb-3 text-center text-sm tracking-[0.22em] text-[#d8bd70]/78">你的三張牌限動圖</p>
+            <div className="flex-1 overflow-y-auto rounded-2xl bg-midnight/60">
+              {threeCardStoryBlobUrl ? (
+                <img
+                  src={threeCardStoryBlobUrl}
+                  alt="三張牌限動分享圖"
+                  className="w-full rounded-2xl object-contain"
+                  style={{ aspectRatio: "9/16" }}
+                />
+              ) : null}
+            </div>
+            <div className="mt-4 flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={downloadThreeCardStoryImage}
+                className="w-full rounded-full bg-[#d8bd70] py-3 text-sm font-semibold text-midnight shadow-[0_0_20px_rgba(216,189,112,0.24)] transition hover:bg-moon active:scale-95"
+              >
+                下載限動圖
+              </button>
+              <p className="text-center text-xs leading-6 text-moon/45">
+                下載後可以分享到 IG / FB / Threads 限動，讓朋友也來抄一組宇宙訊息。
+              </p>
+              <p className="text-center text-xs text-moon/30">
+                手機可下載後分享到 IG / FB / Threads 限動。
+              </p>
+              <button
+                type="button"
+                onClick={closeThreeCardStoryModal}
+                className="rounded-full border border-moon/20 py-2.5 text-sm text-moon/55 transition hover:bg-white/8"
+              >
+                關閉
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {/* ?? Payment modal ?? */}
       {paymentModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-5 backdrop-blur-sm">
@@ -2629,6 +2971,61 @@ export function TarotDrawClient() {
               <a href="mailto:ciut0000@gmail.com" className="underline underline-offset-2 hover:text-moon/70">客服信箱</a>
               ，確認後協助補發或退款。
             </p>
+          </div>
+        </div>
+      ) : null}
+
+      {/* 三張牌限動圖 Modal */}
+      {threeCardStoryModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm"
+          onClick={closeThreeCardStoryModal}
+        >
+          <div
+            className="relative flex max-h-[92dvh] w-full max-w-sm flex-col overflow-hidden rounded-[1.75rem] border border-[#d8bd70]/24 bg-midnight p-5 shadow-glow"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={closeThreeCardStoryModal}
+              className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full border border-white/14 text-moon/50 transition hover:bg-white/10 hover:text-moon/80"
+              aria-label="éé"
+            >
+              Ã
+            </button>
+            <p className="mb-3 text-center text-sm tracking-[0.22em] text-[#d8bd70]/78">ä½ çä¸å¼µçéåå</p>
+            <div className="flex-1 overflow-y-auto rounded-2xl bg-midnight/60">
+              {threeCardStoryBlobUrl ? (
+                <img
+                  src={threeCardStoryBlobUrl}
+                  alt="ä¸å¼µçéååäº«å"
+                  className="w-full rounded-2xl object-contain"
+                  style={{ aspectRatio: "9/16" }}
+                />
+              ) : null}
+            </div>
+            <div className="mt-4 flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={downloadThreeCardStoryImage}
+                className="w-full rounded-full bg-[#d8bd70] py-3 text-sm font-semibold text-midnight shadow-[0_0_20px_rgba(216,189,112,0.24)] transition hover:bg-moon active:scale-95"
+              >
+                ä¸è¼éåå
+              </button>
+              <p className="text-center text-xs leading-6 text-moon/45">
+                ä¸è¼å¾å¯ä»¥åäº«å° IG / FB / Threads éåï¼è®æåä¹ä¾æ½ä¸çµå®å®è¨æ¯ã
+              </p>
+              <p className="text-center text-xs text-moon/30">
+                ææ©å¯ä¸è¼å¾åäº«å° IG / FB / Threads éåã
+              </p>
+              <button
+                type="button"
+                onClick={closeThreeCardStoryModal}
+                className="rounded-full border border-moon/20 py-2.5 text-sm text-moon/55 transition hover:bg-white/8"
+              >
+                éé
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
