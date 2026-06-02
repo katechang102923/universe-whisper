@@ -146,7 +146,32 @@ export function TarotCardFaceCompact({
         isUpright ? "tarot-card-face-upright" : "tarot-card-face-reversed"
       }`}
     >
-      {/* 牌圖區（與完整版相同，保持比例） */}
+      {/* ── Card Header：第 N 張 ｜ 位置  ＋  正逆位 ─────────────────────── */}
+      <div className="flex items-center justify-between gap-2 px-3 pb-2 pt-3 sm:px-4">
+        {/* 左側：第 N 張 膠囊 + 位置名稱 */}
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="shrink-0 rounded-full border border-[#d8bd70]/50 bg-[#d8bd70]/10 px-2.5 py-0.5 text-xs font-semibold tracking-wide text-[#d8bd70]">
+            第 {cardIndex + 1} 張
+          </span>
+          {card.position && (
+            <span className="truncate text-sm text-moon/60">
+              {card.position}
+            </span>
+          )}
+        </div>
+        {/* 右側：正逆位 badge */}
+        <span
+          className={`shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-medium ${
+            isUpright
+              ? "border-aurora/40 bg-aurora/12 text-aurora"
+              : "border-lavender/44 bg-lavender/14 text-lavender"
+          }`}
+        >
+          {card.orientationLabel}
+        </span>
+      </div>
+
+      {/* ── 牌圖區（不再有 absolute 標籤覆蓋）──────────────────────────── */}
       <div className="tarot-image-stage">
         <div className="tarot-image-shell">
           <Image
@@ -164,36 +189,14 @@ export function TarotCardFaceCompact({
           />
         </div>
         <div className="pointer-events-none absolute inset-0 rounded-[28px] ring-1 ring-[#d8bd70]/45" />
-        {/* 位置標籤：放大、明顯 */}
-        <div className="absolute left-3 top-3 flex flex-col gap-1.5">
-          <span className="rounded-full border border-[#d8bd70]/50 bg-midnight/80 px-2.5 py-0.5 text-xs font-semibold tracking-wide text-[#d8bd70] backdrop-blur">
-            第 {cardIndex + 1} 張
-          </span>
-          {card.position && (
-            <span className="rounded-full border border-white/25 bg-midnight/80 px-2.5 py-0.5 text-xs tracking-wide text-moon/90 backdrop-blur">
-              {card.position}
-            </span>
-          )}
-        </div>
       </div>
 
-      {/* 資訊區（精簡）*/}
+      {/* ── 資訊區（牌名 + 關鍵字 + 摘要）────────────────────────────────── */}
       <div className="border-t border-white/10 p-3 sm:p-4">
-        {/* 牌名 + 正逆位 */}
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="text-xl font-semibold leading-tight text-moon sm:text-2xl">
-            {card.name}
-          </h3>
-          <span
-            className={`shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-medium ${
-              isUpright
-                ? "border-aurora/40 bg-aurora/12 text-aurora"
-                : "border-lavender/44 bg-lavender/14 text-lavender"
-            }`}
-          >
-            {card.orientationLabel}
-          </span>
-        </div>
+        {/* 牌名 */}
+        <h3 className="text-xl font-semibold leading-tight text-moon sm:text-2xl">
+          {card.name}
+        </h3>
 
         {/* 3 個關鍵字 */}
         {kw.length > 0 && (
@@ -202,7 +205,7 @@ export function TarotCardFaceCompact({
           </p>
         )}
 
-        {/* 一句話摘要（取代長宇宙訊息） */}
+        {/* 一句話摘要 */}
         {shortMsg && (
           <p className="mt-2.5 rounded-xl border border-white/8 bg-midnight/40 px-3 py-2 text-sm leading-6 text-moon/76">
             {shortMsg}
