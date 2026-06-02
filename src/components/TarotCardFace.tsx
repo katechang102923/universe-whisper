@@ -146,34 +146,9 @@ export function TarotCardFaceCompact({
         isUpright ? "tarot-card-face-upright" : "tarot-card-face-reversed"
       }`}
     >
-      {/* ── Card Header：第 N 張 ｜ 位置  ＋  正逆位 ─────────────────────── */}
-      <div className="flex items-center justify-between gap-2 px-3 pb-2 pt-3 sm:px-4">
-        {/* 左側：第 N 張 膠囊 + 位置名稱 */}
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span className="shrink-0 rounded-full border border-[#d8bd70]/50 bg-[#d8bd70]/10 px-2.5 py-0.5 text-xs font-semibold tracking-wide text-[#d8bd70]">
-            第 {cardIndex + 1} 張
-          </span>
-          {card.position && (
-            <span className="truncate text-sm text-moon/60">
-              {card.position}
-            </span>
-          )}
-        </div>
-        {/* 右側：正逆位 badge */}
-        <span
-          className={`shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-medium ${
-            isUpright
-              ? "border-aurora/40 bg-aurora/12 text-aurora"
-              : "border-lavender/44 bg-lavender/14 text-lavender"
-          }`}
-        >
-          {card.orientationLabel}
-        </span>
-      </div>
-
-      {/* ── 牌圖區（不再有 absolute 標籤覆蓋）──────────────────────────── */}
-      <div className="tarot-image-stage">
-        <div className="tarot-image-shell">
+      {/* ── 牌圖區（乾淨，無任何 overlay 標籤）──────────────────────────── */}
+      <div className="tarot-image-stage" style={{ padding: "14px 14px 12px" }}>
+        <div className="tarot-image-shell" style={{ width: "min(100%, 260px)" }}>
           <Image
             src={card.image}
             alt={`${card.name} 塔羅牌`}
@@ -191,23 +166,42 @@ export function TarotCardFaceCompact({
         <div className="pointer-events-none absolute inset-0 rounded-[28px] ring-1 ring-[#d8bd70]/45" />
       </div>
 
-      {/* ── 資訊區（牌名 + 關鍵字 + 摘要）────────────────────────────────── */}
-      <div className="border-t border-white/10 p-3 sm:p-4">
-        {/* 牌名 */}
-        <h3 className="text-xl font-semibold leading-tight text-moon sm:text-2xl">
-          {card.name}
-        </h3>
+      {/* ── 資訊區：位置 → 牌名 + 正逆位 → 關鍵字 → 摘要 ─────────────────── */}
+      <div className="px-4 pb-4 pt-3">
+
+        {/* 位置標籤（淡金色小字，含第幾張） */}
+        <p className="mb-1.5 text-xs tracking-[0.18em] text-[#d8bd70]/70">
+          {card.position
+            ? `第 ${cardIndex + 1} 張｜${card.position}`
+            : `第 ${cardIndex + 1} 張`}
+        </p>
+
+        {/* 牌名 + 正逆位 badge */}
+        <div className="flex items-center gap-2">
+          <h3 className="text-xl font-semibold leading-tight text-moon sm:text-2xl">
+            {card.name}
+          </h3>
+          <span
+            className={`shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-medium ${
+              isUpright
+                ? "border-aurora/40 bg-aurora/12 text-aurora"
+                : "border-lavender/44 bg-lavender/14 text-lavender"
+            }`}
+          >
+            {card.orientationLabel}
+          </span>
+        </div>
 
         {/* 3 個關鍵字 */}
         {kw.length > 0 && (
-          <p className="mt-2 text-sm leading-5 text-lavender/80">
+          <p className="mt-2 text-sm leading-5 text-lavender/75">
             {kw.join("・")}
           </p>
         )}
 
         {/* 一句話摘要 */}
         {shortMsg && (
-          <p className="mt-2.5 rounded-xl border border-white/8 bg-midnight/40 px-3 py-2 text-sm leading-6 text-moon/76">
+          <p className="mt-2.5 rounded-xl border border-white/8 bg-midnight/40 px-3 py-2 text-sm leading-6 text-moon/72">
             {shortMsg}
           </p>
         )}
