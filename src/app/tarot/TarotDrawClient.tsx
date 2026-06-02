@@ -2991,16 +2991,16 @@ export function TarotDrawClient() {
               type="button"
               onClick={closeThreeCardStoryModal}
               className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full border border-white/14 text-moon/50 transition hover:bg-white/10 hover:text-moon/80"
-              aria-label="éé"
+              aria-label="關閉"
             >
-              Ã
+              ✕
             </button>
-            <p className="mb-3 text-center text-sm tracking-[0.22em] text-[#d8bd70]/78">ä½ çä¸å¼µçéåå</p>
+            <p className="mb-3 text-center text-sm tracking-[0.22em] text-[#d8bd70]/78">你的三張牌限動圖</p>
             <div className="flex-1 overflow-y-auto rounded-2xl bg-midnight/60">
               {threeCardStoryBlobUrl ? (
                 <img
                   src={threeCardStoryBlobUrl}
-                  alt="ä¸å¼µçéååäº«å"
+                  alt="三張牌限動分享圖"
                   className="w-full rounded-2xl object-contain"
                   style={{ aspectRatio: "9/16" }}
                 />
@@ -3012,20 +3012,20 @@ export function TarotDrawClient() {
                 onClick={downloadThreeCardStoryImage}
                 className="w-full rounded-full bg-[#d8bd70] py-3 text-sm font-semibold text-midnight shadow-[0_0_20px_rgba(216,189,112,0.24)] transition hover:bg-moon active:scale-95"
               >
-                ä¸è¼éåå
+                下載限動圖
               </button>
               <p className="text-center text-xs leading-6 text-moon/45">
-                ä¸è¼å¾å¯ä»¥åäº«å° IG / FB / Threads éåï¼è®æåä¹ä¾æ½ä¸çµå®å®è¨æ¯ã
+                下載後可以分享到 IG / FB / Threads 限動，讓朋友也來抽一組宇宙訊息。
               </p>
               <p className="text-center text-xs text-moon/30">
-                ææ©å¯ä¸è¼å¾åäº«å° IG / FB / Threads éåã
+                手機可下載後分享到 IG / FB / Threads 限動。
               </p>
               <button
                 type="button"
                 onClick={closeThreeCardStoryModal}
                 className="rounded-full border border-moon/20 py-2.5 text-sm text-moon/55 transition hover:bg-white/8"
               >
-                éé
+                關閉
               </button>
             </div>
           </div>
