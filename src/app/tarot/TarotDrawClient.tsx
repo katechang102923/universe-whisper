@@ -2494,6 +2494,18 @@ export function TarotDrawClient() {
     setThreeCardStoryModalOpen(false);
   }
 
+  // Modal 開啟時鎖住 body scroll，關閉後恢復
+  useEffect(() => {
+    if (threeCardStoryModalOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [threeCardStoryModalOpen]);
+
   function downloadThreeCardStoryImage() {
     if (!threeCardStoryBlobUrl) return;
     const link = document.createElement("a");
@@ -3074,62 +3086,6 @@ export function TarotDrawClient() {
         </section>
       ) : null}
 
-      {/* 三張牌限動圖 Modal */}
-      {threeCardStoryModalOpen ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm"
-          onClick={closeThreeCardStoryModal}
-        >
-          <div
-            className="relative w-full max-w-[340px] rounded-[1.75rem] border border-[#d8bd70]/24 bg-midnight p-5 shadow-glow"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              onClick={closeThreeCardStoryModal}
-              className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full border border-white/14 text-moon/50 transition hover:bg-white/10 hover:text-moon/80"
-              aria-label="關閉"
-            >
-              ✕
-            </button>
-            <p className="mb-4 text-center text-sm tracking-[0.22em] text-[#d8bd70]/78">你的三張牌限動圖</p>
-            <div
-              className="mx-auto overflow-hidden rounded-2xl bg-midnight/60"
-              style={{ width: "100%", aspectRatio: "9 / 16" }}
-            >
-              {threeCardStoryBlobUrl ? (
-                <img
-                  src={threeCardStoryBlobUrl}
-                  alt="三張牌限動分享圖"
-                  className="h-full w-full object-cover"
-                />
-              ) : null}
-            </div>
-            <div className="mt-4 flex flex-col gap-3">
-              <button
-                type="button"
-                onClick={downloadThreeCardStoryImage}
-                className="w-full rounded-full bg-[#d8bd70] py-3 text-sm font-semibold text-midnight shadow-[0_0_20px_rgba(216,189,112,0.24)] transition hover:bg-moon active:scale-95"
-              >
-                下載限動圖
-              </button>
-              <p className="text-center text-xs leading-6 text-moon/45">
-                下載後可以分享到 IG / FB / Threads 限動，讓朋友也來抽一組宇宙訊息。
-              </p>
-              <p className="text-center text-xs text-moon/30">
-                手機可下載後分享到 IG / FB / Threads 限動。
-              </p>
-              <button
-                type="button"
-                onClick={closeThreeCardStoryModal}
-                className="rounded-full border border-moon/20 py-2.5 text-sm text-moon/55 transition hover:bg-white/8"
-              >
-                關閉
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
 
       {/* ?? Payment modal ?? */}
       {paymentModalOpen ? (
@@ -3179,33 +3135,48 @@ export function TarotDrawClient() {
       {/* 三張牌限動圖 Modal */}
       {threeCardStoryModalOpen ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/80 backdrop-blur-sm sm:items-center sm:px-4"
           onClick={closeThreeCardStoryModal}
         >
+          {/* Modal 卡片：手機版從底部升起，桌機置中；高度不超過視窗 */}
           <div
-            className="relative flex max-h-[92dvh] w-full max-w-sm flex-col overflow-hidden rounded-[1.75rem] border border-[#d8bd70]/24 bg-midnight p-5 shadow-glow"
+            className="relative flex w-full max-w-sm flex-col rounded-t-[1.75rem] border border-[#d8bd70]/24 bg-midnight shadow-glow sm:max-h-[92dvh] sm:rounded-[1.75rem]"
+            style={{ maxHeight: "92dvh" }}
             onClick={(e) => e.stopPropagation()}
           >
-            <button
-              type="button"
-              onClick={closeThreeCardStoryModal}
-              className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full border border-white/14 text-moon/50 transition hover:bg-white/10 hover:text-moon/80"
-              aria-label="關閉"
-            >
-              ✕
-            </button>
-            <p className="mb-3 text-center text-sm tracking-[0.22em] text-[#d8bd70]/78">你的三張牌限動圖</p>
-            <div className="flex-1 overflow-y-auto rounded-2xl bg-midnight/60">
-              {threeCardStoryBlobUrl ? (
-                <img
-                  src={threeCardStoryBlobUrl}
-                  alt="三張牌限動分享圖"
-                  className="w-full rounded-2xl object-contain"
-                  style={{ aspectRatio: "9/16" }}
-                />
-              ) : null}
+            {/* ── Header（shrink-0，永遠可見）─────────────────────────────── */}
+            <div className="relative shrink-0 px-5 pb-0 pt-5">
+              <button
+                type="button"
+                onClick={closeThreeCardStoryModal}
+                className="absolute right-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-white/14 text-moon/50 transition hover:bg-white/10 hover:text-moon/80"
+                aria-label="關閉"
+              >
+                ✕
+              </button>
+              <p className="text-center text-sm tracking-[0.22em] text-[#d8bd70]/78">你的三張牌限動圖</p>
             </div>
-            <div className="mt-4 flex flex-col gap-3">
+
+            {/* ── 預覽圖：高度限制，不讓它撐爆 Modal ─────────────────────── */}
+            <div className="mt-3 shrink-0 px-5">
+              <div className="mx-auto overflow-hidden rounded-2xl bg-midnight/60">
+                {threeCardStoryBlobUrl ? (
+                  <img
+                    src={threeCardStoryBlobUrl}
+                    alt="三張牌限動分享圖"
+                    className="mx-auto block rounded-2xl object-contain"
+                    style={{
+                      maxHeight: "52dvh",
+                      width: "auto",
+                      aspectRatio: "9 / 16",
+                    }}
+                  />
+                ) : null}
+              </div>
+            </div>
+
+            {/* ── 操作區（shrink-0，黏在底部）──────────────────────────────── */}
+            <div className="shrink-0 px-5 pb-6 pt-4">
               <button
                 type="button"
                 onClick={downloadThreeCardStoryImage}
@@ -3213,16 +3184,13 @@ export function TarotDrawClient() {
               >
                 下載限動圖
               </button>
-              <p className="text-center text-xs leading-6 text-moon/45">
-                下載後可以分享到 IG / FB / Threads 限動，讓朋友也來抽一組宇宙訊息。
-              </p>
-              <p className="text-center text-xs text-moon/30">
-                手機可下載後分享到 IG / FB / Threads 限動。
+              <p className="mt-2 text-center text-xs leading-5 text-moon/40">
+                下載後可分享到 IG / FB / Threads 限動。
               </p>
               <button
                 type="button"
                 onClick={closeThreeCardStoryModal}
-                className="rounded-full border border-moon/20 py-2.5 text-sm text-moon/55 transition hover:bg-white/8"
+                className="mt-2 w-full rounded-full border border-moon/20 py-2.5 text-sm text-moon/55 transition hover:bg-white/8"
               >
                 關閉
               </button>
