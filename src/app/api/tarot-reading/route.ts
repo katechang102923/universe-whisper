@@ -179,11 +179,31 @@ function normalizeCards(cards: unknown): TarotReadingCard[] | null {
 // 問題焦點偵測
 // ═════════════════════════════════════════════════════════════════════════════
 
+// ── 投資理財問題專用關鍵字（細分判斷）────────────────────────────────────────
+const INVESTMENT_KEYWORDS = [
+  "台股", "美股", "大盤", "股市", "股票還", "指數",
+  "0050", "00878", "00940", "00948", "00929", "00919",
+  "還會漲", "還會跌", "會漲嗎", "會跌嗎", "繼續漲", "繼續跌",
+  "波段", "進場", "出場", "停損", "停利", "多頭", "空頭",
+  "籌碼", "技術線", "支撐", "壓力", "回檔", "反彈",
+  "加碼", "減碼", "持倉", "空手", "定期定額",
+];
+
+/** 判斷是否為投資/股市問題（finance 的子類別，需要市場導向解讀） */
+function isInvestmentQuestion(question: string): boolean {
+  if (!question) return false;
+  return INVESTMENT_KEYWORDS.some((k) => question.includes(k));
+}
+
 const FOCUS_KEYWORDS: Record<Exclude<QuestionFocusPrimary, "general">, string[]> = {
   finance: [
     "財運", "金錢", "收入", "支出", "投資", "股票", "ETF", "基金",
     "薪水", "加薪", "獎金", "副業", "兼職", "理財", "存款", "現金流",
     "貸款", "房貸", "賺錢", "偏財", "財務", "錢", "財",
+    // 投資理財細項
+    "台股", "美股", "大盤", "股市", "0050", "00878", "00940", "00948",
+    "波段", "進場", "出場", "停損", "停利", "多頭", "空頭", "籌碼",
+    "還會漲", "還會跌", "會漲嗎", "會跌嗎", "繼續漲", "繼續跌",
   ],
   career: [
     "工作", "職場", "離職", "轉職", "升遷", "主管", "老闆", "同事",
@@ -235,9 +255,33 @@ function getTopicLabel(topic: TarotReadingTopic): string {
 
 // ── 主題聚焦指令 ──────────────────────────────────────────────────────────────
 
-function getTopicGuidance(topic: TarotReadingTopic, focus: QuestionFocus): string {
+function getTopicGuidance(topic: TarotReadingTopic, focus: QuestionFocus, question = ""): string {
   switch (focus.primary) {
     case "finance":
+      // ── 投資/股市問題：使用市場導向解讀 ───────────────────────────────────
+      if (isInvestmentQuestion(question)) {
+        return `【投資理財強制聚焦 — 最高優先】
+使用者問的是投資/股市問題，請用「市場直觀解讀」，不要用「心靈療癒」。
+
+解讀框架（每張牌都必須套用）：
+1. 市場情緒：這張牌代表市場情緒是樂觀、恐慌、猶豫還是轉折？
+2. 風險訊號：正位牌偏向機會，逆位牌偏向警示、風險或需等待。
+3. 操作建議：給一個具體建議（觀察、減碼、持倉、等待訊號、設停損等）。
+
+overallSummary 必須直接回答使用者問題（例：台股還會繼續漲嗎？）：
+✓ 「目前市場情緒還沒完全穩定，短線有波動風險，建議先不要加碼，等訊號更明確再決定。」
+✓ 「這組牌顯示市場正在修復期，短線仍有機會，但需控制倉位，避免單押。」
+
+絕對禁止出現以下內容（整個解讀不得出現）：
+✗ 放下執著　✗ 核心課題　✗ 內在成長　✗ 靈魂功課　✗ 宇宙安排
+✗ 整理自己　✗ 先把心收回來　✗ 你需要好好休息　✗ 身心能量
+✗ 你現在的狀態　✗ 內在轉變　✗ 放慢腳步
+
+提醒文字（這張牌提醒你）必須是操作層面提醒，例如：
+✓ 「這段時間先觀察量能變化，等大盤突破壓力再考慮加碼。」
+✓ 「逆位出現代表操作上需要謹慎，先確認停損位置再進場。」`;
+      }
+      // ── 一般財運問題 ───────────────────────────────────────────────────────
       return `【財運強制聚焦】至少 70% 內容圍繞：收入狀態、支出壓力、理財方向、投資機會/風險、現金流、財務瓶頸。
 第一個回應欄位必須直接說明近期財運走向，不可用「宇宙照顧你」「你值得被愛」取代財務分析。`;
     case "career":
@@ -758,9 +802,12 @@ function getFallbackNext3To7Days(focus: QuestionFocus): string {
   }
 }
 
-function getFallbackGentleReminder(focus: QuestionFocus): string {
+function getFallbackGentleReminder(focus: QuestionFocus, question = ""): string {
   switch (focus.primary) {
     case "finance":
+      if (isInvestmentQuestion(question)) {
+        return `投資市場的波動是常態，沒有人能每次都在最低點買、最高點賣。這段時間重要的是：不要讓情緒推動你的操作決定，先設好停損點，讓紀律保護你。`;
+      }
       return `這段時間先讓錢的流向變清楚，比急著賺更多重要。當你開始知道錢去哪裡，財務才會慢慢穩下來。財務問題很少需要大動作才能改善，有時候從一件小事開始整理，反而最有效。`;
     case "career":
       return `你不需要今晚就把所有未來想清楚。先看清楚目前手上能掌握的資源，再決定下一步要往哪裡走。工作上的卡關，常常是現在的位置和你真正想要的還有一段距離——知道這件事，就已經開始在改變了。`;
@@ -775,9 +822,13 @@ function getFallbackGentleReminder(focus: QuestionFocus): string {
   }
 }
 
-function getFallbackBlessing(focus: QuestionFocus): string {
+function getFallbackBlessing(focus: QuestionFocus, question = ""): string {
   switch (focus.primary) {
-    case "finance":      return `願你的每一份收入與支出，都慢慢走向安穩與自由。`;
+    case "finance":
+      if (isInvestmentQuestion(question)) {
+        return `願你的每一筆操作都有紀律，賺的時候不貪，虧的時候不慌。`;
+      }
+      return `願你的每一份收入與支出，都慢慢走向安穩與自由。`;
     case "career":       return `願你的努力被看見，也願你有勇氣選擇真正適合自己的路。`;
     case "love":         return `願你喜歡的人，不只讓你心動，也能讓你安心。`;
     case "relationship": return `願你在面對複雜的關係時，也能記得：你值得被清楚、被溫柔地對待。`;
@@ -863,8 +914,8 @@ function buildSingleCardFallback(
     questionAnswer,
     oneLineConclusion: getFallbackConclusion(focus),
     todayAction:       getFallbackTodayAction(focus),
-    gentleReminder:    getFallbackGentleReminder(focus),
-    blessing:          getFallbackBlessing(focus),
+    gentleReminder:    getFallbackGentleReminder(focus, question),
+    blessing:          getFallbackBlessing(focus, question),
     safetyNote:        getHealthSafetyNote(focus),
   });
 }
@@ -899,10 +950,31 @@ function getFallbackFocusMessage(focus: QuestionFocus, isUpright: boolean): stri
 function getCardReminderByIndex(
   card: TarotReadingCard,
   posIndex: number,
-  focus: QuestionFocus
+  focus: QuestionFocus,
+  question = ""
 ): string {
   const up = card.position === "upright";
   const f  = focus.primary;
+
+  // ── 投資/股市問題：優先走市場導向提醒 ──────────────────────────────────────
+  if (f === "finance" && isInvestmentQuestion(question)) {
+    const investReminders: Array<[string, string]> = [
+      [
+        `${card.name}正位在過去位置，說明這段時間市場有過一波上漲動能。提醒你：這個漲勢的基礎是否還在，是判斷接下來能否續漲的關鍵，先確認基本面有沒有變化。`,
+        `${card.name}逆位在過去，代表市場之前出現過明顯壓力或修正。提醒你：如果你在高點進場，先確認停損位置，不要讓帳面損失擴大才行動。`,
+      ],
+      [
+        `${card.name}正位在目前，市場情緒偏穩，有支撐。提醒你：可以維持現有持倉，但先不要追高加碼，設好停利點，讓獲利有機會跑出來。`,
+        `${card.name}逆位在目前，市場有不確定性，資金偏向觀望。提醒你：這個時間點先不要倉促進場，等待成交量回升、方向確認後再決定操作方向。`,
+      ],
+      [
+        `${card.name}正位在未來，接下來有繼續走升的可能。提醒你：可以小幅布局，但控制倉位在總資金的三到五成，留一部分現金應對短線波動。`,
+        `${card.name}逆位在未來，接下來仍有修正壓力。提醒你：先以守為主，不要在下跌趨勢中逢低攤平，等趨勢轉向再考慮重新進場。`,
+      ],
+    ];
+    const [u, r] = investReminders[posIndex] ?? investReminders[1]!;
+    return up ? u : r;
+  }
 
   // ── 愛情 ────────────────────────────────────────────────────────────────────
   if (f === "love") {
@@ -986,6 +1058,22 @@ function getCardQuestionAnswerByIndex(
   const up = card.position === "upright";
   const f  = focus.primary;
   const qPrefix = question ? `你問的是「${question}」。` : "";
+
+  // ── 投資/股市問題：市場導向 Q&A ─────────────────────────────────────────────
+  if (f === "finance" && isInvestmentQuestion(question)) {
+    const byPos = [
+      up
+        ? `${qPrefix}${card.name}正位在過去位置，代表這段行情過去有過明確的上漲動能或正向資金流入。這說明市場的基礎不是憑空而來，有一定支撐在。`
+        : `${qPrefix}${card.name}逆位在過去，代表市場之前已有過壓力期或修正訊號。過去的走勢讓目前的反彈動能受限，回升需要更多時間確認。`,
+      up
+        ? `${qPrefix}目前市場情緒偏穩，${card.name}正位說明這個時間點有支撐、不容易急跌。但「有支撐」不等於一定繼續漲，需要等量能放大才能確認突破。`
+        : `${qPrefix}目前${card.name}逆位出現，代表市場情緒猶豫或有下跌壓力，資金在觀望。這個時間點進場風險偏高，先等方向確認。`,
+      up
+        ? `${qPrefix}接下來${card.name}正位指出市場有機會繼續走升，短線仍有向上動能。可以考慮保留或小幅布局，但要設好停損，避免波段高點被套。`
+        : `${qPrefix}接下來${card.name}逆位指出仍有修正壓力，操作上不建議追漲或加碼。等到逆勢訊號消失、量能回穩後再評估是否重新進場。`,
+    ];
+    return byPos[posIndex] ?? byPos[1]!;
+  }
 
   if (f === "love") {
     if (posIndex === 0) return up
@@ -1110,7 +1198,7 @@ function deduplicateCardMessages(
     if (isDup) {
       const raw = rawCards[i];
       if (raw) {
-        const newReminder = getCardReminderByIndex(raw, i, focus);
+        const newReminder = getCardReminderByIndex(raw, i, focus, question);
         msg = replaceCardReminder(msg, newReminder);
         // 更新 reminders 陣列讓後續比較用新值
         reminders[i] = newReminder;
@@ -1177,7 +1265,7 @@ function buildThreeCardFallback(
     // 三小段格式：牌面重點 / 對你的問題代表 / 這張牌提醒你
     // 「對你的問題代表」與「這張牌提醒你」都依位置 × topic × 正逆位動態產生
     const questionAnswerText = getCardQuestionAnswerByIndex(card, i, focus, question);
-    const reminderText       = getCardReminderByIndex(card, i, focus);
+    const reminderText       = getCardReminderByIndex(card, i, focus, question);
     // 牌面重點只留一句，不含牌名/正逆位/關鍵字/前綴（前台已有標題顯示這些資訊）
     const msg = [
       `牌面重點：`,
@@ -1211,29 +1299,36 @@ function buildThreeCardFallback(
     spreadType:      "three",
     category:        focusLabel,
     questionFocus:   question ? `你的問題是「${question}」，以下是這三張牌從三個面向給你的完整解讀。` : "你把問題放在心裡，這三張牌從不同面向回應了此刻的狀況。",
-    overallSummary:  getFallbackOverallSummary(focus, cardNamesStr, cards),
+    overallSummary:  getFallbackOverallSummary(focus, cardNamesStr, cards, question),
     cards:           cardEntries as [ThreeCardEntry, ThreeCardEntry, ThreeCardEntry],
     combinedReading,
     actionSteps,
     next3To7Days:    actionStepsText,
-    gentleReminder:  getFallbackGentleReminder(focus),
-    blessing:        getFallbackBlessing(focus),
+    gentleReminder:  getFallbackGentleReminder(focus, question),
+    blessing:        getFallbackBlessing(focus, question),
     safetyNote:      getHealthSafetyNote(focus),
   });
 }
 
 /** Fallback 牌陣總結（overallSummary），兩段格式：整體答案 + 為什麼會這樣 */
 /** Fallback 牌陣總結（overallSummary），三段結構：整體答案 + 為什麼會這樣（含三牌關係）+ 接下來的方向 */
-function getFallbackOverallSummary(focus: QuestionFocus, cardNamesStr: string, cards?: TarotReadingCard[]): string {
+function getFallbackOverallSummary(focus: QuestionFocus, cardNamesStr: string, cards?: TarotReadingCard[], question = ""): string {
   const c1 = cards?.[0];
   const c2 = cards?.[1];
   const c3 = cards?.[2];
   const n1 = c1 ? `${c1.name}（${c1.position === "upright" ? "正位" : "逆位"}）` : "第一張牌";
   const n2 = c2 ? `${c2.name}（${c2.position === "upright" ? "正位" : "逆位"}）` : "第二張牌";
   const n3 = c3 ? `${c3.name}（${c3.position === "upright" ? "正位" : "逆位"}）` : "第三張牌";
+  const hasRevCard = cards?.some(c => c.position === "reversed") ?? false;
 
   switch (focus.primary) {
     case "finance":
+      // 投資/股市問題：市場導向解讀
+      if (isInvestmentQuestion(question)) {
+        return hasRevCard
+          ? `整體答案：\n這組牌顯示市場目前情緒不穩，短線有修正壓力。建議暫時觀望，先不要追高或加碼，等量能回穩、趨勢方向確認後再行動。\n\n為什麼會這樣：\n${n1} 顯示過去市場的推動力道，${n2} 出現逆位，指出目前有阻力或資金在觀望。${n3} 給出接下來的方向提示，整體看來這段時間波動偏大。\n\n接下來的方向：\n先設好停損位置，不要滿倉操作；等待成交量回升再考慮進場。如果已持倉，可以先減碼到較安全的比例，保留現金等待機會。`
+          : `整體答案：\n這組牌顯示市場情緒偏正向，短線仍有支撐。但不建議全倉追進，先確認手上持倉的停損點，保留部分現金應對波動。\n\n為什麼會這樣：\n${n1} 顯示市場過去的上漲動能，${n2} 提示目前是中繼整理或觀察期。${n3} 正位出現，指出接下來有繼續往上的可能，但需要搭配量能確認。\n\n接下來的方向：\n可以維持現有持倉，但先不要追高加碼。設好停損點（約 5～8%），觀察大盤量能是否放大，有支撐再決定是否續抱或擴倉。`;
+      }
       return `整體答案：\n近期財務有可以調整的空間，但你還沒把「錢去哪裡了、哪裡可以減少、哪裡可以增加」看清楚。在這件事確認之前，不適合做大的財務決定，先從整理收支開始。\n\n為什麼會這樣：\n${n1} 反映你目前財務背景，${n2} 指出讓你卡住的阻力（舊的支出習慣或一直迴避的決定）。${n3} 告訴你接下來財務可以往哪個方向走，財務空間一直被佔住，是因為有些東西還沒處理乾淨。\n\n接下來的方向：\n先把近期收支記錄下來，找出最大的支出漏洞，從縮減那裡開始。有投資或大額支出計畫的，等現金流穩定後再決定。`;
     case "career":
       return `整體答案：\n工作上卡住了，主要是方向還沒確認清楚。在方向說清楚之前，不管是留下來硬撐還是衝動離職，都容易讓你陷入更亂的處境。先把想要的工作狀態具體說清楚，再決定下一步。\n\n為什麼會這樣：\n${n1} 說明你目前承受的工作背景，${n2} 點出你在職涯上真正卡住的核心。${n3} 給你接下來比較適合走的方向提示，問題在於你一直在用舊有的方式應對一個已經需要重新選擇的處境。\n\n接下來的方向：\n先把真正想要的工作型態用具體文字寫下來，確認方向後，再決定要整理履歷、爭取機會、或先建立備案——動作要有順序，不能同時衝所有事。`;
@@ -1344,7 +1439,7 @@ function buildSingleCardPrompt(
 ): string {
   const focus         = detectQuestionFocus(question);
   const focusLabel    = getFocusLabel(focus);
-  const topicGuidance = getTopicGuidance(topic, focus);
+  const topicGuidance = getTopicGuidance(topic, focus, question);
   const ori           = card.position === "upright" ? "正位" : "逆位";
   const kw            = card.keywords?.length ? `關鍵字：${card.keywords.join("、")}` : "";
   const base          = card.baseMeaning  ? `牌面核心：${card.baseMeaning}`  : "";
@@ -1472,7 +1567,7 @@ function buildThreeCardPrompt(
 ): string {
   const focus         = detectQuestionFocus(question);
   const focusLabel    = getFocusLabel(focus);
-  const topicGuidance = getTopicGuidance(topic, focus);
+  const topicGuidance = getTopicGuidance(topic, focus, question);
   const spreadLabels  = getSpreadLabels();
 
   const defaultPositions = ["目前狀態", "阻礙或盲點", "接下來的建議"];
