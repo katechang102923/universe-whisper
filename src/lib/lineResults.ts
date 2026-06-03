@@ -168,10 +168,6 @@ function buildLineThreeCardMessage(
   const overallAnswerRaw = answerFromSub || stripLabelPrefix(summaryRaw, "整體答案", "核心判斷");
   const overallAnswer = sliceAtSentence(overallAnswerRaw, 160);
 
-  // ── 行動建議 ──────────────────────────────────────────────────────────────────
-  const actionRaw = extractSection(fullText, "3～7 天行動建議", "3～7天行動建議", "行動建議");
-  const actionAdvice = sliceAtSentence(actionRaw || "", 200);
-
   // ── 心靈收束 ──────────────────────────────────────────────────────────────────
   const reminderRaw = extractSection(fullText, "給你的溫柔提醒", "溫柔提醒");
   const blessingRaw = extractSection(fullText, "一句專屬祝福", "一句祝福");
@@ -184,46 +180,28 @@ function buildLineThreeCardMessage(
     extractSection(fullText, "第3張牌", "第三張牌"),
   ];
 
-  // ── 牌列表行 ─────────────────────────────────────────────────────────────────
-  const cardListLines = result.cards.map((card, i) => {
+  // ── 牌列表（含關鍵字，縮排對齊編號） ─────────────────────────────────────────
+  const cardListLines: string[] = [];
+  result.cards.forEach((card, i) => {
     const pos = card.position ?? DEFAULT_POSITIONS[i] ?? `第${i + 1}張`;
     const name = card.nameZh ?? card.name ?? "塔羅牌";
     const ori = card.orientationLabel ? `（${card.orientationLabel}）` : "";
-    return `${i + 1}. ${pos}｜${name}${ori}`;
+    const kw = card.keywords || extractKeywordsFromSection(cardSectionRaws[i] || "");
+    cardListLines.push(`${i + 1}. ${pos}｜${name}${ori}`);
+    if (kw) cardListLines.push(`   關鍵字：${kw}`);
   });
 
   // ── 組合訊息 ──────────────────────────────────────────────────────────────────
   const parts: string[] = [
     `你的問題：\n${questionText}`,
     "",
-    `你抽到的牌：`,
+    "你抽到的牌：",
     "",
     cardListLines.join("\n"),
   ];
 
-  // 牌陣總結：只顯示整體答案
   if (overallAnswer) {
     parts.push("", LINE_DIVIDER, "", "✨ 牌陣總結", "", `整體答案：\n${overallAnswer}`);
-  }
-
-  // 三張牌提醒：只顯示牌名正逆位與關鍵字
-  const cardKeywordParts: string[] = [];
-  result.cards.forEach((card, i) => {
-    const pos = card.position ?? DEFAULT_POSITIONS[i] ?? `第${i + 1}張`;
-    const name = card.nameZh ?? card.name ?? "塔羅牌";
-    const ori = card.orientationLabel ? `（${card.orientationLabel}）` : "";
-    const kw = card.keywords || extractKeywordsFromSection(cardSectionRaws[i] || "");
-    const block = [`${pos}｜${name}${ori}`];
-    if (kw) block.push(`關鍵字：${kw}`);
-    cardKeywordParts.push(block.join("\n"));
-  });
-
-  if (cardKeywordParts.length > 0) {
-    parts.push("", LINE_DIVIDER, "", "🔮 三張牌提醒你", "", cardKeywordParts.join("\n\n"));
-  }
-
-  if (actionAdvice) {
-    parts.push("", LINE_DIVIDER, "", "🌙 3～7天行動建議", "", actionAdvice);
   }
 
   if (spiritualClosing) {
@@ -243,6 +221,7 @@ function buildLineSingleCardMessage(
   resultUrl: string,
   fullText: string,
 ): string {
+  const LINE_DIVIDER = "━━━━━━━━━━━━";
   const card = result.cards[0] ?? {};
   const cardName = card.nameZh ?? card.name ?? "塔羅牌";
   const cardOri = card.orientationLabel ? `（${card.orientationLabel}）` : "";
@@ -250,65 +229,37 @@ function buildLineSingleCardMessage(
     extractSection(fullText, "這張牌正在說什麼", "宇宙偷偷話"),
   );
 
-  // ── 提取各段落 ────────────────────────────────────────────────────────────────
+  // ── 提取整體答案 ──────────────────────────────────────────────────────────────
   const cosmicRaw = extractSection(fullText, "宇宙偷偷話", "針對你的問題");
-  const cardMessageRaw = extractSection(fullText, "這張牌正在說什麼", "針對你的問題");
   const questionAnswerRaw = extractSection(fullText, "針對你的問題", "今天可以怎麼做", "接下來可以怎麼做");
-  const actionRaw = extractSection(
-    fullText,
-    "今天可以怎麼做",
-    "接下來可以怎麼做",
-    "3～7 天行動建議",
-    "3～7天行動建議",
-  );
+  const overallAnswer = sliceAtSentence(cosmicRaw || questionAnswerRaw || result.shortText || "", 150);
+
+  // ── 心靈收束 ──────────────────────────────────────────────────────────────────
   const reminderRaw = extractSection(fullText, "給你的溫柔提醒", "溫柔提醒");
   const blessingRaw = extractSection(fullText, "一句專屬祝福", "一句祝福");
-
-  // ── 組合各區段 ────────────────────────────────────────────────────────────────
-  const mainAnswer = sliceAtSentence(cosmicRaw || result.shortText || "", 150);
-  const whyThisHappened = sliceAtSentence(
-    cardMessageRaw
-      .replace(/^[^\n]*（(?:正位|逆位)）[^\n]*/m, "")
-      .replace(/^關鍵字[：:][^\n]*/m, "")
-      .trim(),
-    130,
-  );
-  const nextDirection = sliceAtSentence(questionAnswerRaw || actionRaw || "", 130);
-  const closingMessage = sliceAtSentence(reminderRaw || blessingRaw || "", 120);
-  const cardReminder = sliceAtSentence(reminderRaw || cosmicRaw || "", 100);
-  const actionAdvice = sliceAtSentence(actionRaw || questionAnswerRaw || "", 150);
+  const spiritualClosing = sliceAtSentence(reminderRaw || blessingRaw || "", 120);
 
   // ── 組合訊息 ──────────────────────────────────────────────────────────────────
+  const cardLine = [`1. ${cardName}${cardOri}`];
+  if (cardKw) cardLine.push(`   關鍵字：${cardKw}`);
+
   const parts: string[] = [
-    "🌙 宇宙偷偷話｜塔羅訊息",
-    "",
     `你的問題：\n${questionText}`,
     "",
-    `你抽到的牌：\n${cardName}${cardOri}`,
+    "你抽到的牌：",
+    "",
+    cardLine.join("\n"),
   ];
 
-  // 宇宙給你的訊息區塊
-  const messageParts: string[] = [];
-  if (mainAnswer) messageParts.push(mainAnswer);
-  if (whyThisHappened && whyThisHappened !== mainAnswer) messageParts.push(`為什麼會這樣\n\n${whyThisHappened}`);
-  if (nextDirection && nextDirection !== whyThisHappened) messageParts.push(`接下來的方向\n\n${nextDirection}`);
-  if (closingMessage) messageParts.push(`心靈收束\n\n${closingMessage}`);
-
-  if (messageParts.length > 0) {
-    parts.push("", DIVIDER, "", "✨ 宇宙給你的訊息", "", messageParts.join("\n\n"));
+  if (overallAnswer) {
+    parts.push("", LINE_DIVIDER, "", "✨ 本張牌總結", "", `整體答案：\n${overallAnswer}`);
   }
 
-  // 這張牌提醒你
-  const cardReminderLines: string[] = [`${cardName}${cardOri}${cardKw ? `｜關鍵字：${cardKw}` : ""}`];
-  if (cardReminder) cardReminderLines.push("", cardReminder);
-
-  parts.push("", DIVIDER, "", "🔮 這張牌提醒你", "", cardReminderLines.join("\n"));
-
-  if (actionAdvice) {
-    parts.push("", DIVIDER, "", "🌙 3～7天行動建議", "", actionAdvice);
+  if (spiritualClosing) {
+    parts.push("", LINE_DIVIDER, "", "🧘 心靈收束", "", spiritualClosing);
   }
 
-  parts.push("", DIVIDER, "", `📚 收藏版完整排版：\n${resultUrl}`);
+  parts.push("", `📚 收藏版完整排版：\n${resultUrl}`);
 
   return parts.join("\n");
 }
