@@ -13,51 +13,87 @@ const navItems = [
 // ── Google Auth 區塊（桌機） ────────────────────────────────────────────────
 
 function GoogleAuthDesktop() {
-  const { user, isAdmin, loading, sessionPending, signIn, signOut } = useAuth();
+  const {
+    user,
+    isAdmin,
+    loading,
+    sessionPending,
+    signInError,
+    firebaseConfigured,
+    signIn,
+    signOut,
+    clearSignInError,
+  } = useAuth();
   const [busy, setBusy] = useState(false);
 
+  // 初始化中不渲染，避免 hydration 閃爍
   if (loading) return null;
 
-  if (!user) {
+  // ── Firebase 未設定 ────────────────────────────────────────────────────────
+  if (!firebaseConfigured) {
     return (
+      <span className="hidden text-xs text-red-400/80 md:block">
+        Google 登入尚未設定
+      </span>
+    );
+  }
+
+  // ── 已登入 ─────────────────────────────────────────────────────────────────
+  if (user) {
+    return (
+      <div className="hidden items-center gap-2 md:flex">
+        {isAdmin && (
+          <Link
+            href="/admin/usage"
+            className="rounded-full border border-lavender/30 bg-lavender/10 px-3 py-1.5 text-xs font-medium text-moon transition hover:bg-lavender/20"
+          >
+            管理後台
+          </Link>
+        )}
+        <div className="flex items-center gap-1.5 rounded-full border border-white/12 bg-white/6 px-3 py-1.5 text-xs text-moon/70">
+          <GoogleIcon />
+          <span className="max-w-[160px] truncate">
+            {sessionPending ? "建立 Session…" : user.email ?? "已登入"}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => void signOut()}
+          className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-moon/50 transition hover:bg-white/8 hover:text-moon"
+        >
+          登出
+        </button>
+      </div>
+    );
+  }
+
+  // ── 未登入 ─────────────────────────────────────────────────────────────────
+  return (
+    <div className="hidden flex-col items-end gap-1 md:flex">
       <button
         type="button"
         disabled={busy}
         onClick={async () => {
+          clearSignInError();
           setBusy(true);
-          try { await signIn(); } finally { setBusy(false); }
+          try {
+            await signIn();
+          } finally {
+            setBusy(false);
+          }
         }}
-        className="hidden items-center gap-1.5 rounded-full border border-white/14 bg-white/6 px-3 py-1.5 text-xs text-moon/70 transition hover:bg-white/12 hover:text-moon disabled:opacity-50 md:flex"
+        className="flex items-center gap-1.5 rounded-full border border-white/14 bg-white/6 px-3 py-1.5 text-xs text-moon/70 transition hover:bg-white/12 hover:text-moon disabled:cursor-not-allowed disabled:opacity-50"
       >
         <GoogleIcon />
         {busy ? "登入中…" : "使用 Google 登入"}
       </button>
-    );
-  }
 
-  return (
-    <div className="hidden items-center gap-2 md:flex">
-      {isAdmin && (
-        <Link
-          href="/admin/usage"
-          className="rounded-full border border-lavender/30 bg-lavender/10 px-3 py-1.5 text-xs font-medium text-moon transition hover:bg-lavender/20"
-        >
-          管理後台
-        </Link>
+      {/* 錯誤訊息 */}
+      {signInError && (
+        <p className="max-w-[280px] text-right text-[11px] leading-5 text-red-400/90">
+          {signInError}
+        </p>
       )}
-      <div className="flex items-center gap-1.5 rounded-full border border-white/12 bg-white/6 px-3 py-1.5 text-xs text-moon/70">
-        <GoogleIcon />
-        <span className="max-w-[140px] truncate">
-          {sessionPending ? "登入中…" : `已登入：${user.email}`}
-        </span>
-      </div>
-      <button
-        type="button"
-        onClick={() => void signOut()}
-        className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-moon/50 transition hover:bg-white/8 hover:text-moon"
-      >
-        登出
-      </button>
     </div>
   );
 }
@@ -65,49 +101,82 @@ function GoogleAuthDesktop() {
 // ── Google Auth 區塊（手機選單） ─────────────────────────────────────────────
 
 function GoogleAuthMobile({ onClose }: { onClose: () => void }) {
-  const { user, isAdmin, loading, sessionPending, signIn, signOut } = useAuth();
+  const {
+    user,
+    isAdmin,
+    loading,
+    sessionPending,
+    signInError,
+    firebaseConfigured,
+    signIn,
+    signOut,
+    clearSignInError,
+  } = useAuth();
   const [busy, setBusy] = useState(false);
 
   if (loading) return null;
 
-  if (!user) {
+  if (!firebaseConfigured) {
     return (
+      <p className="px-4 py-2 text-xs text-red-400/80">Google 登入尚未設定</p>
+    );
+  }
+
+  if (user) {
+    return (
+      <>
+        <div className="max-w-full truncate px-4 py-2 text-xs text-moon/44">
+          {sessionPending ? "建立 Session…" : user.email ?? "已登入"}
+        </div>
+        {isAdmin && (
+          <Link
+            href="/admin/usage"
+            onClick={onClose}
+            className="block rounded-2xl px-4 py-3 text-lavender/90 transition hover:bg-white/10"
+          >
+            管理後台
+          </Link>
+        )}
+        <button
+          type="button"
+          onClick={() => {
+            void signOut();
+            onClose();
+          }}
+          className="block w-full rounded-2xl px-4 py-3 text-left text-moon/60 transition hover:bg-white/10"
+        >
+          登出
+        </button>
+      </>
+    );
+  }
+
+  return (
+    <>
       <button
         type="button"
         disabled={busy}
         onClick={async () => {
+          clearSignInError();
           setBusy(true);
-          try { await signIn(); } finally { setBusy(false); onClose(); }
+          try {
+            await signIn();
+          } finally {
+            setBusy(false);
+            onClose();
+          }
         }}
         className="flex w-full items-center gap-2 rounded-2xl px-4 py-3 text-left transition hover:bg-white/10 disabled:opacity-50"
       >
         <GoogleIcon />
         {busy ? "登入中…" : "使用 Google 登入"}
       </button>
-    );
-  }
 
-  return (
-    <>
-      <div className="px-4 py-2 text-xs text-moon/44 truncate">
-        {sessionPending ? "登入中…" : `已登入：${user.email}`}
-      </div>
-      {isAdmin && (
-        <Link
-          href="/admin/usage"
-          onClick={onClose}
-          className="block rounded-2xl px-4 py-3 text-lavender/90 transition hover:bg-white/10"
-        >
-          管理後台
-        </Link>
+      {signInError && (
+        <p className="px-4 pb-2 text-xs leading-5 text-red-400/90">
+          {signInError}
+        </p>
       )}
-      <button
-        type="button"
-        onClick={() => { void signOut(); onClose(); }}
-        className="block w-full rounded-2xl px-4 py-3 text-left text-moon/60 transition hover:bg-white/10"
-      >
-        登出
-      </button>
     </>
   );
 }
@@ -116,7 +185,13 @@ function GoogleAuthMobile({ onClose }: { onClose: () => void }) {
 
 function GoogleIcon() {
   return (
-    <svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true" className="shrink-0">
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className="shrink-0"
+    >
       <path
         fill="#4285F4"
         d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -156,9 +231,15 @@ export function SiteNav() {
         className="flex h-10 w-10 items-center justify-center rounded-full border border-white/12 bg-white/8 text-moon transition hover:bg-white/12 md:hidden"
       >
         <span className="relative h-4 w-5">
-          <span className={`absolute left-0 top-0 h-px w-5 bg-current transition ${open ? "translate-y-2 rotate-45" : ""}`} />
-          <span className={`absolute left-0 top-2 h-px w-5 bg-current transition ${open ? "opacity-0" : ""}`} />
-          <span className={`absolute left-0 top-4 h-px w-5 bg-current transition ${open ? "-translate-y-2 -rotate-45" : ""}`} />
+          <span
+            className={`absolute left-0 top-0 h-px w-5 bg-current transition ${open ? "translate-y-2 rotate-45" : ""}`}
+          />
+          <span
+            className={`absolute left-0 top-2 h-px w-5 bg-current transition ${open ? "opacity-0" : ""}`}
+          />
+          <span
+            className={`absolute left-0 top-4 h-px w-5 bg-current transition ${open ? "-translate-y-2 -rotate-45" : ""}`}
+          />
         </span>
       </button>
 
