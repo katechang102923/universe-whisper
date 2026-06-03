@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -6,6 +6,7 @@ import { ShareStoryCard } from "@/components/ShareStoryCard";
 import { TarotCardBack, TarotCardFace, TarotCardFaceCompact, type TarotCardFaceData } from "@/components/TarotCardFace";
 import { TarotShuffleAnimation } from "./TarotShuffleAnimation";
 import { useAuth } from "@/contexts/AuthContext";
+import RedeemCodeBlock from "@/components/RedeemCodeBlock";
 
 type DrawStatus = "idle" | "drawing" | "selecting" | "revealing" | "revealed";
 type ReadingStatus = "idle" | "loading" | "done" | "error";
@@ -35,6 +36,12 @@ const LINE_DEEP_LINK = "line://ti/p/@453gfmok";
 const LINE_OFFICIAL_ACCOUNT_URL = "https://line.me/R/ti/p/%40453gfmok";
 /** @deprecated 用 LINE_OFFICIAL_ACCOUNT_URL */
 const LINE_ADD_FRIEND_URL = LINE_OFFICIAL_ACCOUNT_URL;
+
+const PASS_PLANS = [
+  { key: "single", label: "宇宙通行碼 單次", price: 49, desc: "原價體驗，可解鎖 1 次" },
+  { key: "five",   label: "宇宙通行碼 五次", price: 220, desc: "小資優惠，平均 44 元，約九折，可解鎖 5 次" },
+  { key: "ten",    label: "宇宙通行碼 十次", price: 350, desc: "限時最划算，平均 35 元，約七折，可解鎖 10 次" },
+] as const;
 
 const modes = [
   { key: "single_tarot", label: "單張牌", description: "接收此刻最靠近你的訊息" },
@@ -1843,6 +1850,7 @@ export function TarotDrawClient() {
   const [paidDrawMode, setPaidDrawMode] = useState(false);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<"idle" | "processing" | "success">("idle");
+  const [selectedPlan, setSelectedPlan] = useState<typeof PASS_PLANS[number] | null>(null);
   // LINE delivery state (preserved — kept for openLineConnect compatibility)
   const [lineDeliveryStatus, setLineDeliveryStatus] = useState<
     "idle" | "creating" | "done" | "error"
@@ -2002,6 +2010,14 @@ export function TarotDrawClient() {
     } catch { /* localStorage 滿了或私密模式，靜默跳過 */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paidUnlocked, readingStatus, fullReading, cards]);
+
+  // 當解讀完成但未解鎖時，預先建立 resultId，讓兌換碼區塊可用
+  useEffect(() => {
+    if (canShowReadings && !hasFullAccess && readingStatus === "done" && !lineResultId && fullReading) {
+      void createOrGetLineResult().catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canShowReadings, hasFullAccess, readingStatus, lineResultId, fullReading]);
 
   // 付費解鎖後自動建立 Firestore 結果記錄（供 LINE claim code 使用）
   useEffect(() => {
@@ -2876,7 +2892,7 @@ export function TarotDrawClient() {
           {isAdmin
             ? "管理員模式：不限抽牌次數"
             : drawsRemaining === 0
-              ? "今日免費抽牌已使用完畢，可付 NT$49 再抽一次完整解讀。"
+              ? "今日免費抽牌已使用完畢。你可以購買宇宙通行碼，繼續抽牌並解鎖完整解讀。"
               : "今天可免費抽牌 1 次，也可分享 Facebook 解鎖完整解讀。"}
         </p>
       </div>
@@ -2891,24 +2907,39 @@ export function TarotDrawClient() {
         placeholder={textareaPlaceholders[topic]}
       />
 
-      {/* ?? Draw button ?? */}
-      <button
-        type="button"
-        onClick={handleDrawButtonClick}
-        disabled={
-          status === "drawing" ||
-          status === "selecting" ||
-          status === "revealing" ||
-          readingStatus === "loading"
-        }
-        className="relative z-10 mt-5 w-full rounded-full bg-moon px-6 py-3 font-medium text-midnight shadow-[0_0_24px_rgba(247,241,223,0.28)] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-      >
-        {status === "drawing"
-          ? "星光正在流動..."
-          : isOutOfFreeDraws
-            ? "🔓 NT$49 再抽一次完整解讀"
-            : "開始抽牌"}
-      </button>
+      {/* Draw button / plan cards */}
+      {isOutOfFreeDraws ? (
+        <div className="relative z-10 mt-5 space-y-3">
+          <div className="grid gap-3 sm:grid-cols-3">
+            {PASS_PLANS.map((plan) => (
+              <button
+                key={plan.key}
+                type="button"
+                onClick={() => { setSelectedPlan(plan); openPaidDrawModal(); }}
+                className="rounded-2xl border border-[#d8bd70]/35 bg-midnight/50 p-4 text-left transition hover:border-[#d8bd70]/65 hover:bg-white/6 active:scale-[0.98]"
+              >
+                <p className="text-xs font-semibold tracking-wide text-[#d8bd70]">{plan.label}</p>
+                <p className="mt-1 text-2xl font-bold text-moon">{plan.price} 元</p>
+                <p className="mt-1.5 text-xs leading-5 text-moon/55">{plan.desc}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={handleDrawButtonClick}
+          disabled={
+            status === "drawing" ||
+            status === "selecting" ||
+            status === "revealing" ||
+            readingStatus === "loading"
+          }
+          className="relative z-10 mt-5 w-full rounded-full bg-moon px-6 py-3 font-medium text-midnight shadow-[0_0_24px_rgba(247,241,223,0.28)] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+        >
+          {status === "drawing" ? "星光正在流動..." : "開始抽牌"}
+        </button>
+      )}
 
       {/* ?? Error notice ?? */}
       {/* 恢復上次付費結果（僅在 idle 且 localStorage 有資料時顯示） */}
@@ -2940,7 +2971,7 @@ export function TarotDrawClient() {
           <p>{error}</p>
           {!isAdmin && drawsRemaining === 0 ? (
             <p className="mt-2 text-moon/72">
-              今日免費抽牌已使用完畢，可使用 NT$49 再抽一次完整解讀。
+              今日免費抽牌已使用完畢。你可以購買宇宙通行碼，繼續抽牌並解鎖完整解讀。
             </p>
           ) : null}
         </div>
@@ -3228,7 +3259,7 @@ export function TarotDrawClient() {
               <div className="mt-3">
                 <button
                   type="button"
-                  onClick={openPaidDrawModal}
+                  onClick={() => { setSelectedPlan(PASS_PLANS[0]); openPaidDrawModal(); }}
                   className="w-full rounded-full border border-[#d8bd70]/40 px-6 py-3 text-sm font-semibold text-[#d8bd70] transition hover:border-[#d8bd70]/70 hover:bg-white/6 active:scale-95 sm:w-auto sm:min-w-[280px]"
                 >
                   🔓 NT$49 解鎖完整宇宙訊息
@@ -3237,6 +3268,41 @@ export function TarotDrawClient() {
                   本服務為即時產生之數位內容，付款完成並成功產出、顯示或發送結果後，恕不接受退費。若付款成功但未收到內容，請於 24 小時內聯繫
                   <a href="mailto:ciut0000@gmail.com" className="underline underline-offset-2 hover:text-moon/60">客服信箱</a>。
                 </p>
+              </div>
+
+              {/* 兌換碼區塊 */}
+              {lineResultId ? (
+                <div className="mt-5 border-t border-white/8 pt-5">
+                  <RedeemCodeBlock
+                    resultId={lineResultId}
+                    onUnlocked={(fullText, _remaining) => {
+                      setFullReading(fullText);
+                      setPaidUnlocked(true);
+                    }}
+                  />
+                </div>
+              ) : null}
+
+              {/* 購買宇宙通行碼方案 */}
+              <div className="mt-5 border-t border-white/8 pt-5">
+                <p className="text-sm font-semibold text-moon">購買宇宙通行碼</p>
+                <p className="mt-1.5 text-xs leading-6 text-moon/55">
+                  可自行使用，也可分享給朋友共同使用。每解鎖一次完整版扣除 1 次，購買後 60 天內使用完畢。
+                </p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                  {PASS_PLANS.map((plan) => (
+                    <button
+                      key={plan.key}
+                      type="button"
+                      onClick={() => { setSelectedPlan(plan); openPaidDrawModal(); }}
+                      className="rounded-2xl border border-[#d8bd70]/30 bg-midnight/40 p-3 text-left transition hover:border-[#d8bd70]/60 hover:bg-white/6 active:scale-[0.98]"
+                    >
+                      <p className="text-xs text-[#d8bd70]">{plan.label}</p>
+                      <p className="mt-0.5 text-lg font-bold text-moon">{plan.price} 元</p>
+                      <p className="mt-1 text-[11px] leading-4 text-moon/50">{plan.desc}</p>
+                    </button>
+                  ))}
+                </div>
               </div>
 
             </div>
@@ -3300,8 +3366,8 @@ export function TarotDrawClient() {
               模擬付款成功後，會重新進入抽牌流程，並直接顯示完整內容。
             </p>
             <div className="mt-5 rounded-2xl border border-white/10 bg-white/6 p-4">
-              <p className="text-sm text-moon/58">完整抽牌費用</p>
-              <p className="mt-1 text-3xl font-semibold text-moon">NT$ 49</p>
+              <p className="text-sm text-moon/58">{selectedPlan ? selectedPlan.label : "宇宙通行碼 單次"}</p>
+              <p className="mt-1 text-3xl font-semibold text-moon">NT$ {selectedPlan ? selectedPlan.price : 49}</p>
             </div>
             <div className="mt-5 flex flex-col gap-3 sm:flex-row">
               <button
@@ -3321,7 +3387,7 @@ export function TarotDrawClient() {
                   ? "付款確認中..."
                   : paymentStatus === "success"
                     ? "付款成功"
-                    : "NT$49 再抽一次"}
+                    : `NT\${selectedPlan ? selectedPlan.price : 49} 購買通行碼`}
               </button>
             </div>
             {/* 退款說明小字 */}
