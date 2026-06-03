@@ -169,12 +169,20 @@ export default async function AdminUsagePage() {
               統計日期：{today}（Asia/Taipei）
             </p>
           </div>
-          <Link
-            href="/admin/usage"
-            className="mt-1 rounded-full border border-white/12 bg-white/8 px-5 py-2.5 text-sm text-moon transition hover:bg-white/14"
-          >
-            ↻ 重新整理
-          </Link>
+          <div className="flex flex-wrap gap-2 mt-1">
+            <Link
+              href="/admin/redeem-codes"
+              className="rounded-full border border-lavender/30 bg-lavender/10 px-5 py-2.5 text-sm text-moon transition hover:bg-lavender/18"
+            >
+              ✦ 宇宙通行碼
+            </Link>
+            <Link
+              href="/admin/usage"
+              className="rounded-full border border-white/12 bg-white/8 px-5 py-2.5 text-sm text-moon transition hover:bg-white/14"
+            >
+              ↻ 重新整理
+            </Link>
+          </div>
         </div>
 
         {fetchError && (
