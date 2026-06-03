@@ -1531,12 +1531,12 @@ function LineClaimSection({
     return (
       <div className="mt-2 space-y-3">
         <p className="text-sm leading-7 text-moon/55">
-          請複製此驗證碼，1 小時內可用於 LINE 或網頁查詢本次結果。
+          這是 LINE 結果驗證碼，用於將本次抽牌結果傳送至 LINE，1 小時有效。與宇宙通行碼（付費購買）無關。
         </p>
 
         {/* 驗證碼卡片 */}
         <div className="rounded-2xl border border-[#d8bd70]/30 bg-midnight/70 px-5 py-4 text-center">
-          <p className="text-xs tracking-[0.22em] text-moon/45 mb-2">驗證碼（1 小時有效）</p>
+          <p className="text-xs tracking-[0.22em] text-moon/45 mb-2">LINE 結果驗證碼（1 小時有效）</p>
           <p className="text-3xl font-bold tracking-[0.28em] text-[#d8bd70] select-all">
             {claimCode}
           </p>
@@ -1851,6 +1851,9 @@ export function TarotDrawClient() {
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<"idle" | "processing" | "success">("idle");
   const [selectedPlan, setSelectedPlan] = useState<typeof PASS_PLANS[number] | null>(null);
+  const [purchasedCode, setPurchasedCode] = useState<{
+    code: string; displayName: string; totalUses: number; expiresAt: string;
+  } | null>(null);
   // LINE delivery state (preserved — kept for openLineConnect compatibility)
   const [lineDeliveryStatus, setLineDeliveryStatus] = useState<
     "idle" | "creating" | "done" | "error"
@@ -2049,6 +2052,7 @@ export function TarotDrawClient() {
     setPaidDrawMode(false);
     setPaymentModalOpen(false);
     setPaymentStatus("idle");
+    setPurchasedCode(null);
     setLineDeliveryStatus("idle");
     setLineDeliveryMessage("");
     setLineResultId("");
@@ -2626,9 +2630,26 @@ export function TarotDrawClient() {
     setPaymentStatus("processing");
     paymentTimerRef.current = window.setTimeout(() => {
       setPaymentStatus("success");
-      setPaymentModalOpen(false);
-      setPaidUnlocked(true);
-      void draw({ paid: true });
+      // 呼叫 purchase API 建立真實宇宙通行碼
+      const plan = selectedPlan ?? PASS_PLANS[0];
+      const planKey = plan.key === "single" ? "single" : plan.key === "five" ? "five_pack" : "ten_pack";
+      fetch("/api/redeem/purchase", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ planName: planKey }),
+      })
+        .then((r) => r.json() as Promise<{ ok?: boolean; code?: string; displayName?: string; totalUses?: number; expiresAt?: string }>)
+        .then((data) => {
+          if (data.ok && data.code) {
+            setPurchasedCode({
+              code: data.code,
+              displayName: data.displayName ?? plan.label,
+              totalUses: data.totalUses ?? plan.price,
+              expiresAt: data.expiresAt ?? "",
+            });
+          }
+        })
+        .catch(() => {});
     }, 1000);
   }
 
@@ -2924,6 +2945,7 @@ export function TarotDrawClient() {
               </button>
             ))}
           </div>
+          <p className="text-center text-xs text-moon/38 mt-2">已購買宇宙通行碼？<a href="/redeem/check" className="ml-1 underline underline-offset-2 text-moon/55 transition hover:text-moon/80">查詢剩餘次數</a></p>
         </div>
       ) : (
         <button
@@ -3280,6 +3302,7 @@ export function TarotDrawClient() {
                       setPaidUnlocked(true);
                     }}
                   />
+                  <p className="mt-3 text-xs text-moon/38 text-center"><a href="/redeem/check" className="underline underline-offset-2 transition hover:text-moon/60">查詢我的宇宙通行碼剩餘次數</a></p>
                 </div>
               ) : null}
 
@@ -3339,7 +3362,7 @@ export function TarotDrawClient() {
               </div>
               {/* LINE 驗證碼領取區（完整解讀已解鎖版） */}
               <div className="mt-6 border-t border-white/10 pt-5">
-                <p className="mb-1 text-sm font-semibold text-moon/70">將本次結果傳送到 LINE</p>
+                <p className="mb-1 text-sm font-semibold text-moon/70">將本次結果傳送到 LINE（LINE 結果驗證碼）</p>
                 <LineClaimSection
                   status={lineClaimStatus}
                   claimCode={lineClaimCode}
@@ -3356,47 +3379,86 @@ export function TarotDrawClient() {
       ) : null}
 
 
-      {/* ?? Payment modal ?? */}
+      {/* Payment modal */}
       {paymentModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-5 backdrop-blur-sm">
-          <div className="cosmic-reading-card w-full max-w-md rounded-[1.75rem] border border-[#06C755]/24 bg-midnight p-6 text-center shadow-glow">
-            <p className="text-sm tracking-[0.22em] text-[#06C755]/78">Fake Payment Mode</p>
-            <h3 className="mt-3 text-2xl font-semibold text-moon">再抽一次完整訊息</h3>
-            <p className="mt-3 text-base leading-7 text-moon/72">
-              模擬付款成功後，會重新進入抽牌流程，並直接顯示完整內容。
-            </p>
-            <div className="mt-5 rounded-2xl border border-white/10 bg-white/6 p-4">
-              <p className="text-sm text-moon/58">{selectedPlan ? selectedPlan.label : "宇宙通行碼 單次"}</p>
-              <p className="mt-1 text-3xl font-semibold text-moon">NT$ {selectedPlan ? selectedPlan.price : 49}</p>
-            </div>
-            <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-              <button
-                type="button"
-                onClick={() => setPaymentModalOpen(false)}
-                className="rounded-full border border-moon/25 px-5 py-3 text-sm font-semibold text-moon transition hover:bg-white/10"
-              >
-                先不要
-              </button>
-              <button
-                type="button"
-                onClick={simulatePayment}
-                disabled={paymentStatus === "processing"}
-                className="flex-1 rounded-full bg-[#06C755] px-5 py-3 text-sm font-semibold text-white shadow-[0_0_28px_rgba(6,199,85,0.32)] transition hover:opacity-90 disabled:opacity-60"
-              >
-                {paymentStatus === "processing"
-                  ? "付款確認中..."
-                  : paymentStatus === "success"
-                    ? "付款成功"
-                    : `NT\${selectedPlan ? selectedPlan.price : 49} 購買通行碼`}
-              </button>
-            </div>
-            {/* 退款說明小字 */}
-            <p className="mt-4 text-xs leading-6 text-moon/42 text-center px-2">
-              本服務為即時產生之數位內容，付款成功並成功顯示結果後恕不退費。
-              若付款成功但未收到內容，請於 24 小時內聯繫
-              <a href="mailto:ciut0000@gmail.com" className="underline underline-offset-2 hover:text-moon/70">客服信箱</a>
-              ，確認後協助補發或退款。
-            </p>
+          <div className="cosmic-reading-card w-full max-w-md rounded-[1.75rem] border border-[#d8bd70]/30 bg-midnight p-6 shadow-glow">
+            {paymentStatus === "success" && purchasedCode ? (
+              /* 購買成功畫面 */
+              <div className="text-center">
+                <p className="text-sm tracking-[0.22em] text-aurora/80">購買成功！</p>
+                <h3 className="mt-3 text-xl font-semibold text-moon">你的宇宙通行碼</h3>
+                <div className="mt-4 rounded-2xl border border-[#d8bd70]/40 bg-[#d8bd70]/8 px-5 py-4">
+                  <p className="font-mono text-2xl font-bold tracking-[0.22em] text-[#d8bd70] select-all">
+                    {purchasedCode.code}
+                  </p>
+                </div>
+                <div className="mt-4 space-y-1 text-sm text-moon/70 text-left">
+                  <p>方案：{purchasedCode.displayName}</p>
+                  <p>可解鎖次數：{purchasedCode.totalUses} 次</p>
+                  <p>有效期限：購買後 60 天內使用完畢</p>
+                </div>
+                <p className="mt-3 rounded-xl bg-white/5 px-3 py-2 text-xs leading-6 text-moon/55">
+                  請妥善保存此通行碼。此通行碼不綁帳號，可自行使用，也可分享給朋友共同使用。
+                </p>
+                <div className="mt-5 flex flex-col gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaymentModalOpen(false);
+                      setPaidUnlocked(true);
+                      void draw({ paid: true });
+                    }}
+                    className="w-full rounded-full bg-[#d8bd70] px-5 py-3 text-sm font-semibold text-midnight transition hover:bg-moon active:scale-95"
+                  >
+                    立即使用通行碼抽牌
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentModalOpen(false)}
+                    className="text-sm text-moon/50 underline underline-offset-2 transition hover:text-moon/80"
+                  >
+                    稍後再抽，先保存通行碼
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* 付款前確認畫面 */
+              <div className="text-center">
+                <p className="text-sm tracking-[0.22em] text-[#d8bd70]/78">購買宇宙通行碼</p>
+                <h3 className="mt-3 text-2xl font-semibold text-moon">
+                  {selectedPlan ? selectedPlan.label : "宇宙通行碼 單次"}
+                </h3>
+                <div className="mt-5 rounded-2xl border border-white/10 bg-white/6 p-4">
+                  <p className="text-sm text-moon/58">費用</p>
+                  <p className="mt-1 text-3xl font-semibold text-moon">NT$ {selectedPlan ? selectedPlan.price : 49}</p>
+                  <p className="mt-1 text-xs text-moon/40">購買後 60 天有效 · 可解鎖 {selectedPlan ? (selectedPlan.key === "single" ? 1 : selectedPlan.key === "five" ? 5 : 10) : 1} 次完整版</p>
+                </div>
+                <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentModalOpen(false)}
+                    className="rounded-full border border-moon/25 px-5 py-3 text-sm font-semibold text-moon transition hover:bg-white/10"
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    onClick={simulatePayment}
+                    disabled={paymentStatus === "processing"}
+                    className="flex-1 rounded-full bg-[#d8bd70] px-5 py-3 text-sm font-semibold text-midnight shadow-[0_0_28px_rgba(216,189,112,0.28)] transition hover:bg-moon disabled:opacity-60"
+                  >
+                    {paymentStatus === "processing" ? "處理中..." : `NT$${selectedPlan ? selectedPlan.price : 49} 確認購買`}
+                  </button>
+                </div>
+                <p className="mt-4 text-xs leading-6 text-moon/42 text-center px-2">
+                  本服務為即時產生之數位內容，付款成功並取得通行碼後恕不退費。
+                  若付款成功但未收到通行碼，請於 24 小時內聯繫
+                  <a href="mailto:ciut0000@gmail.com" className="underline underline-offset-2 hover:text-moon/70">客服信箱</a>
+                  ，確認後協助補發或退款。
+                </p>
+              </div>
+            )}
           </div>
         </div>
       ) : null}

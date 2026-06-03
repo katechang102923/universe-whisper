@@ -64,7 +64,12 @@ export function generateRedeemCode(): string {
   return `UW-${seg(4)}-${seg(4)}`;
 }
 
-/** 產生可複製的兌換碼發送文字 */
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  process.env.NEXT_PUBLIC_APP_URL ||
+  "https://universe-whisper.vercel.app";
+
+/** 產生可複製的宇宙通行碼發送文字 */
 export function buildRedeemShareText(
   code: string,
   planName: RedeemPlan,
@@ -81,7 +86,8 @@ export function buildRedeemShareText(
     `方案：${displayName}`,
     `可解鎖次數：${totalUses} 次`,
     `有效期限：${expiry} 前使用完畢`,
-    `使用方式：抽牌完成後輸入通行碼，即可解鎖完整版。`,
+    `查詢剩餘次數：${SITE_URL}/redeem/check`,
+    `使用方式：抽牌完成後，在結果頁輸入通行碼，即可解鎖完整版。`,
     `此通行碼不綁帳號，可自行使用，也可分享給朋友共同使用。`,
     `每解鎖一次完整版會扣除 1 次，次數用完或逾期後即失效。`,
   ].join("\n");

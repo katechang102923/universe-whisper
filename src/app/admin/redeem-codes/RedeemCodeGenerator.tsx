@@ -98,7 +98,7 @@ export default function RedeemCodeGenerator() {
           disabled={loading}
           className="mt-5 rounded-full bg-lavender px-6 py-3 text-sm font-medium text-midnight transition hover:bg-lavender/85 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loading ? "產生中…" : "✦ 產生新兌換碼"}
+          {loading ? "產生中…" : "✦ 產生新宇宙通行碼"}
         </button>
 
         {error && (
@@ -114,7 +114,7 @@ export default function RedeemCodeGenerator() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-[0.24em] text-aurora/70">
-                兌換碼已建立
+                宇宙通行碼已建立
               </p>
               <p className="mt-2 font-mono text-2xl font-semibold tracking-[0.2em] text-moon">
                 {result.code}

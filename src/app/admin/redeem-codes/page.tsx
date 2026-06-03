@@ -105,7 +105,7 @@ export default async function AdminRedeemCodesPage() {
 
         {/* 產生器 */}
         <div className="mt-8">
-          <h2 className="mb-4 text-lg font-semibold text-moon">產生新兌換碼</h2>
+          <h2 className="mb-4 text-lg font-semibold text-moon">產生新宇宙通行碼</h2>
           <RedeemCodeGenerator />
         </div>
 
