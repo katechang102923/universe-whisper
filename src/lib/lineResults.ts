@@ -157,39 +157,27 @@ function buildLineThreeCardMessage(
   resultUrl: string,
   fullText: string,
 ): string {
-  // ── 提取牌陣總結及子欄位 ─────────────────────────────────────────────────────
-  const summaryRaw = extractSection(fullText, "牌陣總結", "三張牌整合");
+  const LINE_DIVIDER = "━━━━━━━━━━━━";
+  const DEFAULT_POSITIONS = ["過去", "現在", "未來"];
 
-  // 先嘗試提取子欄位（不含標題前綴）
+  // ── 提取牌陣總結 ──────────────────────────────────────────────────────────────
+  const summaryRaw = extractSection(fullText, "牌陣總結", "三張牌整合");
   const answerFromSub =
     extractSubfield(summaryRaw, "整體答案", "為什麼會這樣", "接下來的方向") ||
     extractSubfield(summaryRaw, "核心判斷", "為什麼會這樣", "接下來的方向");
-
-  // fallback 到整段 summaryRaw，但要去掉可能殘留的標題前綴
-  const overallAnswerRaw = answerFromSub ||
-    stripLabelPrefix(summaryRaw, "整體答案", "核心判斷");
-
+  const overallAnswerRaw = answerFromSub || stripLabelPrefix(summaryRaw, "整體答案", "核心判斷");
   const overallAnswer = sliceAtSentence(overallAnswerRaw, 160);
-  const whyThisHappened = sliceAtSentence(
-    extractSubfield(summaryRaw, "為什麼會這樣", "接下來的方向"),
-    140,
-  );
-  const nextDirection = sliceAtSentence(
-    extractSubfield(summaryRaw, "接下來的方向"),
-    140,
-  );
-
-  // ── 心靈收束：溫柔提醒 + 祝福 ────────────────────────────────────────────────
-  const reminderRaw = extractSection(fullText, "給你的溫柔提醒", "溫柔提醒");
-  const blessingRaw = extractSection(fullText, "一句專屬祝福", "一句祝福");
-  const closingMessage = sliceAtSentence(reminderRaw || blessingRaw || "", 130);
 
   // ── 行動建議 ──────────────────────────────────────────────────────────────────
   const actionRaw = extractSection(fullText, "3～7 天行動建議", "3～7天行動建議", "行動建議");
   const actionAdvice = sliceAtSentence(actionRaw || "", 200);
 
-  // ── 逐張牌資料 ────────────────────────────────────────────────────────────────
-  const DEFAULT_POSITIONS = ["過去", "現在", "未來"];
+  // ── 心靈收束 ──────────────────────────────────────────────────────────────────
+  const reminderRaw = extractSection(fullText, "給你的溫柔提醒", "溫柔提醒");
+  const blessingRaw = extractSection(fullText, "一句專屬祝福", "一句祝福");
+  const spiritualClosing = sliceAtSentence(reminderRaw || blessingRaw || "", 130);
+
+  // ── 逐張牌關鍵字 ─────────────────────────────────────────────────────────────
   const cardSectionRaws = [
     extractSection(fullText, "第1張牌", "第一張牌"),
     extractSection(fullText, "第2張牌", "第二張牌"),
@@ -206,76 +194,43 @@ function buildLineThreeCardMessage(
 
   // ── 組合訊息 ──────────────────────────────────────────────────────────────────
   const parts: string[] = [
-    "🌙 宇宙偷偷話｜塔羅訊息",
-    "",
     `你的問題：\n${questionText}`,
     "",
-    `你抽到的牌：\n${cardListLines.join("\n")}`,
+    `你抽到的牌：`,
+    "",
+    cardListLines.join("\n"),
   ];
 
-  // 牌陣總結區塊：只有真正有內容才加標題
-  const summaryParts: string[] = [];
-  if (overallAnswer) summaryParts.push(`整體答案\n\n${overallAnswer}`);
-  if (whyThisHappened) summaryParts.push(`為什麼會這樣\n\n${whyThisHappened}`);
-  if (nextDirection) summaryParts.push(`接下來的方向\n\n${nextDirection}`);
-  if (closingMessage) summaryParts.push(`心靈收束\n\n${closingMessage}`);
-
-  if (summaryParts.length > 0) {
-    parts.push("", DIVIDER, "", "✨ 牌陣總結", "", summaryParts.join("\n\n"));
+  // 牌陣總結：只顯示整體答案
+  if (overallAnswer) {
+    parts.push("", LINE_DIVIDER, "", "✨ 牌陣總結", "", `整體答案：\n${overallAnswer}`);
   }
 
-  // 三張牌個別提醒
-  const cardReminderParts: string[] = [];
+  // 三張牌提醒：只顯示牌名正逆位與關鍵字
+  const cardKeywordParts: string[] = [];
   result.cards.forEach((card, i) => {
     const pos = card.position ?? DEFAULT_POSITIONS[i] ?? `第${i + 1}張`;
     const name = card.nameZh ?? card.name ?? "塔羅牌";
     const ori = card.orientationLabel ? `（${card.orientationLabel}）` : "";
-    const sectionRaw = cardSectionRaws[i] || "";
-
-    // 關鍵字：優先用儲存的 card.keywords，再從 fullText 提取
-    const kw = card.keywords || extractKeywordsFromSection(sectionRaw);
-
-    // 提醒文字：從牌的 message 段取前兩句（去掉牌名行與摘要行）
-    const cleanedSection = sectionRaw
-      .split("\n")
-      .filter((line) => {
-        const t = line.trim();
-        if (!t) return false;
-        // 去掉「牌名（正/逆位）」開頭行
-        if (/^[\S]+（(?:正位|逆位)）/.test(t)) return false;
-        // 去掉「摘要：」行
-        if (/^摘要[：:]/.test(t)) return false;
-        // 去掉「關鍵字：」行（已單獨顯示）
-        if (/^關鍵字[：:]/.test(t)) return false;
-        return true;
-      })
-      .join(" ")
-      .trim();
-    const reminder = firstTwoSentences(cleanedSection, 130);
-
-    // 格式：「位置｜牌名（正逆位）」為標題，不重複牌名
-    const block: string[] = [`${pos}｜${name}${ori}`];
-    if (kw) {
-      block.push("", `關鍵字：\n${kw}`);
-    }
-    if (reminder) {
-      block.push("", `提醒：\n${reminder}`);
-    }
-    cardReminderParts.push(block.join("\n"));
+    const kw = card.keywords || extractKeywordsFromSection(cardSectionRaws[i] || "");
+    const block = [`${pos}｜${name}${ori}`];
+    if (kw) block.push(`關鍵字：${kw}`);
+    cardKeywordParts.push(block.join("\n"));
   });
 
-  if (cardReminderParts.length > 0) {
-    parts.push(
-      "", DIVIDER, "", "🔮 三張牌提醒你", "",
-      cardReminderParts.join(`\n\n${CARD_DIVIDER}\n\n`),
-    );
+  if (cardKeywordParts.length > 0) {
+    parts.push("", LINE_DIVIDER, "", "🔮 三張牌提醒你", "", cardKeywordParts.join("\n\n"));
   }
 
   if (actionAdvice) {
-    parts.push("", DIVIDER, "", "🌙 3～7天行動建議", "", actionAdvice);
+    parts.push("", LINE_DIVIDER, "", "🌙 3～7天行動建議", "", actionAdvice);
   }
 
-  parts.push("", DIVIDER, "", `📚 收藏版完整排版：\n${resultUrl}`);
+  if (spiritualClosing) {
+    parts.push("", LINE_DIVIDER, "", "🧘 心靈收束", "", spiritualClosing);
+  }
+
+  parts.push("", `📚 收藏版完整排版：\n${resultUrl}`);
 
   return parts.join("\n");
 }
