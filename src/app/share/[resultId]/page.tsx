@@ -5,6 +5,7 @@ import { AppShell } from "@/components/AppShell";
 import { PageNavActions } from "@/components/PageNavActions";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { LINE_RESULTS_COLLECTION, type LineResultData } from "@/lib/lineResults";
+import ShareResultClient from "./ShareResultClient";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -130,13 +131,12 @@ export default async function ShareResultPage({
 
   // shortText 顯示摘要，fullText 只在 unlocked===true 時完整顯示
   const summaryText = cleanText(result.shortText || "", 400);
-  const hasFullReading =
-    result.unlocked === true &&
-    typeof result.fullText === "string" &&
-    result.fullText.trim().length > 0;
-  const fullReadingText = hasFullReading
-    ? result.fullText.replace(/\*\*/g, "").trim()
-    : "";
+  const initialUnlocked = result.unlocked === true;
+  // 只有已解鎖才把 fullText 傳給 client，避免在 HTML 中暴露未解鎖內容
+  const initialFullText =
+    initialUnlocked && typeof result.fullText === "string"
+      ? result.fullText.replace(/\*\*/g, "").trim()
+      : "";
 
   return (
     <AppShell>
@@ -181,15 +181,12 @@ export default async function ShareResultPage({
           </div>
         ) : null}
 
-        {/* 完整解讀（已解鎖時才顯示） */}
-        {hasFullReading ? (
-          <div className="mt-5 rounded-[1.5rem] border border-lavender/20 bg-midnight/58 p-5 shadow-glow sm:p-6">
-            <p className="mb-3 text-sm tracking-[0.22em] text-lavender/70">完整解讀</p>
-            <p className="whitespace-pre-line text-base leading-8 text-moon/84">
-              {fullReadingText}
-            </p>
-          </div>
-        ) : null}
+        {/* 完整解讀 + 通行碼解鎖 + Email 寄送（Client 元件管理狀態） */}
+        <ShareResultClient
+          resultId={resultId}
+          initialUnlocked={initialUnlocked}
+          initialFullText={initialFullText}
+        />
 
         {/* CTA */}
         <div className="mt-8 flex flex-wrap gap-3">
