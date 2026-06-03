@@ -11,17 +11,25 @@ import {
   buildRedeemShareText,
   type RedeemPlan,
 } from "@/lib/redeemCodes";
+import {
+  SESSION_COOKIE_NAME,
+  verifyAdminSessionCookie,
+} from "@/lib/verifyAdmin";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
-  // ── 管理員驗證 ─────────────────────────────────────────────────────────────
+  // ── 管理員驗證（Google session cookie 或 LINE cookie）─────────────────────
   const cookieStore = await cookies();
-  const lineUserId = cookieStore.get("line_user_id")?.value ?? null;
-  const adminIds = getAdminUserIds();
 
-  if (!lineUserId || !adminIds.includes(lineUserId)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+  const isGoogleAdmin = await verifyAdminSessionCookie(sessionCookie);
+
+  const lineUserId = cookieStore.get("line_user_id")?.value ?? null;
+  const isLineAdmin = Boolean(lineUserId && getAdminUserIds().includes(lineUserId));
+
+  if (!isGoogleAdmin && !isLineAdmin) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
   try {

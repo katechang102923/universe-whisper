@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 
 const navItems = [
   { href: "/tarot-cards", label: "塔羅牌介紹" },
@@ -9,16 +10,149 @@ const navItems = [
   { href: "/tarot", label: "塔羅抽牌" },
 ];
 
+// ── Google Auth 區塊（桌機） ────────────────────────────────────────────────
+
+function GoogleAuthDesktop() {
+  const { user, isAdmin, loading, sessionPending, signIn, signOut } = useAuth();
+  const [busy, setBusy] = useState(false);
+
+  if (loading) return null;
+
+  if (!user) {
+    return (
+      <button
+        type="button"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          try { await signIn(); } finally { setBusy(false); }
+        }}
+        className="hidden items-center gap-1.5 rounded-full border border-white/14 bg-white/6 px-3 py-1.5 text-xs text-moon/70 transition hover:bg-white/12 hover:text-moon disabled:opacity-50 md:flex"
+      >
+        <GoogleIcon />
+        {busy ? "登入中…" : "使用 Google 登入"}
+      </button>
+    );
+  }
+
+  return (
+    <div className="hidden items-center gap-2 md:flex">
+      {isAdmin && (
+        <Link
+          href="/admin/usage"
+          className="rounded-full border border-lavender/30 bg-lavender/10 px-3 py-1.5 text-xs font-medium text-moon transition hover:bg-lavender/20"
+        >
+          管理後台
+        </Link>
+      )}
+      <div className="flex items-center gap-1.5 rounded-full border border-white/12 bg-white/6 px-3 py-1.5 text-xs text-moon/70">
+        <GoogleIcon />
+        <span className="max-w-[140px] truncate">
+          {sessionPending ? "登入中…" : `已登入：${user.email}`}
+        </span>
+      </div>
+      <button
+        type="button"
+        onClick={() => void signOut()}
+        className="rounded-full border border-white/10 px-3 py-1.5 text-xs text-moon/50 transition hover:bg-white/8 hover:text-moon"
+      >
+        登出
+      </button>
+    </div>
+  );
+}
+
+// ── Google Auth 區塊（手機選單） ─────────────────────────────────────────────
+
+function GoogleAuthMobile({ onClose }: { onClose: () => void }) {
+  const { user, isAdmin, loading, sessionPending, signIn, signOut } = useAuth();
+  const [busy, setBusy] = useState(false);
+
+  if (loading) return null;
+
+  if (!user) {
+    return (
+      <button
+        type="button"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          try { await signIn(); } finally { setBusy(false); onClose(); }
+        }}
+        className="flex w-full items-center gap-2 rounded-2xl px-4 py-3 text-left transition hover:bg-white/10 disabled:opacity-50"
+      >
+        <GoogleIcon />
+        {busy ? "登入中…" : "使用 Google 登入"}
+      </button>
+    );
+  }
+
+  return (
+    <>
+      <div className="px-4 py-2 text-xs text-moon/44 truncate">
+        {sessionPending ? "登入中…" : `已登入：${user.email}`}
+      </div>
+      {isAdmin && (
+        <Link
+          href="/admin/usage"
+          onClick={onClose}
+          className="block rounded-2xl px-4 py-3 text-lavender/90 transition hover:bg-white/10"
+        >
+          管理後台
+        </Link>
+      )}
+      <button
+        type="button"
+        onClick={() => { void signOut(); onClose(); }}
+        className="block w-full rounded-2xl px-4 py-3 text-left text-moon/60 transition hover:bg-white/10"
+      >
+        登出
+      </button>
+    </>
+  );
+}
+
+// ── Google SVG Icon ─────────────────────────────────────────────────────────
+
+function GoogleIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true" className="shrink-0">
+      <path
+        fill="#4285F4"
+        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+      />
+    </svg>
+  );
+}
+
+// ── Main SiteNav ────────────────────────────────────────────────────────────
+
 export function SiteNav() {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="relative">
+    <div className="relative flex items-center gap-2">
+      {/* Google Auth — 桌機 */}
+      <GoogleAuthDesktop />
+
+      {/* Hamburger — 手機 */}
       <button
         type="button"
         aria-expanded={open}
         aria-label="開啟導覽選單"
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => setOpen((c) => !c)}
         className="flex h-10 w-10 items-center justify-center rounded-full border border-white/12 bg-white/8 text-moon transition hover:bg-white/12 md:hidden"
       >
         <span className="relative h-4 w-5">
@@ -28,6 +162,7 @@ export function SiteNav() {
         </span>
       </button>
 
+      {/* Nav links — 桌機 */}
       <nav className="hidden items-center gap-1 text-sm text-moon/76 md:flex">
         {navItems.map((item) => (
           <Link
@@ -40,8 +175,9 @@ export function SiteNav() {
         ))}
       </nav>
 
-      {open ? (
-        <nav className="absolute right-0 top-12 z-30 w-52 rounded-3xl border border-white/12 bg-midnight/95 p-2 text-sm text-moon shadow-glow backdrop-blur-xl md:hidden">
+      {/* 下拉選單 — 手機 */}
+      {open && (
+        <nav className="absolute right-0 top-12 z-30 w-56 rounded-3xl border border-white/12 bg-midnight/95 p-2 text-sm text-moon shadow-glow backdrop-blur-xl md:hidden">
           {navItems.map((item) => (
             <Link
               key={item.href}
@@ -52,8 +188,10 @@ export function SiteNav() {
               {item.label}
             </Link>
           ))}
+          <div className="my-1 border-t border-white/8" />
+          <GoogleAuthMobile onClose={() => setOpen(false)} />
         </nav>
-      ) : null}
+      )}
     </div>
   );
 }

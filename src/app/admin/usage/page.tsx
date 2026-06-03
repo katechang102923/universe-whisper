@@ -11,6 +11,10 @@ import {
   type DailyUsageDoc,
 } from "@/lib/rateLimit";
 import { ZODIAC_SIGNS, type FortuneStatsDoc } from "@/lib/dailyFortune";
+import {
+  SESSION_COOKIE_NAME,
+  verifyAdminSessionCookie,
+} from "@/lib/verifyAdmin";
 
 export const dynamic = "force-dynamic"; // 每次請求都取得最新資料
 
@@ -97,12 +101,16 @@ function UsageTable({
 // ── 主頁面 ────────────────────────────────────────────────────────────────────
 
 export default async function AdminUsagePage() {
-  // ── 驗證管理員身份 ──────────────────────────────────────────────────────
+  // ── 驗證管理員身份（Google session cookie 或 LINE cookie）──────────────
   const cookieStore = await cookies();
-  const lineUserId = cookieStore.get("line_user_id")?.value ?? null;
-  const adminIds = getAdminUserIds();
 
-  if (!lineUserId || !adminIds.includes(lineUserId)) {
+  const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+  const isGoogleAdmin = await verifyAdminSessionCookie(sessionCookie);
+
+  const lineUserId = cookieStore.get("line_user_id")?.value ?? null;
+  const isLineAdmin = Boolean(lineUserId && getAdminUserIds().includes(lineUserId));
+
+  if (!isGoogleAdmin && !isLineAdmin) {
     redirect("/");
   }
 

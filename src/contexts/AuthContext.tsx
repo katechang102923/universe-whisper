@@ -4,14 +4,15 @@
  * AuthContext — wraps the entire app and provides the current Firebase user,
  * admin status, and sign-in / sign-out helpers.
  *
- * Firebase Auth is obtained lazily via getClientAuth() inside useEffect /
- * event handlers — never at module scope — so this file is safe during
- * Next.js build even when NEXT_PUBLIC_FIREBASE_* env vars are absent.
+ * Google Sign-In flow:
+ *   1. signInWithPopup (client-side)
+ *   2. POST /api/auth/google-session with ID token → httpOnly session cookie
+ *   3. Admin pages verify the session cookie server-side
  *
- * Admin detection: an authenticated user whose email matches the hard-coded
- * admin list is flagged `isAdmin = true` on the CLIENT SIDE only (for UI
- * gating). All server-side admin bypasses verify the ID token independently
- * via verifyAdminIdToken() — the client value is never trusted by the server.
+ * Admin detection:
+ *   - Client-side: email is in NEXT_PUBLIC_ADMIN_GOOGLE_EMAILS (for UI gating only)
+ *   - Server-side: verifyAdminSessionCookie() in page routes / API routes
+ *     (client isAdmin value is NEVER trusted by the server)
  */
 
 import {
@@ -28,31 +29,34 @@ import {
   signInWithPopup,
   signOut as firebaseSignOut,
 } from "firebase/auth";
-// Only import the GETTER — this never calls getAuth() at module level.
 import { getClientAuth } from "@/lib/firebaseClient";
 
-const ADMIN_EMAILS = ["ciut0000@gmail.com"];
+// ── Admin email list (client-side UI only) ─────────────────────────────────
+// Read from NEXT_PUBLIC_ADMIN_GOOGLE_EMAILS; fall back to hardcoded list.
+const ADMIN_EMAILS_CLIENT: string[] = (() => {
+  const env = process.env.NEXT_PUBLIC_ADMIN_GOOGLE_EMAILS ?? "";
+  const fromEnv = env
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  return fromEnv.length > 0 ? fromEnv : ["ciut0000@gmail.com"];
+})();
 
 function isAdminEmail(email: string | null | undefined): boolean {
   if (!email) return false;
-  return ADMIN_EMAILS.includes(email.toLowerCase());
+  return ADMIN_EMAILS_CLIENT.includes(email.toLowerCase());
 }
 
+// ── Types ───────────────────────────────────────────────────────────────────
+
 type AuthContextValue = {
-  /** The currently signed-in Firebase user, or null if not signed in. */
   user: User | null;
-  /** True while the initial auth state is being determined. */
   loading: boolean;
-  /** True when the signed-in user is a recognised admin. */
   isAdmin: boolean;
-  /**
-   * Returns the current ID token (force-refreshes if forceRefresh is true).
-   * Returns null if not signed in or Firebase is not configured.
-   */
+  /** True while the session cookie is being written after sign-in */
+  sessionPending: boolean;
   getIdToken: (forceRefresh?: boolean) => Promise<string | null>;
-  /** Triggers Google Sign-In via popup. */
   signIn: () => Promise<void>;
-  /** Signs the current user out. */
   signOut: () => Promise<void>;
 };
 
@@ -60,32 +64,29 @@ const AuthContext = createContext<AuthContextValue>({
   user: null,
   loading: true,
   isAdmin: false,
+  sessionPending: false,
   getIdToken: async () => null,
   signIn: async () => {},
   signOut: async () => {},
 });
 
+// ── Provider ────────────────────────────────────────────────────────────────
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sessionPending, setSessionPending] = useState(false);
 
   useEffect(() => {
-    // getClientAuth() returns null on the server OR when env vars are missing.
-    // In that case skip the subscription and mark loading done so the UI
-    // doesn't hang indefinitely.
     const auth = getClientAuth();
     if (!auth) {
       setLoading(false);
       return;
     }
-
-    // onAuthStateChanged is imported statically but only CALLED here inside
-    // useEffect, so it only runs in the browser — never during build/SSR.
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
       setLoading(false);
     });
-
     return unsubscribe;
   }, []);
 
@@ -101,28 +102,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [user],
   );
 
+  /** Creates server-side session cookie after successful Google sign-in */
+  const createSession = useCallback(async (firebaseUser: User) => {
+    setSessionPending(true);
+    try {
+      const idToken = await firebaseUser.getIdToken(true);
+      await fetch("/api/auth/google-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+    } catch (err) {
+      console.warn("[AuthContext] Failed to create session cookie:", err);
+    } finally {
+      setSessionPending(false);
+    }
+  }, []);
+
   const signIn = useCallback(async () => {
     const auth = getClientAuth();
     if (!auth) {
-      console.warn("[AuthContext] Firebase Auth is not configured — skipping sign-in.");
+      console.warn("[AuthContext] Firebase Auth is not configured.");
       return;
     }
     const provider = new GoogleAuthProvider();
-    // Hint the account chooser towards the admin email.
-    provider.setCustomParameters({ login_hint: ADMIN_EMAILS[0] });
-    await signInWithPopup(auth, provider);
-  }, []);
+    provider.setCustomParameters({ prompt: "select_account" });
+    const result = await signInWithPopup(auth, provider);
+    await createSession(result.user);
+  }, [createSession]);
 
   const signOut = useCallback(async () => {
     const auth = getClientAuth();
-    if (!auth) return;
-    await firebaseSignOut(auth);
+    // Clear server-side session cookie first
+    try {
+      await fetch("/api/auth/google-session", { method: "DELETE" });
+    } catch {
+      // ignore
+    }
+    if (auth) await firebaseSignOut(auth);
   }, []);
 
   const isAdmin = isAdminEmail(user?.email);
 
   return (
-    <AuthContext.Provider value={{ user, loading, isAdmin, getIdToken, signIn, signOut }}>
+    <AuthContext.Provider
+      value={{ user, loading, isAdmin, sessionPending, getIdToken, signIn, signOut }}
+    >
       {children}
     </AuthContext.Provider>
   );

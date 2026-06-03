@@ -10,6 +10,10 @@ import {
   type RedeemCodeData,
 } from "@/lib/redeemCodes";
 import RedeemCodeGenerator from "./RedeemCodeGenerator";
+import {
+  SESSION_COOKIE_NAME,
+  verifyAdminSessionCookie,
+} from "@/lib/verifyAdmin";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -39,12 +43,16 @@ function statusLabel(status: RedeemCodeData["status"]) {
 }
 
 export default async function AdminRedeemCodesPage() {
-  // ── 管理員驗證 ─────────────────────────────────────────────────────────────
+  // ── 管理員驗證（Google session cookie 或 LINE cookie）─────────────────────
   const cookieStore = await cookies();
-  const lineUserId = cookieStore.get("line_user_id")?.value ?? null;
-  const adminIds = getAdminUserIds();
 
-  if (!lineUserId || !adminIds.includes(lineUserId)) {
+  const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+  const isGoogleAdmin = await verifyAdminSessionCookie(sessionCookie);
+
+  const lineUserId = cookieStore.get("line_user_id")?.value ?? null;
+  const isLineAdmin = Boolean(lineUserId && getAdminUserIds().includes(lineUserId));
+
+  if (!isGoogleAdmin && !isLineAdmin) {
     redirect("/");
   }
 
