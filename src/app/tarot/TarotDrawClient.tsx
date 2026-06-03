@@ -1858,6 +1858,7 @@ export function TarotDrawClient() {
   const [codeEmailInput, setCodeEmailInput] = useState("");
   const [codeEmailStatus, setCodeEmailStatus] = useState<"idle" | "sending" | "sent" | "error" | "not_configured">("idle");
   const [codeCopied, setCodeCopied] = useState(false);
+  const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
   // 抽牌前通行碼輸入
   const [preDrawCode, setPreDrawCode] = useState("");
   const [preDrawCodeChecking, setPreDrawCodeChecking] = useState(false);
@@ -3525,6 +3526,41 @@ export function TarotDrawClient() {
             {paymentStatus === "success" && purchasedCode ? (
               /* 購買成功畫面 */
               <div>
+                {/* 未保存防呆確認彈窗 */}
+                {showUnsavedWarning && (
+                  <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 px-5">
+                    <div className="w-full max-w-xs rounded-2xl border border-white/15 bg-midnight p-5 shadow-glow">
+                      <p className="text-sm font-semibold text-moon">你還沒有保存通行碼</p>
+                      <p className="mt-2 text-xs leading-6 text-moon/65">
+                        你還沒有複製或寄送通行碼，之後可能會找不到剩餘次數。確定要直接開始抽牌嗎？
+                      </p>
+                      <div className="mt-4 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowUnsavedWarning(false)}
+                          className="flex-1 rounded-xl border border-[#d8bd70]/50 px-3 py-2.5 text-xs font-semibold text-[#d8bd70] transition hover:border-[#d8bd70]/80 active:scale-95"
+                        >
+                          先返回保存
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowUnsavedWarning(false);
+                            if (purchasedCode) setPreDrawCodePending(purchasedCode.code);
+                            setPaymentModalOpen(false);
+                            setPaidUnlocked(true);
+                            void draw({ paid: true });
+                          }}
+                          className="flex-1 rounded-xl border border-white/15 px-3 py-2.5 text-xs text-moon/60 transition hover:border-white/30 hover:text-moon/85 active:scale-95"
+                        >
+                          確定開始抽牌
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 通行碼顯示 */}
                 <div className="text-center">
                   <p className="text-sm tracking-[0.22em] text-aurora/80">購買成功！</p>
                   <h3 className="mt-3 text-xl font-semibold text-moon">你的宇宙通行碼</h3>
@@ -3538,49 +3574,43 @@ export function TarotDrawClient() {
                     <p>可解鎖次數：{purchasedCode.totalUses} 次</p>
                     <p>有效期限：購買後 60 天內使用完畢</p>
                   </div>
-                  <p className="mt-3 rounded-xl bg-white/5 px-3 py-2 text-xs leading-6 text-moon/55">
-                    請妥善保存此通行碼。此通行碼不綁帳號，可自行使用，也可分享給朋友共同使用。
-                  </p>
                 </div>
-                {/* 操作按鈕列 */}
-                <div className="mt-5 grid grid-cols-2 gap-2">
+
+                {/* 保存提醒 + 複製按鈕 + Email 區塊 */}
+                <div className="mt-4 rounded-xl border border-[#d8bd70]/25 bg-[#d8bd70]/6 px-4 py-4">
+                  <p className="text-xs font-semibold text-[#d8bd70]">先保存你的通行碼</p>
+                  <p className="mt-1 mb-3 text-xs leading-5 text-moon/60">
+                    通行碼是查詢剩餘次數與再次使用的憑證，建議先複製或寄到 Email 後再開始抽牌。
+                  </p>
+
+                  {/* 複製通行碼 */}
                   <button
                     type="button"
                     onClick={() => {
                       navigator.clipboard?.writeText(purchasedCode.code).then(() => {
                         setCodeCopied(true);
-                        window.setTimeout(() => setCodeCopied(false), 2500);
+                        window.setTimeout(() => setCodeCopied(false), 3000);
                       }).catch(() => {});
                     }}
-                    className="rounded-xl border border-[#d8bd70]/35 px-3 py-2.5 text-xs font-medium text-[#d8bd70] transition hover:border-[#d8bd70]/60 active:scale-95"
+                    className="mb-3 w-full rounded-xl border border-[#d8bd70]/60 bg-[#d8bd70]/12 px-4 py-2.5 text-sm font-semibold text-[#d8bd70] transition hover:bg-[#d8bd70]/22 hover:border-[#d8bd70]/80 active:scale-95"
                   >
-                    {codeCopied ? "✓ 已複製" : "複製通行碼"}
+                    {codeCopied ? "✓ 已複製通行碼，請妥善保存。" : "複製通行碼"}
                   </button>
-                  <a
-                    href={`/redeem/check?code=${encodeURIComponent(purchasedCode.code)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="rounded-xl border border-white/14 px-3 py-2.5 text-center text-xs font-medium text-moon/60 transition hover:border-white/30 hover:text-moon/85"
-                  >
-                    查詢剩餘次數
-                  </a>
-                </div>
-                {/* Email 寄送 */}
-                <div className="mt-4 border-t border-white/8 pt-4">
-                  <p className="mb-1.5 text-xs font-semibold text-moon/70">寄送通行碼到 Email</p>
+
+                  {/* Email 保存 */}
                   {codeEmailStatus === "not_configured" ? (
                     <p className="text-xs text-moon/44">📭 Email 服務尚未啟用，請先複製通行碼保存。</p>
                   ) : codeEmailStatus === "sent" ? (
-                    <p className="text-xs text-aurora">✓ 已寄出宇宙通行碼，請至信箱查看。</p>
+                    <p className="text-xs font-medium text-aurora">✓ 已寄出通行碼，請到信箱確認。</p>
                   ) : (
-                    <div className="flex gap-2">
+                    <>
                       <input
                         type="email"
                         value={codeEmailInput}
                         onChange={(e) => { setCodeEmailInput(e.target.value); if (codeEmailStatus === "error") setCodeEmailStatus("idle"); }}
                         placeholder="請輸入你的 Email"
                         disabled={codeEmailStatus === "sending"}
-                        className="flex-1 rounded-xl border border-white/14 bg-white/6 px-3 py-2 text-xs text-moon placeholder-moon/30 outline-none transition focus:border-lavender/40"
+                        className="mb-2 w-full rounded-xl border border-white/14 bg-white/6 px-3 py-2.5 text-xs text-moon placeholder-moon/30 outline-none transition focus:border-[#d8bd70]/40"
                         aria-label="Email"
                       />
                       <button
@@ -3606,35 +3636,53 @@ export function TarotDrawClient() {
                             .then((d) => setCodeEmailStatus(d.ok ? "sent" : d.error === "EMAIL_NOT_CONFIGURED" ? "not_configured" : "error"))
                             .catch(() => setCodeEmailStatus("error"));
                         }}
-                        className="rounded-xl bg-moon/14 px-3 py-2 text-xs font-medium text-moon transition hover:bg-moon/22 disabled:opacity-50"
+                        className="w-full rounded-xl bg-[#d8bd70]/18 px-4 py-2.5 text-sm font-semibold text-[#d8bd70] transition hover:bg-[#d8bd70]/28 disabled:opacity-50 active:scale-95"
                       >
-                        {codeEmailStatus === "sending" ? "寄送中…" : "寄送通行碼"}
+                        {codeEmailStatus === "sending" ? "寄送中…" : "寄送通行碼到 Email"}
                       </button>
-                    </div>
+                    </>
                   )}
-                  {codeEmailStatus === "error" && <p className="mt-1 text-xs text-red-300/90">Email 寄送失敗，請稍後再試。</p>}
+                  {codeEmailStatus === "error" && (
+                    <p className="mt-1.5 text-xs text-red-300/90">
+                      寄送失敗，請確認 Email 是否正確，或先複製通行碼保存。
+                    </p>
+                  )}
                 </div>
-                {/* 立即使用 / 稍後再抽 */}
-                <div className="mt-4 flex flex-col gap-2">
+
+                {/* 查詢剩餘次數連結 */}
+                <div className="mt-2 text-center">
+                  <a
+                    href={`/redeem/check?code=${encodeURIComponent(purchasedCode.code)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-moon/40 underline underline-offset-2 transition hover:text-moon/65"
+                  >
+                    查詢剩餘次數
+                  </a>
+                </div>
+
+                {/* 立即使用（次要按鈕） */}
+                <div className="mt-4 border-t border-white/8 pt-4 text-center">
                   <button
                     type="button"
                     onClick={() => {
-                      if (purchasedCode) setPreDrawCodePending(purchasedCode.code);
-                      setPaymentModalOpen(false);
-                      setPaidUnlocked(true);
-                      void draw({ paid: true });
+                      const saved = codeCopied || codeEmailStatus === "sent";
+                      if (!saved) {
+                        setShowUnsavedWarning(true);
+                      } else {
+                        if (purchasedCode) setPreDrawCodePending(purchasedCode.code);
+                        setPaymentModalOpen(false);
+                        setPaidUnlocked(true);
+                        void draw({ paid: true });
+                      }
                     }}
-                    className="w-full rounded-full bg-[#d8bd70] px-5 py-3 text-sm font-semibold text-midnight transition hover:bg-moon active:scale-95"
+                    className="w-full rounded-xl border border-white/18 px-5 py-2.5 text-sm text-moon/60 transition hover:border-white/35 hover:text-moon/90 active:scale-95"
                   >
-                    立即使用通行碼抽牌
+                    我已保存通行碼，立即抽牌
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setPaymentModalOpen(false)}
-                    className="text-sm text-moon/50 underline underline-offset-2 transition hover:text-moon/80"
-                  >
-                    稍後再抽，先保存通行碼
-                  </button>
+                  <p className="mt-2 text-xs text-moon/38">
+                    稍後也可以用此通行碼查詢剩餘次數或再次使用。
+                  </p>
                 </div>
               </div>
             ) : (

@@ -158,48 +158,35 @@ function buildLineThreeCardMessage(
   const LINE_DIVIDER = "━━━━━━━━━━━━";
   const DEFAULT_POSITIONS = ["過去", "現在", "未來"];
 
-  // ── 提取牌陣總結 ──────────────────────────────────────────────────────────────
+  // ── 整體答案：從牌陣總結提取 ─────────────────────────────────────────────────
   const summaryRaw = extractSection(fullText, "牌陣總結", "三張牌整合");
   const answerFromSub =
     extractSubfield(summaryRaw, "整體答案", "為什麼會這樣", "接下來的方向") ||
     extractSubfield(summaryRaw, "核心判斷", "為什麼會這樣", "接下來的方向");
   const overallAnswerRaw = answerFromSub || stripLabelPrefix(summaryRaw, "整體答案", "核心判斷");
-  const overallAnswer = firstTwoSentences(overallAnswerRaw, 200);
+  const overallAnswer = sliceAtSentence(overallAnswerRaw, 200);
 
-  // ── 為什麼會這樣 ──────────────────────────────────────────────────────────────
-  const reasonFromSub =
-    extractSubfield(summaryRaw, "為什麼會這樣", "接下來的方向") ||
-    extractSection(fullText, "為什麼會這樣");
-  const reasonSummary = firstTwoSentences(reasonFromSub, 150);
+  // ── 心靈收束：溫柔提醒 + 一句祝福 ───────────────────────────────────────────
+  const gentleReminder = extractSection(fullText, "給你的溫柔提醒", "溫柔提醒");
+  const blessing = extractSection(fullText, "一句專屬祝福", "一句祝福");
+  const closingRaw = [gentleReminder, blessing].filter(Boolean).join("\n");
+  const closingMessage = closingRaw
+    ? firstTwoSentences(closingRaw, 150)
+    : firstTwoSentences(overallAnswerRaw, 120);
 
-  // ── 逐張牌短義（第一句話，不超過 30 字）────────────────────────────────────
-  const cardSectionRaws = [
-    extractSection(fullText, "第1張牌", "第一張牌"),
-    extractSection(fullText, "第2張牌", "第二張牌"),
-    extractSection(fullText, "第3張牌", "第三張牌"),
-  ];
-
-  // ── 牌列表（含短義）──────────────────────────────────────────────────────────
+  // ── 牌列表（牌名 + 關鍵字，各自獨立一行）────────────────────────────────────
   const cardListLines: string[] = [];
   result.cards.forEach((card, i) => {
     const pos = card.position ?? DEFAULT_POSITIONS[i] ?? `第${i + 1}張`;
     const name = card.nameZh ?? card.name ?? "塔羅牌";
     const ori = card.orientationLabel ? `（${card.orientationLabel}）` : "";
-    const sectionText = cardSectionRaws[i] || "";
-    // 短義：取該段第一句，或關鍵字
-    const kw = card.keywords || extractKeywordsFromSection(sectionText);
-    const firstSentence = sectionText
-      ? sliceAtSentence(sectionText.replace(/\n+/g, " ").replace(/.*?[：:]\s*/, ""), 30)
-      : "";
-    const shortMeaning = firstSentence || kw;
-    const suffix = shortMeaning ? `：${shortMeaning}` : "";
-    cardListLines.push(`${i + 1}. ${pos}｜${name}${ori}${suffix}`);
+    const kw = card.keywords || "";
+    cardListLines.push(`${i + 1}. ${pos}｜${name}${ori}`);
+    if (kw) cardListLines.push(`   關鍵字：${kw}`);
   });
 
   // ── 組合訊息 ──────────────────────────────────────────────────────────────────
   const parts: string[] = [
-    "宇宙偷偷話｜本次占卜結果",
-    "",
     `你的問題：\n${questionText}`,
     "",
     "你抽到的牌：",
@@ -207,15 +194,9 @@ function buildLineThreeCardMessage(
     cardListLines.join("\n"),
   ];
 
-  if (overallAnswer) {
-    parts.push("", LINE_DIVIDER, "", `整體答案：\n${overallAnswer}`);
-  }
-
-  if (reasonSummary) {
-    parts.push("", `為什麼會這樣：\n${reasonSummary}`);
-  }
-
-  parts.push("", LINE_DIVIDER, "", `📚 收藏版完整排版：\n${resultUrl}`);
+  parts.push("", LINE_DIVIDER, "", "✨ 牌陣總結", "", `整體答案：\n${overallAnswer}`);
+  parts.push("", LINE_DIVIDER, "", "🧘 心靈收束", "", closingMessage);
+  parts.push("", `📚 收藏版完整排版：\n${resultUrl}`);
 
   return parts.join("\n");
 }
@@ -232,44 +213,35 @@ function buildLineSingleCardMessage(
   const card = result.cards[0] ?? {};
   const cardName = card.nameZh ?? card.name ?? "塔羅牌";
   const cardOri = card.orientationLabel ? `（${card.orientationLabel}）` : "";
+  const kw = card.keywords || "";
 
-  // 單張牌短義
-  const cardSectionText = extractSection(fullText, "這張牌正在說什麼", "宇宙偷偷話");
-  const kw = card.keywords || extractKeywordsFromSection(cardSectionText);
-  const firstSentence = cardSectionText
-    ? sliceAtSentence(cardSectionText.replace(/\n+/g, " ").replace(/.*?[：:]\s*/, ""), 30)
-    : "";
-  const shortMeaning = firstSentence || kw;
-  const cardSuffix = shortMeaning ? `：${shortMeaning}` : "";
-
-  // ── 宇宙訊息（2-4 句）────────────────────────────────────────────────────────
+  // ── 整體答案：宇宙訊息 / 針對你的問題 ───────────────────────────────────────
   const cosmicRaw = extractSection(fullText, "宇宙偷偷話", "針對你的問題");
   const questionAnswerRaw = extractSection(fullText, "針對你的問題", "今天可以怎麼做", "接下來可以怎麼做");
-  const cosmicSummary = firstTwoSentences(cosmicRaw || questionAnswerRaw || result.shortText || "", 180);
+  const overallAnswerRaw = cosmicRaw || questionAnswerRaw || result.shortText || "";
+  const overallAnswer = sliceAtSentence(overallAnswerRaw, 200);
 
-  // ── 接下來可以怎麼做（2-3 句）────────────────────────────────────────────────
-  const actionRaw = extractSection(fullText, "接下來可以怎麼做", "今天可以怎麼做", "給你的溫柔提醒");
-  const actionSummary = firstTwoSentences(actionRaw, 130);
+  // ── 心靈收束：溫柔提醒 + 一句祝福 ───────────────────────────────────────────
+  const gentleReminder = extractSection(fullText, "給你的溫柔提醒", "溫柔提醒");
+  const blessing = extractSection(fullText, "一句專屬祝福", "一句祝福");
+  const closingRaw = [gentleReminder, blessing].filter(Boolean).join("\n");
+  const closingMessage = closingRaw
+    ? firstTwoSentences(closingRaw, 150)
+    : firstTwoSentences(overallAnswerRaw, 120);
 
   // ── 組合訊息 ──────────────────────────────────────────────────────────────────
   const parts: string[] = [
-    "宇宙偷偷話｜本次占卜結果",
-    "",
     `你的問題：\n${questionText}`,
     "",
     "你抽到的牌：",
-    `1. ${cardName}${cardOri}${cardSuffix}`,
+    "",
+    `${cardName}${cardOri}`,
   ];
+  if (kw) parts.push(`關鍵字：${kw}`);
 
-  if (cosmicSummary) {
-    parts.push("", LINE_DIVIDER, "", `宇宙訊息：\n${cosmicSummary}`);
-  }
-
-  if (actionSummary) {
-    parts.push("", `接下來可以怎麼做：\n${actionSummary}`);
-  }
-
-  parts.push("", LINE_DIVIDER, "", `📚 收藏版完整排版：\n${resultUrl}`);
+  parts.push("", LINE_DIVIDER, "", "✨ 宇宙訊息", "", `整體答案：\n${overallAnswer}`);
+  parts.push("", LINE_DIVIDER, "", "🧘 心靈收束", "", closingMessage);
+  parts.push("", `📚 收藏版完整排版：\n${resultUrl}`);
 
   return parts.join("\n");
 }
