@@ -1852,8 +1852,20 @@ export function TarotDrawClient() {
   const [paymentStatus, setPaymentStatus] = useState<"idle" | "processing" | "success">("idle");
   const [selectedPlan, setSelectedPlan] = useState<typeof PASS_PLANS[number] | null>(null);
   const [purchasedCode, setPurchasedCode] = useState<{
-    code: string; displayName: string; totalUses: number; expiresAt: string;
+    code: string; displayName: string; totalUses: number; expiresAt: string; planName: string;
   } | null>(null);
+  // 購買成功後 Email 寄送
+  const [codeEmailInput, setCodeEmailInput] = useState("");
+  const [codeEmailStatus, setCodeEmailStatus] = useState<"idle" | "sending" | "sent" | "error" | "not_configured">("idle");
+  const [codeCopied, setCodeCopied] = useState(false);
+  // 抽牌前通行碼輸入
+  const [preDrawCode, setPreDrawCode] = useState("");
+  const [preDrawCodeChecking, setPreDrawCodeChecking] = useState(false);
+  const [preDrawCodeError, setPreDrawCodeError] = useState("");
+  // 待扣次數的通行碼（在 draw 成功後扣）
+  const [preDrawCodePending, setPreDrawCodePending] = useState("");
+  const [codeDeductResult, setCodeDeductResult] = useState<{ remainingUses: number } | null>(null);
+  const [codeDeductError, setCodeDeductError] = useState("");
   // LINE delivery state (preserved — kept for openLineConnect compatibility)
   const [lineDeliveryStatus, setLineDeliveryStatus] = useState<
     "idle" | "creating" | "done" | "error"
@@ -2022,6 +2034,42 @@ export function TarotDrawClient() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canShowReadings, hasFullAccess, readingStatus, lineResultId, fullReading]);
 
+  // 抽牌成功後，扣除 preDrawCode 的 1 次（只有 AI 成功 + resultId 建立後才執行）
+  useEffect(() => {
+    if (
+      canShowReadings &&
+      readingStatus === "done" &&
+      lineResultId &&
+      preDrawCodePending
+    ) {
+      fetch("/api/redeem/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: preDrawCodePending, resultId: lineResultId }),
+      })
+        .then((r) => r.json() as Promise<{ ok: boolean; remainingUses?: number; errorCode?: string }>)
+        .then((data) => {
+          if (data.ok) {
+            setCodeDeductResult({ remainingUses: data.remainingUses ?? 0 });
+            setCodeDeductError("");
+          } else {
+            // 扣失敗（例如已重複扣過），顯示錯誤但不隱藏解讀
+            const msg: Record<string, string> = {
+              ALREADY_USED: "此通行碼已解鎖本次結果",
+              USED_UP: "此通行碼次數已用完",
+              EXPIRED: "此通行碼已過期",
+              NOT_FOUND: "查無此通行碼",
+            };
+            setCodeDeductError(msg[data.errorCode ?? ""] ?? "通行碼扣次數失敗，請聯絡客服");
+          }
+          setPreDrawCodePending("");
+        })
+        .catch(() => { setCodeDeductError("網路錯誤，通行碼次數可能未扣除"); setPreDrawCodePending(""); });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canShowReadings, readingStatus, lineResultId, preDrawCodePending]);
+
+
   // 付費解鎖後自動建立 Firestore 結果記錄（供 LINE claim code 使用）
   useEffect(() => {
     if (paidUnlocked && readingStatus === "done" && !lineResultId) {
@@ -2053,6 +2101,15 @@ export function TarotDrawClient() {
     setPaymentModalOpen(false);
     setPaymentStatus("idle");
     setPurchasedCode(null);
+    setCodeEmailInput("");
+    setCodeEmailStatus("idle");
+    setCodeCopied(false);
+    setPreDrawCode("");
+    setPreDrawCodeChecking(false);
+    setPreDrawCodeError("");
+    setPreDrawCodePending("");
+    setCodeDeductResult(null);
+    setCodeDeductError("");
     setLineDeliveryStatus("idle");
     setLineDeliveryMessage("");
     setLineResultId("");
@@ -2625,6 +2682,37 @@ export function TarotDrawClient() {
     setPaymentModalOpen(true);
   }
 
+  /** 抽牌前驗證通行碼，通過後進入 paid draw；實際扣次數在 draw 成功後才做 */
+  async function handlePreDrawCode() {
+    const trimmed = preDrawCode.trim().toUpperCase();
+    if (!trimmed) { setPreDrawCodeError("請輸入宇宙通行碼"); return; }
+    setPreDrawCodeChecking(true);
+    setPreDrawCodeError("");
+    try {
+      const res = await fetch("/api/redeem/check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: trimmed }),
+      });
+      const data = await res.json() as {
+        ok: boolean; status?: string; remainingUses?: number; error?: string;
+      };
+      if (!data.ok || data.status !== "active" || (data.remainingUses ?? 0) <= 0) {
+        setPreDrawCodeError(data.error ?? "此通行碼無效或已用完，請確認後再試");
+        return;
+      }
+      // 通過驗證：存入 pending，以 paid mode 開始抽牌（AI 產生完整解讀）
+      setPreDrawCodePending(trimmed);
+      setPreDrawCode("");
+      void draw({ paid: true });
+    } catch {
+      setPreDrawCodeError("網路錯誤，請稍後再試");
+    } finally {
+      setPreDrawCodeChecking(false);
+    }
+  }
+
+
   function simulatePayment() {
     if (paymentStatus === "processing") return;
     setPaymentStatus("processing");
@@ -2646,6 +2734,7 @@ export function TarotDrawClient() {
               displayName: data.displayName ?? plan.label,
               totalUses: data.totalUses ?? plan.price,
               expiresAt: data.expiresAt ?? "",
+              planName: planKey,
             });
           }
         })
@@ -2945,7 +3034,44 @@ export function TarotDrawClient() {
               </button>
             ))}
           </div>
-          <p className="text-center text-xs text-moon/38 mt-2">已購買宇宙通行碼？<a href="/redeem/check" className="ml-1 underline underline-offset-2 text-moon/55 transition hover:text-moon/80">查詢剩餘次數</a></p>
+          <p className="text-center text-xs text-moon/38 mt-2">
+            已購買宇宙通行碼？
+            <a href="/redeem/check" className="ml-1 underline underline-offset-2 text-moon/55 transition hover:text-moon/80">查詢剩餘次數</a>
+          </p>
+          {/* 抽牌前通行碼輸入 */}
+          <div className="mt-3 rounded-2xl border border-lavender/22 bg-midnight/50 p-4 sm:p-5">
+            <p className="text-sm font-semibold text-moon">已有宇宙通行碼？</p>
+            <p className="mt-1 text-xs leading-6 text-moon/55">
+              輸入已購買的宇宙通行碼，即可繼續抽牌並解鎖完整解讀。每次成功抽牌會扣除 1 次。
+            </p>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <input
+                type="text"
+                value={preDrawCode}
+                onChange={(e) => { setPreDrawCode(e.target.value.toUpperCase()); setPreDrawCodeError(""); }}
+                onKeyDown={(e) => e.key === "Enter" && !preDrawCodeChecking && void handlePreDrawCode()}
+                placeholder="請輸入你的宇宙通行碼"
+                maxLength={12}
+                disabled={preDrawCodeChecking}
+                className="flex-1 rounded-xl border border-white/14 bg-white/6 px-4 py-3 font-mono text-sm tracking-[0.12em] text-moon placeholder-moon/30 outline-none transition focus:border-lavender/50"
+                aria-label="宇宙通行碼"
+              />
+              <button
+                type="button"
+                onClick={() => void handlePreDrawCode()}
+                disabled={preDrawCodeChecking || !preDrawCode.trim()}
+                className="w-full rounded-xl bg-lavender px-5 py-3 text-sm font-medium text-midnight transition hover:bg-lavender/90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:whitespace-nowrap"
+              >
+                {preDrawCodeChecking ? "驗證中…" : "使用通行碼抽牌"}
+              </button>
+            </div>
+            {preDrawCodeError && (
+              <p className="mt-2 text-xs text-red-300/90" role="alert">✕ {preDrawCodeError}</p>
+            )}
+            <p className="mt-2 text-xs text-moon/35">
+              <a href="/redeem/check" className="underline underline-offset-2 transition hover:text-moon/55">查詢剩餘次數</a>
+            </p>
+          </div>
         </div>
       ) : (
         <button
@@ -3070,6 +3196,19 @@ export function TarotDrawClient() {
           ???????????????????????????????????????????????????????????????????? */}
       {canShowReadings ? (
         <section ref={readingSectionRef} className="relative z-10 mt-9 space-y-5">
+
+          {/* 通行碼扣次成功提示 */}
+          {codeDeductResult !== null && (
+            <div className="rounded-2xl border border-aurora/30 bg-aurora/8 px-4 py-3 text-sm text-aurora/90">
+              ✓ 解鎖成功，本通行碼剩餘 {codeDeductResult.remainingUses} 次。
+            </div>
+          )}
+          {codeDeductError && (
+            <div className="rounded-2xl border border-red-300/25 bg-red-300/6 px-4 py-3 text-sm text-red-300/90">
+              ⚠ {codeDeductError}
+            </div>
+          )}
+
 
           {/* ?? 1. Single-card story image (always shown for download/share) ?? */}
           {isSingleResult && storyCard ? (
@@ -3385,26 +3524,102 @@ export function TarotDrawClient() {
           <div className="cosmic-reading-card w-full max-w-md rounded-[1.75rem] border border-[#d8bd70]/30 bg-midnight p-6 shadow-glow">
             {paymentStatus === "success" && purchasedCode ? (
               /* 購買成功畫面 */
-              <div className="text-center">
-                <p className="text-sm tracking-[0.22em] text-aurora/80">購買成功！</p>
-                <h3 className="mt-3 text-xl font-semibold text-moon">你的宇宙通行碼</h3>
-                <div className="mt-4 rounded-2xl border border-[#d8bd70]/40 bg-[#d8bd70]/8 px-5 py-4">
-                  <p className="font-mono text-2xl font-bold tracking-[0.22em] text-[#d8bd70] select-all">
-                    {purchasedCode.code}
+              <div>
+                <div className="text-center">
+                  <p className="text-sm tracking-[0.22em] text-aurora/80">購買成功！</p>
+                  <h3 className="mt-3 text-xl font-semibold text-moon">你的宇宙通行碼</h3>
+                  <div className="mt-4 rounded-2xl border border-[#d8bd70]/40 bg-[#d8bd70]/8 px-5 py-4">
+                    <p className="font-mono text-2xl font-bold tracking-[0.22em] text-[#d8bd70] select-all">
+                      {purchasedCode.code}
+                    </p>
+                  </div>
+                  <div className="mt-4 space-y-1 text-sm text-moon/70 text-left">
+                    <p>方案：{purchasedCode.displayName}</p>
+                    <p>可解鎖次數：{purchasedCode.totalUses} 次</p>
+                    <p>有效期限：購買後 60 天內使用完畢</p>
+                  </div>
+                  <p className="mt-3 rounded-xl bg-white/5 px-3 py-2 text-xs leading-6 text-moon/55">
+                    請妥善保存此通行碼。此通行碼不綁帳號，可自行使用，也可分享給朋友共同使用。
                   </p>
                 </div>
-                <div className="mt-4 space-y-1 text-sm text-moon/70 text-left">
-                  <p>方案：{purchasedCode.displayName}</p>
-                  <p>可解鎖次數：{purchasedCode.totalUses} 次</p>
-                  <p>有效期限：購買後 60 天內使用完畢</p>
-                </div>
-                <p className="mt-3 rounded-xl bg-white/5 px-3 py-2 text-xs leading-6 text-moon/55">
-                  請妥善保存此通行碼。此通行碼不綁帳號，可自行使用，也可分享給朋友共同使用。
-                </p>
-                <div className="mt-5 flex flex-col gap-3">
+                {/* 操作按鈕列 */}
+                <div className="mt-5 grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => {
+                      navigator.clipboard?.writeText(purchasedCode.code).then(() => {
+                        setCodeCopied(true);
+                        window.setTimeout(() => setCodeCopied(false), 2500);
+                      }).catch(() => {});
+                    }}
+                    className="rounded-xl border border-[#d8bd70]/35 px-3 py-2.5 text-xs font-medium text-[#d8bd70] transition hover:border-[#d8bd70]/60 active:scale-95"
+                  >
+                    {codeCopied ? "✓ 已複製" : "複製通行碼"}
+                  </button>
+                  <a
+                    href={`/redeem/check?code=${encodeURIComponent(purchasedCode.code)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-xl border border-white/14 px-3 py-2.5 text-center text-xs font-medium text-moon/60 transition hover:border-white/30 hover:text-moon/85"
+                  >
+                    查詢剩餘次數
+                  </a>
+                </div>
+                {/* Email 寄送 */}
+                <div className="mt-4 border-t border-white/8 pt-4">
+                  <p className="mb-1.5 text-xs font-semibold text-moon/70">寄送通行碼到 Email</p>
+                  {codeEmailStatus === "not_configured" ? (
+                    <p className="text-xs text-moon/44">📭 Email 服務尚未啟用，請先複製通行碼保存。</p>
+                  ) : codeEmailStatus === "sent" ? (
+                    <p className="text-xs text-aurora">✓ 已寄出宇宙通行碼，請至信箱查看。</p>
+                  ) : (
+                    <div className="flex gap-2">
+                      <input
+                        type="email"
+                        value={codeEmailInput}
+                        onChange={(e) => { setCodeEmailInput(e.target.value); if (codeEmailStatus === "error") setCodeEmailStatus("idle"); }}
+                        placeholder="請輸入你的 Email"
+                        disabled={codeEmailStatus === "sending"}
+                        className="flex-1 rounded-xl border border-white/14 bg-white/6 px-3 py-2 text-xs text-moon placeholder-moon/30 outline-none transition focus:border-lavender/40"
+                        aria-label="Email"
+                      />
+                      <button
+                        type="button"
+                        disabled={codeEmailStatus === "sending" || !codeEmailInput.trim()}
+                        onClick={() => {
+                          if (!purchasedCode) return;
+                          setCodeEmailStatus("sending");
+                          fetch("/api/email/send-redeem-code", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              email: codeEmailInput.trim(),
+                              code: purchasedCode.code,
+                              planName: purchasedCode.planName,
+                              displayName: purchasedCode.displayName,
+                              totalUses: purchasedCode.totalUses,
+                              remainingUses: purchasedCode.totalUses,
+                              expiresAt: purchasedCode.expiresAt,
+                            }),
+                          })
+                            .then((r) => r.json() as Promise<{ ok: boolean; error?: string }>)
+                            .then((d) => setCodeEmailStatus(d.ok ? "sent" : d.error === "EMAIL_NOT_CONFIGURED" ? "not_configured" : "error"))
+                            .catch(() => setCodeEmailStatus("error"));
+                        }}
+                        className="rounded-xl bg-moon/14 px-3 py-2 text-xs font-medium text-moon transition hover:bg-moon/22 disabled:opacity-50"
+                      >
+                        {codeEmailStatus === "sending" ? "寄送中…" : "寄送通行碼"}
+                      </button>
+                    </div>
+                  )}
+                  {codeEmailStatus === "error" && <p className="mt-1 text-xs text-red-300/90">Email 寄送失敗，請稍後再試。</p>}
+                </div>
+                {/* 立即使用 / 稍後再抽 */}
+                <div className="mt-4 flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (purchasedCode) setPreDrawCodePending(purchasedCode.code);
                       setPaymentModalOpen(false);
                       setPaidUnlocked(true);
                       void draw({ paid: true });
