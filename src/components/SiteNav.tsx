@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 
-const navItems = [
-  { href: "/tarot-cards", label: "塔羅牌介紹" },
+// 次要導覽項目（不含主 CTA 塔羅抽牌）
+const secondaryNavItems = [
+  { href: "/redeem/check", label: "查詢次數" },
   { href: "/daily", label: "今日運勢" },
-  { href: "/tarot", label: "塔羅抽牌" },
+  { href: "/tarot-cards", label: "塔羅牌介紹" },
 ];
 
 // ── Google Auth 區塊（桌機） ────────────────────────────────────────────────
@@ -26,10 +28,8 @@ function GoogleAuthDesktop() {
   } = useAuth();
   const [busy, setBusy] = useState(false);
 
-  // 初始化中不渲染，避免 hydration 閃爍
   if (loading) return null;
 
-  // ── Firebase 未設定 ────────────────────────────────────────────────────────
   if (!firebaseConfigured) {
     return (
       <span className="hidden text-xs text-red-400/80 md:block">
@@ -38,7 +38,6 @@ function GoogleAuthDesktop() {
     );
   }
 
-  // ── 已登入 ─────────────────────────────────────────────────────────────────
   if (user) {
     return (
       <div className="hidden items-center gap-2 md:flex">
@@ -67,7 +66,6 @@ function GoogleAuthDesktop() {
     );
   }
 
-  // ── 未登入 ─────────────────────────────────────────────────────────────────
   return (
     <div className="hidden flex-col items-end gap-1 md:flex">
       <button
@@ -88,7 +86,6 @@ function GoogleAuthDesktop() {
         {busy ? "登入中…" : "使用 Google 登入"}
       </button>
 
-      {/* 錯誤訊息 */}
       {signInError && (
         <p className="max-w-[280px] text-right text-[11px] leading-5 text-red-400/90">
           {signInError}
@@ -216,11 +213,70 @@ function GoogleIcon() {
 
 export function SiteNav() {
   const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+
+  const isTarotActive = pathname === "/tarot";
 
   return (
     <div className="relative flex items-center gap-2">
       {/* Google Auth — 桌機 */}
       <GoogleAuthDesktop />
+
+      {/* Nav links — 桌機 */}
+      <nav className="hidden items-center gap-1 text-sm text-moon/76 md:flex">
+        {/* 主 CTA：立即抽牌 */}
+        <Link
+          href="/tarot"
+          className={[
+            "flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition",
+            isTarotActive
+              ? "bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 text-midnight shadow-[0_0_16px_rgba(251,191,36,0.5)]"
+              : "bg-gradient-to-r from-amber-500/90 via-yellow-400/90 to-amber-400/90 text-midnight shadow-[0_0_10px_rgba(251,191,36,0.3)] hover:from-amber-400 hover:via-yellow-300 hover:to-amber-500 hover:shadow-[0_0_18px_rgba(251,191,36,0.55)]",
+          ].join(" ")}
+        >
+          <span aria-hidden="true">✦</span>
+          立即抽牌
+        </Link>
+
+        {/* 查詢次數 */}
+        <Link
+          href="/redeem/check"
+          className={[
+            "rounded-full px-3 py-2 text-sm transition",
+            pathname === "/redeem/check"
+              ? "border border-amber-400/40 text-amber-300"
+              : "text-moon/76 hover:bg-white/10 hover:text-moon",
+          ].join(" ")}
+        >
+          查詢次數
+        </Link>
+
+        {/* 今日運勢 */}
+        <Link
+          href="/daily"
+          className={[
+            "rounded-full px-3 py-2 transition",
+            pathname === "/daily"
+              ? "text-moon underline underline-offset-4"
+              : "hover:bg-white/10 hover:text-moon",
+          ].join(" ")}
+        >
+          今日運勢
+        </Link>
+
+        {/* 塔羅牌介紹 */}
+        <Link
+          href="/tarot-cards"
+          className={[
+            "rounded-full px-3 py-2 transition",
+            pathname === "/tarot-cards"
+              ? "text-moon underline underline-offset-4"
+              : "hover:bg-white/10 hover:text-moon",
+          ].join(" ")}
+        >
+          塔羅牌介紹
+        </Link>
+      </nav>
 
       {/* Hamburger — 手機 */}
       <button
@@ -243,32 +299,62 @@ export function SiteNav() {
         </span>
       </button>
 
-      {/* Nav links — 桌機 */}
-      <nav className="hidden items-center gap-1 text-sm text-moon/76 md:flex">
-        {navItems.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className="rounded-full px-3 py-2 transition hover:bg-white/10 hover:text-moon"
-          >
-            {item.label}
-          </Link>
-        ))}
-      </nav>
-
       {/* 下拉選單 — 手機 */}
       {open && (
-        <nav className="absolute right-0 top-12 z-30 w-56 rounded-3xl border border-white/12 bg-midnight/95 p-2 text-sm text-moon shadow-glow backdrop-blur-xl md:hidden">
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={() => setOpen(false)}
-              className="block rounded-2xl px-4 py-3 transition hover:bg-white/10"
-            >
-              {item.label}
-            </Link>
-          ))}
+        <nav className="absolute right-0 top-12 z-30 w-60 rounded-3xl border border-white/12 bg-midnight/95 p-2 text-sm text-moon shadow-glow backdrop-blur-xl md:hidden">
+          {/* 主 CTA */}
+          <Link
+            href="/tarot"
+            onClick={() => setOpen(false)}
+            className={[
+              "mb-1 flex items-center gap-2 rounded-2xl px-4 py-3 font-semibold transition",
+              isTarotActive
+                ? "bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 text-midnight"
+                : "bg-gradient-to-r from-amber-500/80 via-yellow-400/80 to-amber-400/80 text-midnight hover:from-amber-400 hover:via-yellow-300 hover:to-amber-500",
+            ].join(" ")}
+          >
+            <span aria-hidden="true">✦</span>
+            立即抽牌
+          </Link>
+
+          {/* 查詢次數 */}
+          <Link
+            href="/redeem/check"
+            onClick={() => setOpen(false)}
+            className={[
+              "block rounded-2xl px-4 py-3 transition",
+              pathname === "/redeem/check"
+                ? "text-amber-300"
+                : "hover:bg-white/10",
+            ].join(" ")}
+          >
+            查詢次數
+          </Link>
+
+          {/* 今日運勢 */}
+          <Link
+            href="/daily"
+            onClick={() => setOpen(false)}
+            className={[
+              "block rounded-2xl px-4 py-3 transition",
+              pathname === "/daily" ? "text-moon" : "hover:bg-white/10",
+            ].join(" ")}
+          >
+            今日運勢
+          </Link>
+
+          {/* 塔羅牌介紹 */}
+          <Link
+            href="/tarot-cards"
+            onClick={() => setOpen(false)}
+            className={[
+              "block rounded-2xl px-4 py-3 transition",
+              pathname === "/tarot-cards" ? "text-moon" : "hover:bg-white/10",
+            ].join(" ")}
+          >
+            塔羅牌介紹
+          </Link>
+
           <div className="my-1 border-t border-white/8" />
           <GoogleAuthMobile onClose={() => setOpen(false)} />
         </nav>
