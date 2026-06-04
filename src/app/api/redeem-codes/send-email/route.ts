@@ -28,6 +28,7 @@ export const runtime = "nodejs";
 
 type ApiErrorCode =
   | "MISSING_FIELD"
+  | "MISSING_REDEEM_CODE"
   | "INVALID_EMAIL"
   | "ORDER_NOT_FOUND"
   | "REDEEM_CODE_NOT_FOUND"
@@ -60,118 +61,161 @@ function resolveTimestamp(v: unknown): Date | null {
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({})) as {
-    merchantTradeNo?: string;
-    email?:           string;
+    redeemCode?:      string;   // 優先：畫面上已顯示的通行碼
+    code?:            string;   // 別名
+    merchantTradeNo?: string;   // 次要：用於查 paymentOrders
+    email?:           string;   // 收件人（空白時用 buyerEmail）
   };
 
-  const merchantTradeNo = (body.merchantTradeNo ?? "").trim();
-  const emailInput      = (body.email ?? "").trim();
+  const codeInput         = (body.redeemCode ?? body.code ?? "").trim();
+  const merchantTradeNo   = (body.merchantTradeNo ?? "").trim();
+  const emailInput        = (body.email ?? "").trim();
 
   console.log("[Email] send redeem code start", {
-    merchantTradeNo,
-    hasEmail: Boolean(emailInput),
+    hasCode:            Boolean(codeInput),
+    hasMerchantTradeNo: Boolean(merchantTradeNo),
+    hasEmail:           Boolean(emailInput),
   });
 
-  if (!merchantTradeNo) {
-    return fail("MISSING_FIELD", "缺少訂單編號（merchantTradeNo）。");
+  // 兩個識別符都沒有 → 失敗
+  if (!codeInput && !merchantTradeNo) {
+    console.warn("[Email] missing both redeemCode and merchantTradeNo");
+    return fail(
+      "MISSING_REDEEM_CODE",
+      "缺少通行碼，無法寄送 Email。請重新整理頁面後再試。",
+    );
   }
 
-  // ── 驗證 email 格式（有傳才驗） ───────────────────────────────────────────
+  // email 格式驗證（有傳才驗）
   if (emailInput && !validateEmail(emailInput)) {
-    console.warn("[Email] invalid email format", { emailInput });
+    console.warn("[Email] invalid email format");
     return fail("INVALID_EMAIL", "Email 格式不正確，請確認後再試。");
   }
 
   const db = getAdminDb();
 
-  // ── 查找 paymentOrder ─────────────────────────────────────────────────────
-  const orderSnap = await db
-    .collection(PAYMENT_ORDERS_COLLECTION)
-    .where("merchantTradeNo", "==", merchantTradeNo)
-    .limit(1)
-    .get();
-
-  if (orderSnap.empty) {
-    console.error("[Email] order not found", { merchantTradeNo });
-    return fail("ORDER_NOT_FOUND", "找不到訂單資料，請複製通行碼並聯繫客服。", 404);
-  }
-
-  const orderDoc  = orderSnap.docs[0];
-  const orderData = orderDoc.data() as {
-    redeemCode?:   string;
-    buyerEmail?:   string;
-    planName?:     string;
-  };
-
-  // ── 決定寄送目標 email ────────────────────────────────────────────────────
-  const toEmail = emailInput || orderData.buyerEmail || "";
-  if (!toEmail) {
-    return fail("INVALID_EMAIL", "請輸入要接收備份的 Email。");
-  }
-  if (!validateEmail(toEmail)) {
-    return fail("INVALID_EMAIL", "Email 格式不正確，請確認後再試。");
-  }
-
-  // ── 確認通行碼 ────────────────────────────────────────────────────────────
-  const redeemCode = orderData.redeemCode ?? "";
-  if (!redeemCode) {
-    console.error("[Email] redeem code not found in order", { merchantTradeNo });
-    return fail("REDEEM_CODE_NOT_FOUND", "找不到通行碼，請聯繫客服。", 404);
-  }
-
-  // ── 從 redeemCodes 取詳細資料 ─────────────────────────────────────────────
-  let displayName   = orderData.planName ?? "宇宙通行碼";
+  let redeemCode    = codeInput;
+  let buyerEmail    = "";
+  let displayName   = "宇宙通行碼";
   let totalUses     = 1;
   let remainingUses = 1;
   let expiresAt     = new Date(Date.now() + REDEEM_CODE_EXPIRY_DAYS * 86400000);
-  let codeDocRef: FirebaseFirestore.DocumentReference | null = null;
+  let orderDocRef:  FirebaseFirestore.DocumentReference | null = null;
+  let codeDocRef:   FirebaseFirestore.DocumentReference | null = null;
 
-  const codeSnap = await db.collection(REDEEM_CODES_COLLECTION).doc(redeemCode).get();
-  if (codeSnap.exists) {
-    const cd = codeSnap.data() as {
-      displayName?:  string;
-      totalUses?:    number;
-      remainingUses?: number;
-      expiresAt?:    unknown;
+  // ── 路徑 A：有 redeemCode → 直接查 redeemCodes ────────────────────────────
+  if (redeemCode) {
+    const codeSnap = await db.collection(REDEEM_CODES_COLLECTION).doc(redeemCode).get();
+    if (codeSnap.exists) {
+      const cd = codeSnap.data() as {
+        displayName?:  string;
+        totalUses?:    number;
+        remainingUses?: number;
+        expiresAt?:    unknown;
+        buyerEmail?:   string;
+        merchantTradeNo?: string;
+      };
+      displayName   = cd.displayName   ?? displayName;
+      totalUses     = cd.totalUses     ?? totalUses;
+      remainingUses = cd.remainingUses ?? remainingUses;
+      expiresAt     = resolveTimestamp(cd.expiresAt) ?? expiresAt;
+      buyerEmail    = cd.buyerEmail    ?? "";
+      codeDocRef    = codeSnap.ref;
+
+      // 也嘗試找 paymentOrder（用於更新 emailSent）
+      const tradeNo = merchantTradeNo || cd.merchantTradeNo || "";
+      if (tradeNo) {
+        const orderSnap = await db
+          .collection(PAYMENT_ORDERS_COLLECTION)
+          .where("merchantTradeNo", "==", tradeNo)
+          .limit(1)
+          .get();
+        if (!orderSnap.empty) {
+          orderDocRef = orderSnap.docs[0].ref;
+          const od = orderSnap.docs[0].data() as { buyerEmail?: string };
+          buyerEmail = buyerEmail || od.buyerEmail || "";
+        }
+      }
+    } else {
+      console.warn("[Email] redeemCode doc not found in Firestore", { redeemCode });
+      // 繼續嘗試 merchantTradeNo 路徑
+    }
+  }
+
+  // ── 路徑 B：沒有 redeemCode 或 Firestore 查不到 → 用 merchantTradeNo ──────
+  if (!redeemCode && merchantTradeNo) {
+    const orderSnap = await db
+      .collection(PAYMENT_ORDERS_COLLECTION)
+      .where("merchantTradeNo", "==", merchantTradeNo)
+      .limit(1)
+      .get();
+
+    if (orderSnap.empty) {
+      console.error("[Email] order not found", { merchantTradeNo });
+      return fail("ORDER_NOT_FOUND", "找不到訂單資料，請複製通行碼並聯繫客服。", 404);
+    }
+
+    const od = orderSnap.docs[0].data() as {
+      redeemCode?: string; buyerEmail?: string; planName?: string;
     };
-    displayName   = cd.displayName   ?? displayName;
-    totalUses     = cd.totalUses     ?? totalUses;
-    remainingUses = cd.remainingUses ?? remainingUses;
-    expiresAt     = resolveTimestamp(cd.expiresAt) ?? expiresAt;
-    codeDocRef    = codeSnap.ref;
-  } else {
-    console.warn("[Email] redeemCode doc not found, using order defaults", { redeemCode });
+    orderDocRef = orderSnap.docs[0].ref;
+    redeemCode  = od.redeemCode ?? "";
+    buyerEmail  = od.buyerEmail ?? "";
+    displayName = od.planName ?? displayName;
+
+    if (!redeemCode) {
+      console.error("[Email] redeem code not found in order", { merchantTradeNo });
+      return fail("REDEEM_CODE_NOT_FOUND", "找不到通行碼，請聯繫客服。", 404);
+    }
+
+    // 補查 redeemCodes 詳細資料
+    const codeSnap = await db.collection(REDEEM_CODES_COLLECTION).doc(redeemCode).get();
+    if (codeSnap.exists) {
+      const cd = codeSnap.data() as {
+        displayName?:  string;
+        totalUses?:    number;
+        remainingUses?: number;
+        expiresAt?:    unknown;
+      };
+      displayName   = cd.displayName   ?? displayName;
+      totalUses     = cd.totalUses     ?? totalUses;
+      remainingUses = cd.remainingUses ?? remainingUses;
+      expiresAt     = resolveTimestamp(cd.expiresAt) ?? expiresAt;
+      codeDocRef    = codeSnap.ref;
+    }
+  }
+
+  // 最終確認 redeemCode 存在
+  if (!redeemCode) {
+    return fail("REDEEM_CODE_NOT_FOUND", "找不到通行碼，請聯繫客服。", 404);
+  }
+
+  // 決定收件人 email
+  const toEmail = emailInput || buyerEmail;
+  if (!toEmail || !validateEmail(toEmail)) {
+    return fail("INVALID_EMAIL", "請輸入要接收備份的 Email。");
   }
 
   // ── 寄送 Email ────────────────────────────────────────────────────────────
   const result = await sendRedeemCodeEmail({
-    to: toEmail,
-    code: redeemCode,
-    displayName,
-    totalUses,
-    remainingUses,
-    expiresAt,
+    to: toEmail, code: redeemCode,
+    displayName, totalUses, remainingUses, expiresAt,
   });
 
   // ── 更新 Firestore ────────────────────────────────────────────────────────
   const now = FieldValue.serverTimestamp();
   try {
     const updates: Promise<unknown>[] = [];
-    if (result.ok) {
-      const update = { emailSent: true, emailSentAt: now, emailError: null };
-      updates.push(orderDoc.ref.update(update));
-      if (codeDocRef) updates.push(codeDocRef.update(update));
-    } else {
-      const update = { emailSent: false, emailError: result.errorMsg ?? "寄送失敗" };
-      updates.push(orderDoc.ref.update(update));
-      if (codeDocRef) updates.push(codeDocRef.update(update));
-    }
+    const u = result.ok
+      ? { emailSent: true,  emailSentAt: now, emailError: null }
+      : { emailSent: false, emailError: result.errorMsg ?? "寄送失敗" };
+    if (orderDocRef) updates.push(orderDocRef.update(u));
+    if (codeDocRef)  updates.push(codeDocRef.update(u));
     await Promise.all(updates);
   } catch (e) {
     console.error("[Email] firestore update failed", e);
   }
 
-  // ── 回傳 ─────────────────────────────────────────────────────────────────
   if (!result.ok) {
     return NextResponse.json(
       {

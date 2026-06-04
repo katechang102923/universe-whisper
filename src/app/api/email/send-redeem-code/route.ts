@@ -33,53 +33,98 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({})) as {
     merchantTradeNo?: string;
     redeemCode?:      string;
+    code?:            string;   // 別名
     email?:           string;
   };
 
   const merchantTradeNo = (body.merchantTradeNo ?? "").trim();
   const emailInput      = (body.email ?? "").trim();
+  // 支援 redeemCode 或 code 兩種欄位名稱
+  const codeInput       = (body.redeemCode ?? body.code ?? "").trim();
 
-  if (!merchantTradeNo && !body.redeemCode) {
-    return NextResponse.json({ ok: false, errorCode: "MISSING_FIELD", message: "缺少訂單編號。" }, { status: 400 });
+  console.log("[Email] send redeem code start", {
+    hasCode:            Boolean(codeInput),
+    hasMerchantTradeNo: Boolean(merchantTradeNo),
+    hasEmail:           Boolean(emailInput),
+  });
+
+  if (!merchantTradeNo && !codeInput) {
+    return NextResponse.json(
+      { ok: false, errorCode: "MISSING_REDEEM_CODE", message: "缺少通行碼，無法寄送 Email。請重新整理頁面後再試。" },
+      { status: 400 },
+    );
   }
   if (emailInput && !validateEmail(emailInput)) {
     return NextResponse.json({ ok: false, errorCode: "INVALID_EMAIL", message: "Email 格式不正確，請確認後再試。" }, { status: 400 });
   }
 
   const db = getAdminDb();
-  let orderDocRef: FirebaseFirestore.DocumentReference | null = null;
-  let codeDocRef:  FirebaseFirestore.DocumentReference | null = null;
-  let redeemCode   = body.redeemCode ?? "";
-  let buyerEmail   = "";
-  let displayName  = "宇宙通行碼";
-  let totalUses    = 1;
+  let orderDocRef:  FirebaseFirestore.DocumentReference | null = null;
+  let codeDocRef:   FirebaseFirestore.DocumentReference | null = null;
+  let redeemCode    = codeInput;   // 優先使用前端傳入的通行碼
+  let buyerEmail    = "";
+  let displayName   = "宇宙通行碼";
+  let totalUses     = 1;
   let remainingUses = 1;
-  let expiresAt    = new Date(Date.now() + REDEEM_CODE_EXPIRY_DAYS * 86400000);
+  let expiresAt     = new Date(Date.now() + REDEEM_CODE_EXPIRY_DAYS * 86400000);
 
-  if (merchantTradeNo) {
+  // 路徑 A：有 redeemCode → 直接查 redeemCodes
+  if (redeemCode) {
+    const codeSnap = await db.collection(REDEEM_CODES_COLLECTION).doc(redeemCode).get();
+    if (codeSnap.exists) {
+      const cd = codeSnap.data() as {
+        displayName?: string; totalUses?: number; remainingUses?: number;
+        expiresAt?: unknown; buyerEmail?: string; merchantTradeNo?: string;
+      };
+      displayName   = cd.displayName   ?? displayName;
+      totalUses     = cd.totalUses     ?? totalUses;
+      remainingUses = cd.remainingUses ?? remainingUses;
+      expiresAt     = resolveTimestamp(cd.expiresAt) ?? expiresAt;
+      buyerEmail    = cd.buyerEmail    ?? "";
+      codeDocRef    = codeSnap.ref;
+
+      // 嘗試找 paymentOrder 以更新 emailSent
+      const tradeNo = merchantTradeNo || cd.merchantTradeNo || "";
+      if (tradeNo) {
+        const oSnap = await db.collection(PAYMENT_ORDERS_COLLECTION).where("merchantTradeNo", "==", tradeNo).limit(1).get();
+        if (!oSnap.empty) {
+          orderDocRef = oSnap.docs[0].ref;
+          const od = oSnap.docs[0].data() as { buyerEmail?: string };
+          buyerEmail = buyerEmail || od.buyerEmail || "";
+        }
+      }
+    }
+  }
+
+  // 路徑 B：沒有 redeemCode → 用 merchantTradeNo 查
+  if (!redeemCode && merchantTradeNo) {
     const snap = await db.collection(PAYMENT_ORDERS_COLLECTION).where("merchantTradeNo", "==", merchantTradeNo).limit(1).get();
     if (snap.empty) {
       return NextResponse.json({ ok: false, errorCode: "ORDER_NOT_FOUND", message: "找不到訂單資料，請複製通行碼並聯繫客服。" }, { status: 404 });
     }
     const od = snap.docs[0].data() as { redeemCode?: string; buyerEmail?: string; planName?: string };
     orderDocRef = snap.docs[0].ref;
-    redeemCode  = od.redeemCode ?? redeemCode;
+    redeemCode  = od.redeemCode ?? "";
     buyerEmail  = od.buyerEmail ?? "";
     displayName = od.planName ?? displayName;
+
+    if (!redeemCode) {
+      return NextResponse.json({ ok: false, errorCode: "REDEEM_CODE_NOT_FOUND", message: "找不到通行碼，請聯繫客服。" }, { status: 404 });
+    }
+
+    const codeSnap = await db.collection(REDEEM_CODES_COLLECTION).doc(redeemCode).get();
+    if (codeSnap.exists) {
+      const cd = codeSnap.data() as { displayName?: string; totalUses?: number; remainingUses?: number; expiresAt?: unknown };
+      displayName   = cd.displayName   ?? displayName;
+      totalUses     = cd.totalUses     ?? totalUses;
+      remainingUses = cd.remainingUses ?? remainingUses;
+      expiresAt     = resolveTimestamp(cd.expiresAt) ?? expiresAt;
+      codeDocRef    = codeSnap.ref;
+    }
   }
 
   if (!redeemCode) {
     return NextResponse.json({ ok: false, errorCode: "REDEEM_CODE_NOT_FOUND", message: "找不到通行碼，請聯繫客服。" }, { status: 404 });
-  }
-
-  const codeSnap = await db.collection(REDEEM_CODES_COLLECTION).doc(redeemCode).get();
-  if (codeSnap.exists) {
-    const cd = codeSnap.data() as { displayName?: string; totalUses?: number; remainingUses?: number; expiresAt?: unknown };
-    displayName   = cd.displayName   ?? displayName;
-    totalUses     = cd.totalUses     ?? totalUses;
-    remainingUses = cd.remainingUses ?? remainingUses;
-    expiresAt     = resolveTimestamp(cd.expiresAt) ?? expiresAt;
-    codeDocRef    = codeSnap.ref;
   }
 
   const toEmail = emailInput || buyerEmail;

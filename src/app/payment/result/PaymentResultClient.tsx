@@ -13,10 +13,11 @@ type EmailStatus  = "idle" | "sending" | "sent" | "error";
 
 type EmailErrorCode =
   | "MISSING_ENV"
+  | "MISSING_REDEEM_CODE"
+  | "MISSING_FIELD"
   | "INVALID_EMAIL"
   | "ORDER_NOT_FOUND"
   | "REDEEM_CODE_NOT_FOUND"
-  | "MISSING_FIELD"
   | "RESEND_FAILED"
   | "UNKNOWN_ERROR";
 
@@ -50,6 +51,9 @@ function emailErrorMessage(code: EmailErrorCode | string | undefined): string {
   switch (code) {
     case "MISSING_ENV":
       return "Email 系統尚未設定完成，請先複製通行碼保存，或聯繫客服補寄。";
+    case "MISSING_REDEEM_CODE":
+    case "MISSING_FIELD":
+      return "缺少通行碼，請重新整理頁面後再試。";
     case "INVALID_EMAIL":
       return "Email 格式不正確，請確認後再試。";
     case "ORDER_NOT_FOUND":
@@ -269,8 +273,14 @@ export default function PaymentResultClient() {
     setEmailMsg("");
 
     try {
-      const body: Record<string, string> = { merchantTradeNo };
-      if (trimmed) body.email = trimmed;
+      // ★ 一定要帶 redeemCode（畫面上已顯示的通行碼）
+      //   merchantTradeNo 有就帶，沒有也沒關係，API 可以用 redeemCode 查
+      const body: Record<string, string> = {};
+      if (order.redeemCode) body.redeemCode = order.redeemCode;
+      if (merchantTradeNo)  body.merchantTradeNo = merchantTradeNo;
+      if (trimmed)          body.email = trimmed;
+
+      console.log("[Email] send body", body);   // debug，可事後移除
 
       const res  = await fetch("/api/redeem-codes/send-email", {
         method:  "POST",
@@ -287,6 +297,7 @@ export default function PaymentResultClient() {
         setEmailMsg(data.message ?? "已寄出通行碼，請到信箱確認。");
         await fetchOrder();
       } else {
+        console.log("[Email] send failed", { errorCode: data.errorCode, message: data.message });
         setEmailStatus("error");
         setEmailMsg(emailErrorMessage(data.errorCode as EmailErrorCode));
       }
