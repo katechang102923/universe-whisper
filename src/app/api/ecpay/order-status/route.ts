@@ -39,16 +39,23 @@ export async function GET(req: NextRequest) {
     }
 
     const data = snap.docs[0].data() as {
-      status:        string;
-      planName?:     string;
-      amount?:       number;
-      redeemCode?:   string;
-      buyerEmail?:   string;
-      emailSent?:    boolean;
-      emailSentAt?:  unknown;
-      emailError?:   string;
-      paidAt?:       unknown;
+      status:           string;
+      planName?:        string;
+      amount?:          number;
+      redeemCode?:      string;
+      redeemCodeId?:    string;
+      buyerEmail?:      string;
+      emailSent?:       boolean;
+      emailSentAt?:     unknown;
+      emailError?:      string;
+      paidAt?:          unknown;
+      paymentDate?:     string;
       merchantTradeNo?: string;
+      ecpayTradeNo?:    string;
+      tradeNo?:         string;
+      rtnCode?:         string;
+      rtnMsg?:          string;
+      tradeAmt?:        string;
     };
 
     // 已付款才撈通行碼詳細資料
@@ -88,8 +95,16 @@ export async function GET(req: NextRequest) {
       amount:           data.amount ?? 0,
       // 只在已付款且已產生通行碼時才回傳
       redeemCode:       data.status === "paid" ? (data.redeemCode ?? null) : null,
+      redeemCodeId:     data.status === "paid" ? (data.redeemCodeId ?? data.redeemCode ?? null) : null,
       paidAt:           toIso(data.paidAt),
+      paymentDate:      data.paymentDate ?? null,
       codeDetail,
+      // ECPay 付款資料
+      ecpayTradeNo:     data.ecpayTradeNo ?? data.tradeNo ?? null,
+      tradeNo:          data.tradeNo ?? data.ecpayTradeNo ?? null,
+      rtnCode:          data.rtnCode ?? null,
+      rtnMsg:           data.rtnMsg ?? null,
+      tradeAmt:         data.tradeAmt ?? null,
       // Email 相關（遮罩 Email 位址）
       buyerEmail:       maskEmail(data.buyerEmail),
       emailSent:        data.emailSent ?? false,

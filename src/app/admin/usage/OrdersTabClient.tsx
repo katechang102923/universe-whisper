@@ -1,13 +1,51 @@
 "use client";
 
 import { useState } from "react";
-import type { PaymentOrderData } from "@/lib/redeemCodes";
+
+// ── 直列化訂單型別（Server → Client，所有 Timestamp 已轉為 string | null） ─────
+
+export interface SerializableOrder {
+  id?: string;
+  orderNo?: string;
+  merchantTradeNo?: string;
+  ecpayTradeNo?: string;
+  tradeNo?: string;
+  status: string;
+  planId?: string;
+  planName?: string;
+  amount?: number | null;
+  currency?: string;
+  uses?: number;
+  buyerEmail?: string | null;
+  userId?: string | null;
+  paymentMethod?: string | null;
+  paymentType?: string | null;
+  paymentDate?: string | null;
+  tradeAmt?: string | null;
+  rtnCode?: string | null;
+  rtnMsg?: string | null;
+  cardLast4?: string | null;
+  cardType?: string | null;
+  authCode?: string | null;
+  redeemCode?: string | null;
+  redeemCodeId?: string | null;
+  emailSent?: boolean;
+  emailSentAt?: string | null;
+  emailError?: string | null;
+  createdAt?: string | null;
+  paidAt?: string | null;
+  failedAt?: string | null;
+  refundedAt?: string | null;
+  isTest?: boolean;
+  note?: string | null;
+}
 
 // ── 工具 ──────────────────────────────────────────────────────────────────────
 
-function toDate(v: unknown): Date | null {
+function toDateFromAny(v: unknown): Date | null {
   if (!v) return null;
   if (v instanceof Date) return v;
+  if (typeof v === "string") return new Date(v);
   if (typeof v === "object" && "toDate" in v) return (v as { toDate(): Date }).toDate();
   if (typeof v === "object" && "seconds" in v) {
     return new Date((v as { seconds: number }).seconds * 1000);
@@ -16,8 +54,8 @@ function toDate(v: unknown): Date | null {
 }
 
 function fmtDate(v: unknown): string {
-  const d = toDate(v);
-  if (!d) return "—";
+  const d = toDateFromAny(v);
+  if (!d || isNaN(d.getTime())) return "—";
   return (
     d.toLocaleDateString("zh-TW") +
     " " +
@@ -29,11 +67,11 @@ function fmtDate(v: unknown): string {
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { text: string; cls: string }> = {
-    pending:   { text: "待付款", cls: "bg-amber-400/14 text-amber-300" },
-    paid:      { text: "已付款", cls: "bg-green-400/14 text-green-300" },
+    pending:   { text: "待付款",  cls: "bg-amber-400/14 text-amber-300" },
+    paid:      { text: "已付款",  cls: "bg-green-400/14 text-green-300" },
     failed:    { text: "付款失敗", cls: "bg-red-400/14 text-red-300" },
-    refunded:  { text: "已退款", cls: "bg-white/10 text-moon/50" },
-    cancelled: { text: "已取消", cls: "bg-white/10 text-moon/40" },
+    refunded:  { text: "已退款",  cls: "bg-white/10 text-moon/50" },
+    cancelled: { text: "已取消",  cls: "bg-white/10 text-moon/40" },
   };
   const { text, cls } = map[status] ?? { text: status, cls: "bg-white/10 text-moon/50" };
   return <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${cls}`}>{text}</span>;
@@ -41,20 +79,24 @@ function StatusBadge({ status }: { status: string }) {
 
 // ── 單筆訂單列 ────────────────────────────────────────────────────────────────
 
-function OrderRow({ o, idx, total }: { o: PaymentOrderData; idx: number; total: number }) {
-  const [copied,       setCopied]       = useState(false);
-  const [emailInput,   setEmailInput]   = useState("");
-  const [emailStatus,  setEmailStatus]  = useState<"idle" | "sending" | "sent" | "error">("idle");
-  const [syncStatus,   setSyncStatus]   = useState<"idle" | "loading" | "synced" | "noop" | "error">("idle");
-  const [syncMsg,      setSyncMsg]      = useState("");
-  const [showEmail,    setShowEmail]    = useState(false);
-  const [showDetail,   setShowDetail]   = useState(false);
+function OrderRow({ o, idx, total }: { o: SerializableOrder; idx: number; total: number }) {
+  const [copied,      setCopied]      = useState(false);
+  const [emailInput,  setEmailInput]  = useState("");
+  const [emailStatus, setEmailStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [syncStatus,  setSyncStatus]  = useState<"idle" | "loading" | "synced" | "noop" | "error">("idle");
+  const [syncMsg,     setSyncMsg]     = useState("");
+  const [genStatus,   setGenStatus]   = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [genMsg,      setGenMsg]      = useState("");
+  const [showEmail,   setShowEmail]   = useState(false);
+  const [showDetail,  setShowDetail]  = useState(false);
+  const [localCode,   setLocalCode]   = useState(o.redeemCode ?? null);
 
   const isLast = idx === total - 1;
+  const effectiveCode = localCode ?? o.redeemCode;
 
   function copyCode() {
-    if (!o.redeemCode) return;
-    void navigator.clipboard.writeText(o.redeemCode).then(() => {
+    if (!effectiveCode) return;
+    void navigator.clipboard.writeText(effectiveCode).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
@@ -63,7 +105,7 @@ function OrderRow({ o, idx, total }: { o: PaymentOrderData; idx: number; total: 
   async function resendEmail() {
     if (emailStatus === "sending") return;
     const trimmed = emailInput.trim();
-    if (!trimmed || !o.redeemCode) return;
+    if (!trimmed || !effectiveCode) return;
 
     setEmailStatus("sending");
     try {
@@ -71,11 +113,11 @@ function OrderRow({ o, idx, total }: { o: PaymentOrderData; idx: number; total: 
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email:        trimmed,
-          code:         o.redeemCode,
-          planName:     "single", // fallback; API will look up actual plan from code
-          displayName:  o.planName ?? "",
-          totalUses:    o.uses ?? 1,
+          email:         trimmed,
+          code:          effectiveCode,
+          planName:      "single",
+          displayName:   o.planName ?? "",
+          totalUses:     o.uses ?? 1,
           remainingUses: o.uses ?? 1,
         }),
       });
@@ -105,6 +147,7 @@ function OrderRow({ o, idx, total }: { o: PaymentOrderData; idx: number; total: 
       };
       if (data.ok && data.status === "paid") {
         setSyncStatus("synced");
+        if (data.redeemCode) setLocalCode(data.redeemCode);
         setSyncMsg(
           data.message === "already_paid"
             ? "訂單已是付款狀態。"
@@ -123,6 +166,36 @@ function OrderRow({ o, idx, total }: { o: PaymentOrderData; idx: number; total: 
     }
   }
 
+  async function manualGenerate() {
+    if (genStatus === "loading") return;
+    setGenStatus("loading");
+    setGenMsg("");
+    try {
+      const res = await fetch("/api/ecpay/sync-order", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ merchantTradeNo: o.merchantTradeNo, forceGenerate: true }),
+      });
+      const data = (await res.json()) as {
+        ok: boolean;
+        redeemCode?: string;
+        message?: string;
+        error?: string;
+      };
+      if (data.ok && data.redeemCode) {
+        setGenStatus("done");
+        setLocalCode(data.redeemCode);
+        setGenMsg(`通行碼已產生：${data.redeemCode}`);
+      } else {
+        setGenStatus("error");
+        setGenMsg(data.message ?? data.error ?? "產生失敗，請稍後再試。");
+      }
+    } catch {
+      setGenStatus("error");
+      setGenMsg("網路錯誤");
+    }
+  }
+
   return (
     <>
       <tr className={!isLast ? "border-b border-white/6" : ""}>
@@ -130,23 +203,27 @@ function OrderRow({ o, idx, total }: { o: PaymentOrderData; idx: number; total: 
         <td className="whitespace-nowrap px-4 py-3 text-moon/55">{fmtDate(o.createdAt)}</td>
         {/* 付款時間 */}
         <td className="whitespace-nowrap px-4 py-3 text-moon/55">
-          {fmtDate((o as unknown as Record<string, unknown>).paidAt ?? (o as unknown as Record<string, unknown>).paymentDate)}
+          {fmtDate(o.paidAt ?? o.paymentDate)}
         </td>
         {/* 方案 */}
         <td className="px-4 py-3 text-moon/80">{o.planName ?? "—"}</td>
         {/* 金額 */}
-        <td className="whitespace-nowrap px-4 py-3 font-semibold text-moon">NT${o.amount ?? "—"}</td>
+        <td className="whitespace-nowrap px-4 py-3 font-semibold text-moon">
+          {o.amount != null ? `NT$${o.amount}` : "—"}
+        </td>
         {/* 狀態 */}
         <td className="px-4 py-3"><StatusBadge status={o.status} /></td>
         {/* Email */}
         <td className="max-w-[130px] truncate px-4 py-3 text-moon/60">{o.buyerEmail ?? "—"}</td>
         {/* 通行碼 */}
-        <td className="px-4 py-3 font-mono tracking-[0.12em] text-moon/80">{o.redeemCode ?? "—"}</td>
+        <td className="px-4 py-3 font-mono tracking-[0.12em] text-moon/80">
+          {effectiveCode ?? "—"}
+        </td>
         {/* MerchantTradeNo */}
         <td className="px-4 py-3 font-mono text-[11px] text-moon/45">{o.merchantTradeNo ?? "—"}</td>
         {/* TradeNo */}
         <td className="px-4 py-3 font-mono text-[11px] text-moon/40">
-          {(o as unknown as Record<string, unknown>).ecpayTradeNo as string ?? "—"}
+          {o.ecpayTradeNo ?? o.tradeNo ?? "—"}
         </td>
         {/* Email 狀態 */}
         <td className="px-4 py-3">
@@ -159,7 +236,7 @@ function OrderRow({ o, idx, total }: { o: PaymentOrderData; idx: number; total: 
         {/* 操作 */}
         <td className="px-4 py-3">
           <div className="flex flex-wrap gap-1">
-            {o.redeemCode && (
+            {effectiveCode && (
               <button
                 onClick={copyCode}
                 className="rounded-lg bg-[#d8bd70]/12 px-2 py-1 text-[11px] text-[#d8bd70] transition hover:bg-[#d8bd70]/20"
@@ -173,13 +250,24 @@ function OrderRow({ o, idx, total }: { o: PaymentOrderData; idx: number; total: 
             >
               補寄 Email
             </button>
-            {o.status === "pending" && (
+            {/* 同步綠界：所有非已退款/取消狀態皆可同步 */}
+            {o.status !== "refunded" && o.status !== "cancelled" && (
               <button
                 onClick={() => void syncEcpay()}
                 disabled={syncStatus === "loading"}
                 className="rounded-lg bg-lavender/12 px-2 py-1 text-[11px] text-lavender/80 transition hover:bg-lavender/20 disabled:opacity-50"
               >
                 {syncStatus === "loading" ? "同步中…" : "同步綠界"}
+              </button>
+            )}
+            {/* 手動產生通行碼：paid 但沒有 redeemCode */}
+            {o.status === "paid" && !effectiveCode && (
+              <button
+                onClick={() => void manualGenerate()}
+                disabled={genStatus === "loading"}
+                className="rounded-lg bg-amber-400/14 px-2 py-1 text-[11px] text-amber-300 transition hover:bg-amber-400/22 disabled:opacity-50"
+              >
+                {genStatus === "loading" ? "產生中…" : "手動產生碼"}
               </button>
             )}
             <button
@@ -207,12 +295,12 @@ function OrderRow({ o, idx, total }: { o: PaymentOrderData; idx: number; total: 
               />
               <button
                 onClick={() => void resendEmail()}
-                disabled={emailStatus === "sending" || !emailInput.trim() || !o.redeemCode}
+                disabled={emailStatus === "sending" || !emailInput.trim() || !effectiveCode}
                 className="rounded-lg bg-moon/14 px-3 py-1.5 text-xs font-medium text-moon transition hover:bg-moon/22 disabled:opacity-50"
               >
                 {emailStatus === "sending" ? "寄送中…" : "寄送通行碼"}
               </button>
-              {emailStatus === "sent" && <span className="text-xs text-aurora">✓ 已寄出</span>}
+              {emailStatus === "sent"  && <span className="text-xs text-aurora">✓ 已寄出</span>}
               {emailStatus === "error" && <span className="text-xs text-red-300/80">寄送失敗</span>}
             </div>
           </td>
@@ -231,34 +319,47 @@ function OrderRow({ o, idx, total }: { o: PaymentOrderData; idx: number; total: 
         </tr>
       )}
 
+      {/* 手動產生結果列 */}
+      {genMsg && (
+        <tr className="border-b border-white/6 bg-white/[0.02]">
+          <td colSpan={11} className="px-4 py-2">
+            <p className={`text-xs ${genStatus === "error" ? "text-red-300/80" : "text-amber-300/80"}`}>
+              {genStatus === "done" ? "✓ " : "✕ "}{genMsg}
+            </p>
+          </td>
+        </tr>
+      )}
+
       {/* 詳情列 */}
       {showDetail && (
         <tr className="border-b border-white/6 bg-white/[0.015]">
           <td colSpan={11} className="px-4 py-3">
             <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-3 lg:grid-cols-4">
-              {[
-                ["訂單 ID", o.id],
+              {([
+                ["訂單 ID",         o.id],
                 ["MerchantTradeNo", o.merchantTradeNo],
-                ["ECPay TradeNo", (o as unknown as Record<string, unknown>).ecpayTradeNo as string ?? (o as unknown as Record<string, unknown>).tradeNo as string],
-                ["付款方式", (o as unknown as Record<string, unknown>).paymentType as string],
-                ["付款金額", o.amount != null ? `NT$${o.amount}` : undefined],
-                ["RtnCode", (o as unknown as Record<string, unknown>).rtnCode as string],
-                ["RtnMsg", (o as unknown as Record<string, unknown>).rtnMsg as string],
-                ["PaymentDate", (o as unknown as Record<string, unknown>).paymentDate as string],
-                ["TradeAmt", (o as unknown as Record<string, unknown>).tradeAmt as string],
-                ["買家 Email", o.buyerEmail],
-                ["通行碼 ID", o.redeemCodeId ?? o.redeemCode],
-                ["Email 寄送", o.emailSent ? `已寄 ${fmtDate(o.emailSentAt)}` : "未寄"],
-                ["建立時間", fmtDate(o.createdAt)],
-                ["付款時間", fmtDate((o as unknown as Record<string, unknown>).paidAt ?? (o as unknown as Record<string, unknown>).paymentDate)],
-              ].map(([label, val]) =>
-                val ? (
-                  <div key={label}>
-                    <p className="text-moon/40">{label}</p>
-                    <p className="font-mono text-moon/70 break-all">{val}</p>
-                  </div>
-                ) : null,
-              )}
+                ["ECPay TradeNo",   o.ecpayTradeNo ?? o.tradeNo],
+                ["付款方式",         o.paymentType],
+                ["付款金額",         o.amount != null ? `NT$${o.amount}` : undefined],
+                ["RtnCode",         o.rtnCode],
+                ["RtnMsg",          o.rtnMsg],
+                ["PaymentDate",     o.paymentDate],
+                ["TradeAmt",        o.tradeAmt],
+                ["買家 Email",       o.buyerEmail],
+                ["通行碼 ID",        o.redeemCodeId ?? effectiveCode],
+                ["Email 寄送",       o.emailSent ? `已寄 ${fmtDate(o.emailSentAt)}` : "未寄"],
+                ["Email 錯誤",       o.emailError],
+                ["建立時間",         fmtDate(o.createdAt)],
+                ["付款時間",         fmtDate(o.paidAt ?? o.paymentDate)],
+              ] as [string, string | number | null | undefined][])
+                .map(([label, val]) =>
+                  val != null && val !== "" ? (
+                    <div key={label}>
+                      <p className="text-moon/40">{label}</p>
+                      <p className="font-mono text-moon/70 break-all">{String(val)}</p>
+                    </div>
+                  ) : null,
+                )}
             </div>
           </td>
         </tr>
@@ -269,7 +370,7 @@ function OrderRow({ o, idx, total }: { o: PaymentOrderData; idx: number; total: 
 
 // ── 主元件 ────────────────────────────────────────────────────────────────────
 
-export function OrdersTabClient({ orders }: { orders: PaymentOrderData[] }) {
+export function OrdersTabClient({ orders }: { orders: SerializableOrder[] }) {
   if (orders.length === 0) {
     return (
       <div className="rounded-2xl border border-white/10 bg-midnight/50 p-8 text-center">
@@ -291,12 +392,12 @@ export function OrdersTabClient({ orders }: { orders: PaymentOrderData[] }) {
     <div className="space-y-4">
       {/* 小統計 */}
       <div className="flex flex-wrap gap-3">
-        {[
+        {([
           ["總筆數", orders.length],
           ["已付款", paidCount],
           ["待付款", pendingCount],
           ["總金額", `NT$${revenue}`],
-        ].map(([label, value]) => (
+        ] as [string, string | number][]).map(([label, value]) => (
           <div key={label} className="rounded-xl border border-white/10 bg-midnight/50 px-4 py-2.5">
             <p className="text-[10px] uppercase tracking-wider text-moon/40">{label}</p>
             <p className="text-lg font-semibold text-moon">{value}</p>

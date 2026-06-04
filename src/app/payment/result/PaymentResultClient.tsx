@@ -59,6 +59,7 @@ export default function PaymentResultClient() {
 
   const [syncStatus,   setSyncStatus]   = useState<SyncStatus>("idle");
   const [syncMsg,      setSyncMsg]      = useState("");
+  const autoSyncedRef = useRef(false);
 
   // ── 輪詢 order-status ─────────────────────────────────────────────────────
 
@@ -135,18 +136,27 @@ export default function PaymentResultClient() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [merchantTradeNo]);
 
-  // 達到終態停止輪詢
+  // 達到終態停止輪詢：paid 且已有 redeemCode，或付款失敗
   useEffect(() => {
-    if (order.status === "paid" || order.status === "failed") {
+    if ((order.status === "paid" && order.redeemCode) || order.status === "failed") {
       setPollStopped(true);
       setPollCount(MAX_POLLS);
     }
-  }, [order.status]);
+  }, [order.status, order.redeemCode]);
 
   // emailSent → 標記已保存
   useEffect(() => {
     if (order.emailSent) codeSavedRef.current = true;
   }, [order.emailSent]);
+
+  // paid 但沒有 redeemCode → 自動呼叫 sync-order 一次
+  useEffect(() => {
+    if (order.status === "paid" && !order.redeemCode && !autoSyncedRef.current) {
+      autoSyncedRef.current = true;
+      void handleSync();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order.status, order.redeemCode]);
 
   // ── 主動同步 sync-order ───────────────────────────────────────────────────
 
@@ -256,8 +266,10 @@ export default function PaymentResultClient() {
 
   // ── Loading / Pending 畫面 ─────────────────────────────────────────────────
 
+  // paid + redeemCode 才算完成；paid 但沒有 redeemCode 也繼續等待
+  const isPaidNoCode = order.status === "paid" && !order.redeemCode;
   const isStillWaiting =
-    (order.status === "loading" || order.status === "pending") && !pollStopped;
+    ((order.status === "loading" || order.status === "pending" || isPaidNoCode) && !pollStopped);
 
   if (isStillWaiting) {
     const isPhase2 = pollCount >= PHASE_2_POLLS;
@@ -278,9 +290,9 @@ export default function PaymentResultClient() {
     );
   }
 
-  // ── 60 秒後 pending 超時：補救畫面 ───────────────────────────────────────
+  // ── 60 秒後 pending / paid 無碼 超時：補救畫面 ───────────────────────────
 
-  if ((order.status === "loading" || order.status === "pending") && pollStopped) {
+  if ((order.status === "loading" || order.status === "pending" || isPaidNoCode) && pollStopped) {
     return (
       <AppShell>
         <section className="mx-auto w-full max-w-md py-12">

@@ -20,13 +20,12 @@ import {
   PAYMENT_ORDERS_COLLECTION,
   REDEEM_PLANS,
   type RedeemCodeData,
-  type PaymentOrderData,
 } from "@/lib/redeemCodes";
 import RedeemCodeGenerator from "../redeem-codes/RedeemCodeGenerator";
 import { CleanupClient } from "./CleanupClient";
 import { FortuneManagementClient } from "./FortuneManagementClient";
 import { RedeemCodeList, type SerializableRedeemCode } from "./RedeemCodeList";
-import { OrdersTabClient } from "./OrdersTabClient";
+import { OrdersTabClient, type SerializableOrder } from "./OrdersTabClient";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -178,6 +177,47 @@ function SourceBadge({ source }: { source?: string }) {
 
 // ── 序列化（Timestamp → string，供 Client Component 使用） ───────────────────
 
+function serializeOrders(docs: FirebaseFirestore.QueryDocumentSnapshot[]): SerializableOrder[] {
+  return docs.map((d) => {
+    const data = d.data();
+    return {
+      id:              d.id,
+      orderNo:         data.orderNo         ?? null,
+      merchantTradeNo: data.merchantTradeNo ?? null,
+      ecpayTradeNo:    data.ecpayTradeNo    ?? data.tradeNo ?? null,
+      tradeNo:         data.tradeNo         ?? data.ecpayTradeNo ?? null,
+      status:          data.status          ?? "pending",
+      planId:          data.planId          ?? null,
+      planName:        data.planName        ?? null,
+      amount:          data.amount          ?? null,
+      currency:        data.currency        ?? "TWD",
+      uses:            data.uses            ?? null,
+      buyerEmail:      data.buyerEmail      ?? null,
+      userId:          data.userId          ?? null,
+      paymentMethod:   data.paymentMethod   ?? null,
+      paymentType:     data.paymentType     ?? null,
+      paymentDate:     data.paymentDate     ?? null,
+      tradeAmt:        data.tradeAmt        ?? null,
+      rtnCode:         data.rtnCode         ?? null,
+      rtnMsg:          data.rtnMsg          ?? null,
+      cardLast4:       data.cardLast4       ?? null,
+      cardType:        data.cardType        ?? null,
+      authCode:        data.authCode        ?? null,
+      redeemCode:      data.redeemCode      ?? null,
+      redeemCodeId:    data.redeemCodeId    ?? null,
+      emailSent:       data.emailSent       ?? false,
+      emailError:      data.emailError      ?? null,
+      emailSentAt:     toDate(data.emailSentAt)?.toISOString()  ?? null,
+      createdAt:       toDate(data.createdAt)?.toISOString()    ?? null,
+      paidAt:          toDate(data.paidAt)?.toISOString()       ?? null,
+      failedAt:        toDate(data.failedAt)?.toISOString()     ?? null,
+      refundedAt:      toDate(data.refundedAt)?.toISOString()   ?? null,
+      isTest:          data.isTest          ?? false,
+      note:            data.note            ?? null,
+    };
+  });
+}
+
 function serializeCodes(codes: RedeemCodeData[]): SerializableRedeemCode[] {
   return codes.map((c) => ({
     code: c.code,
@@ -287,7 +327,7 @@ function OverviewTab({
   );
 }
 
-function OrdersTab({ orders }: { orders: PaymentOrderData[] }) {
+function OrdersTab({ orders }: { orders: SerializableOrder[] }) {
   return <OrdersTabClient orders={orders} />;
 }
 
@@ -451,7 +491,7 @@ export default async function AdminUsagePage({
   let usageData: Partial<DailyUsageDoc> = {};
   let fortuneStats: Partial<FortuneStatsDoc> = {};
   let codes: RedeemCodeData[] = [];
-  let orders: PaymentOrderData[] = [];
+  let orders: SerializableOrder[] = [];
   let redeemStats = { total: 0, active: 0, usedUp: 0, test: 0 };
   let orderStats = { total: 0, paid: 0, failed: 0, todayRevenue: 0 };
   let fetchError = false;
@@ -483,7 +523,7 @@ export default async function AdminUsagePage({
       try {
         const orderSnap = await db.collection(PAYMENT_ORDERS_COLLECTION).get();
         orderSnap.docs.forEach((d) => {
-          const o = d.data() as PaymentOrderData;
+          const o = d.data() as { status?: string; amount?: number; paidAt?: unknown };
           orderStats.total++;
           if (o.status === "paid") {
             orderStats.paid++;
@@ -504,8 +544,10 @@ export default async function AdminUsagePage({
           .orderBy("createdAt", "desc")
           .limit(100)
           .get();
-        orders = orderSnap.docs.map((d) => ({ id: d.id, ...d.data() } as PaymentOrderData));
-      } catch { /* empty */ }
+        orders = serializeOrders(orderSnap.docs);
+      } catch (e) {
+        console.error("[Admin Orders] load failed:", e);
+      }
     }
 
     if (currentTab === "redeem") {
