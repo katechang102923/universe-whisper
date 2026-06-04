@@ -91,24 +91,31 @@ function OrderRow({ o, idx, total }: { o: PaymentOrderData; idx: number; total: 
     setSyncStatus("loading");
     setSyncMsg("");
     try {
-      const res = await fetch("/api/ecpay/query-order", {
+      const res = await fetch("/api/ecpay/sync-order", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ merchantTradeNo: o.merchantTradeNo }),
       });
       const data = (await res.json()) as {
         ok: boolean;
-        synced?: boolean;
-        message?: string;
+        status?: string;
         redeemCode?: string;
+        message?: string;
         error?: string;
       };
-      if (data.ok) {
-        setSyncStatus(data.synced ? "synced" : "noop");
-        setSyncMsg(data.message ?? "");
+      if (data.ok && data.status === "paid") {
+        setSyncStatus("synced");
+        setSyncMsg(
+          data.message === "already_paid"
+            ? "訂單已是付款狀態。"
+            : `同步成功！通行碼：${data.redeemCode ?? ""}`,
+        );
+      } else if (data.ok && data.status === "pending") {
+        setSyncStatus("noop");
+        setSyncMsg(data.message ?? "目前尚未查到付款成功紀錄。");
       } else {
         setSyncStatus("error");
-        setSyncMsg(data.error ?? "同步失敗");
+        setSyncMsg(data.message ?? data.error ?? "同步失敗");
       }
     } catch {
       setSyncStatus("error");
@@ -232,14 +239,18 @@ function OrderRow({ o, idx, total }: { o: PaymentOrderData; idx: number; total: 
               {[
                 ["訂單 ID", o.id],
                 ["MerchantTradeNo", o.merchantTradeNo],
-                ["ECPay TradeNo", (o as unknown as Record<string, unknown>).ecpayTradeNo as string],
+                ["ECPay TradeNo", (o as unknown as Record<string, unknown>).ecpayTradeNo as string ?? (o as unknown as Record<string, unknown>).tradeNo as string],
                 ["付款方式", (o as unknown as Record<string, unknown>).paymentType as string],
                 ["付款金額", o.amount != null ? `NT$${o.amount}` : undefined],
+                ["RtnCode", (o as unknown as Record<string, unknown>).rtnCode as string],
+                ["RtnMsg", (o as unknown as Record<string, unknown>).rtnMsg as string],
+                ["PaymentDate", (o as unknown as Record<string, unknown>).paymentDate as string],
+                ["TradeAmt", (o as unknown as Record<string, unknown>).tradeAmt as string],
                 ["買家 Email", o.buyerEmail],
                 ["通行碼 ID", o.redeemCodeId ?? o.redeemCode],
                 ["Email 寄送", o.emailSent ? `已寄 ${fmtDate(o.emailSentAt)}` : "未寄"],
                 ["建立時間", fmtDate(o.createdAt)],
-                ["付款時間", fmtDate((o as unknown as Record<string, unknown>).paidAt)],
+                ["付款時間", fmtDate((o as unknown as Record<string, unknown>).paidAt ?? (o as unknown as Record<string, unknown>).paymentDate)],
               ].map(([label, val]) =>
                 val ? (
                   <div key={label}>

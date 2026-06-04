@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
@@ -8,6 +8,7 @@ import { AppShell } from "@/components/AppShell";
 // ── 型別 ──────────────────────────────────────────────────────────────────────
 
 type OrderStatus = "loading" | "pending" | "paid" | "failed" | "not_found" | "error";
+type SyncStatus  = "idle" | "syncing" | "synced" | "still_pending" | "error";
 
 interface CodeDetail {
   totalUses?:     number;
@@ -24,14 +25,17 @@ interface OrderResult {
   redeemCode?:     string | null;
   paidAt?:         string | null;
   codeDetail?:     CodeDetail | null;
-  buyerEmail?:     string | null;   // 遮罩後的 Email，例如 a***@gmail.com
+  buyerEmail?:     string | null;
   emailSent?:      boolean;
   emailSentAt?:    string | null;
   emailError?:     string | null;
 }
 
+// ── 輪詢參數 ──────────────────────────────────────────────────────────────────
+
 const POLL_INTERVAL_MS = 2000;
-const MAX_POLLS        = 30; // 最多 60 秒
+const MAX_POLLS        = 30;  // 60 秒
+const PHASE_2_POLLS    = 5;   // 10 秒後進 phase 2 文案
 
 // ── 元件 ──────────────────────────────────────────────────────────────────────
 
@@ -39,18 +43,71 @@ export default function PaymentResultClient() {
   const searchParams    = useSearchParams();
   const merchantTradeNo = searchParams.get("merchantTradeNo") ?? "";
 
-  const [order,           setOrder]           = useState<OrderResult>({
+  const [order,        setOrder]        = useState<OrderResult>({
     status: "loading",
     merchantTradeNo,
   });
-  const [pollCount,       setPollCount]       = useState(0);
-  const [email,           setEmail]           = useState("");
-  const [emailStatus,     setEmailStatus]     = useState<"idle" | "sending" | "sent" | "error">("idle");
-  const [codeCopied,      setCodeCopied]      = useState(false);
-  const [showUnsaved,     setShowUnsaved]     = useState(false);
-  const codeSavedRef = useRef(false); // true = 已複製或 Email 成功寄出
+  const [pollCount,    setPollCount]    = useState(0);
+  const [pollStopped,  setPollStopped]  = useState(false);
 
-  // ── 輪詢訂單狀態 ──────────────────────────────────────────────────────────
+  const [email,        setEmail]        = useState("");
+  const [emailStatus,  setEmailStatus]  = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [codeCopied,   setCodeCopied]   = useState(false);
+  const [tradeNoCopied, setTradeNoCopied] = useState(false);
+  const [showUnsaved,  setShowUnsaved]  = useState(false);
+  const codeSavedRef = useRef(false);
+
+  const [syncStatus,   setSyncStatus]   = useState<SyncStatus>("idle");
+  const [syncMsg,      setSyncMsg]      = useState("");
+
+  // ── 輪詢 order-status ─────────────────────────────────────────────────────
+
+  const fetchOrder = useCallback(async () => {
+    if (!merchantTradeNo) return;
+    try {
+      const res  = await fetch(
+        `/api/ecpay/order-status?merchantTradeNo=${encodeURIComponent(merchantTradeNo)}`,
+      );
+      const data = (await res.json()) as {
+        ok:              boolean;
+        status?:         string;
+        merchantTradeNo?: string;
+        planName?:       string;
+        amount?:         number;
+        redeemCode?:     string | null;
+        paidAt?:         string | null;
+        codeDetail?:     CodeDetail | null;
+        buyerEmail?:     string | null;
+        emailSent?:      boolean;
+        emailSentAt?:    string | null;
+        emailError?:     string | null;
+      };
+
+      if (!data.ok) {
+        setOrder((prev) => ({ ...prev, status: "not_found" }));
+        return;
+      }
+
+      setOrder({
+        status:          data.status as OrderStatus,
+        merchantTradeNo: data.merchantTradeNo ?? merchantTradeNo,
+        planName:        data.planName,
+        amount:          data.amount,
+        redeemCode:      data.redeemCode,
+        paidAt:          data.paidAt,
+        codeDetail:      data.codeDetail,
+        buyerEmail:      data.buyerEmail,
+        emailSent:       data.emailSent,
+        emailSentAt:     data.emailSentAt,
+        emailError:      data.emailError,
+      });
+
+      if (data.emailSent) codeSavedRef.current = true;
+    } catch {
+      setOrder((prev) => ({ ...prev, status: "error" }));
+    }
+  }, [merchantTradeNo]);
+
   useEffect(() => {
     if (!merchantTradeNo) {
       setOrder({ status: "not_found", merchantTradeNo: "" });
@@ -58,92 +115,84 @@ export default function PaymentResultClient() {
     }
 
     let cancelled = false;
-
-    async function poll() {
-      try {
-        const res  = await fetch(
-          `/api/ecpay/order-status?merchantTradeNo=${encodeURIComponent(merchantTradeNo)}`,
-        );
-        const data = (await res.json()) as {
-          ok:              boolean;
-          status?:         string;
-          merchantTradeNo?: string;
-          planName?:       string;
-          amount?:         number;
-          redeemCode?:     string | null;
-          paidAt?:         string | null;
-          codeDetail?:     CodeDetail | null;
-          buyerEmail?:     string | null;
-          emailSent?:      boolean;
-          emailSentAt?:    string | null;
-          emailError?:     string | null;
-        };
-
-        if (cancelled) return;
-
-        if (!data.ok) {
-          setOrder({ status: "not_found", merchantTradeNo });
-          return;
-        }
-
-        const next: OrderResult = {
-          status:          data.status as OrderStatus,
-          merchantTradeNo: data.merchantTradeNo ?? merchantTradeNo,
-          planName:        data.planName,
-          amount:          data.amount,
-          redeemCode:      data.redeemCode,
-          paidAt:          data.paidAt,
-          codeDetail:      data.codeDetail,
-          buyerEmail:      data.buyerEmail,
-          emailSent:       data.emailSent,
-          emailSentAt:     data.emailSentAt,
-          emailError:      data.emailError,
-        };
-        setOrder(next);
-
-        // 預填 Email input（使用遮罩後的值作為 placeholder hint，不自動填入以免誤用）
-        if (data.emailSent) {
-          codeSavedRef.current = true; // Email 已寄出視同已保存
-        }
-      } catch {
-        if (!cancelled) setOrder((prev) => ({ ...prev, status: "error" }));
-      }
-    }
-
-    void poll();
+    void fetchOrder();
 
     const interval = setInterval(() => {
       if (cancelled) return;
       setPollCount((c) => {
         const next = c + 1;
-        if (next >= MAX_POLLS) clearInterval(interval);
-        else void poll();
+        if (next >= MAX_POLLS) {
+          clearInterval(interval);
+          setPollStopped(true);
+        } else {
+          void fetchOrder();
+        }
         return next;
       });
     }, POLL_INTERVAL_MS);
 
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
+    return () => { cancelled = true; clearInterval(interval); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [merchantTradeNo]);
 
-  // 達到終態後停止輪詢
+  // 達到終態停止輪詢
   useEffect(() => {
     if (order.status === "paid" || order.status === "failed") {
+      setPollStopped(true);
       setPollCount(MAX_POLLS);
     }
   }, [order.status]);
 
-  // 同步 emailSent 狀態到 codeSavedRef
+  // emailSent → 標記已保存
   useEffect(() => {
     if (order.emailSent) codeSavedRef.current = true;
   }, [order.emailSent]);
 
+  // ── 主動同步 sync-order ───────────────────────────────────────────────────
+
+  async function handleSync() {
+    if (syncStatus === "syncing") return;
+    setSyncStatus("syncing");
+    setSyncMsg("");
+    try {
+      const res = await fetch("/api/ecpay/sync-order", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ merchantTradeNo }),
+      });
+      const data = (await res.json()) as {
+        ok:          boolean;
+        status?:     string;
+        redeemCode?: string | null;
+        codeDetail?: CodeDetail | null;
+        message?:    string;
+        error?:      string;
+      };
+
+      if (data.ok && data.status === "paid" && data.redeemCode) {
+        setSyncStatus("synced");
+        // 更新 order 以顯示成功畫面（再拉一次 order-status 取完整資料）
+        await fetchOrder();
+      } else if (data.ok && data.status === "pending") {
+        setSyncStatus("still_pending");
+        setSyncMsg("目前尚未查到綠界付款成功紀錄，請稍後再試或聯繫客服。");
+      } else {
+        setSyncStatus("error");
+        setSyncMsg(
+          data.error === "SYNC_LIMIT_EXCEEDED"
+            ? "查詢次數已達上限，請聯繫客服並提供訂單編號。"
+            : data.message ?? "同步失敗，請聯繫客服並提供訂單編號。",
+        );
+      }
+    } catch {
+      setSyncStatus("error");
+      setSyncMsg("網路錯誤，請稍後再試。");
+    }
+  }
+
   // ── 操作函式 ──────────────────────────────────────────────────────────────
 
-  function handleCopy() {
+  function handleCopyCode() {
     if (!order.redeemCode) return;
     void navigator.clipboard.writeText(order.redeemCode).then(() => {
       setCodeCopied(true);
@@ -152,12 +201,17 @@ export default function PaymentResultClient() {
     });
   }
 
+  function handleCopyTradeNo() {
+    void navigator.clipboard.writeText(merchantTradeNo).then(() => {
+      setTradeNoCopied(true);
+      setTimeout(() => setTradeNoCopied(false), 2000);
+    });
+  }
+
   async function handleSendEmail() {
     if (emailStatus === "sending") return;
     const code = order.redeemCode;
-    if (!code) return;
-    const trimmed = email.trim();
-    if (!trimmed) return;
+    if (!code || !email.trim()) return;
 
     setEmailStatus("sending");
     try {
@@ -165,7 +219,7 @@ export default function PaymentResultClient() {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email:         trimmed,
+          email:         email.trim(),
           code,
           planName:      order.codeDetail?.displayName ? undefined : "single",
           displayName:   order.codeDetail?.displayName ?? order.planName ?? "",
@@ -200,50 +254,118 @@ export default function PaymentResultClient() {
     });
   }
 
-  // ── 載入中 / 待確認 ───────────────────────────────────────────────────────
+  // ── Loading / Pending 畫面 ─────────────────────────────────────────────────
 
-  if (order.status === "loading" || (order.status === "pending" && pollCount < MAX_POLLS)) {
+  const isStillWaiting =
+    (order.status === "loading" || order.status === "pending") && !pollStopped;
+
+  if (isStillWaiting) {
+    const isPhase2 = pollCount >= PHASE_2_POLLS;
     return (
       <AppShell>
         <section className="mx-auto w-full max-w-md py-20 text-center">
           <div className="mx-auto mb-6 h-10 w-10 animate-spin rounded-full border-2 border-lavender/30 border-t-lavender" />
-          <h1 className="text-xl font-semibold text-moon">付款確認中</h1>
+          <h1 className="text-xl font-semibold text-moon">
+            {isPhase2 ? "系統正在準備通行碼" : "付款確認中"}
+          </h1>
           <p className="mt-3 text-sm leading-7 text-moon/55">
-            {order.status === "pending"
-              ? "付款已完成，系統正在產生通行碼，請稍候 5～10 秒。"
-              : "正在向銀行確認付款結果，請稍候…"}
+            {isPhase2
+              ? "付款已完成，系統正在準備通行碼，請稍候。"
+              : "付款確認中，正在產生通行碼。"}
           </p>
-          {order.status === "pending" && pollCount > 5 && (
-            <p className="mt-3 text-xs text-moon/38">
-              付款確認有時需要數秒，請耐心等待。
-            </p>
-          )}
         </section>
       </AppShell>
     );
   }
 
-  if (order.status === "pending" && pollCount >= MAX_POLLS) {
+  // ── 60 秒後 pending 超時：補救畫面 ───────────────────────────────────────
+
+  if ((order.status === "loading" || order.status === "pending") && pollStopped) {
     return (
       <AppShell>
-        <section className="mx-auto w-full max-w-md py-20 text-center">
-          <p className="text-5xl">⏳</p>
-          <h1 className="mt-4 text-xl font-semibold text-moon">付款已完成，通行碼準備中</h1>
-          <p className="mt-3 text-sm leading-7 text-moon/60">
-            付款結果尚未收到通知，可能需要幾分鐘。<br />
-            請稍後重新整理此頁面查看結果。
-          </p>
-          <p className="mt-3 text-xs text-moon/40">訂單編號：{merchantTradeNo}</p>
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+        <section className="mx-auto w-full max-w-md py-12">
+          <div className="text-center">
+            <p className="text-4xl">⏳</p>
+            <h1 className="mt-4 text-xl font-semibold text-moon">
+              付款已完成，但通行碼尚未產生
+            </h1>
+            <p className="mt-3 text-sm leading-7 text-moon/60">
+              你的付款可能已成功，但系統尚未收到綠界通知。<br />
+              請點下方按鈕重新同步付款狀態，若仍未成功，請聯繫客服協助補發。
+            </p>
+          </div>
+
+          {/* 訂單資料 */}
+          <div className="mt-6 rounded-2xl border border-white/10 bg-midnight/50 p-5 text-sm">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-xs text-moon/40">訂單編號</p>
+                <p className="mt-0.5 font-mono text-moon/80 break-all">{merchantTradeNo || "—"}</p>
+              </div>
+              {order.planName && (
+                <div>
+                  <p className="text-xs text-moon/40">方案</p>
+                  <p className="mt-0.5 text-moon">{order.planName}</p>
+                </div>
+              )}
+              {order.amount != null && (
+                <div>
+                  <p className="text-xs text-moon/40">金額</p>
+                  <p className="mt-0.5 text-moon">NT${order.amount}</p>
+                </div>
+              )}
+              {order.buyerEmail && (
+                <div>
+                  <p className="text-xs text-moon/40">Email</p>
+                  <p className="mt-0.5 text-moon/70">{order.buyerEmail}</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 同步狀態訊息 */}
+          {syncMsg && (
+            <div className={`mt-4 rounded-xl px-4 py-3 text-sm ${
+              syncStatus === "error" || syncStatus === "still_pending"
+                ? "border border-red-300/20 bg-red-300/6 text-red-300/80"
+                : "border border-aurora/20 bg-aurora/6 text-aurora"
+            }`}>
+              {syncMsg}
+            </div>
+          )}
+
+          {/* 操作按鈕 */}
+          <div className="mt-6 space-y-3">
             <button
-              onClick={() => window.location.reload()}
-              className="rounded-full border border-lavender/30 px-6 py-3 text-sm font-medium text-moon transition hover:bg-white/8"
+              onClick={() => void handleSync()}
+              disabled={syncStatus === "syncing"}
+              className="flex w-full items-center justify-center gap-2 rounded-full bg-lavender/20 px-5 py-3.5 font-semibold text-lavender transition hover:bg-lavender/30 disabled:opacity-60"
             >
-              重新整理
+              {syncStatus === "syncing" ? (
+                <>
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-lavender/40 border-t-lavender" />
+                  同步中…
+                </>
+              ) : "🔄 重新同步付款狀態"}
             </button>
+
+            <button
+              onClick={() => void fetchOrder()}
+              className="flex w-full items-center justify-center rounded-full border border-white/15 px-5 py-3.5 text-sm text-moon/70 transition hover:bg-white/8"
+            >
+              重新查詢
+            </button>
+
+            <button
+              onClick={handleCopyTradeNo}
+              className="flex w-full items-center justify-center rounded-full border border-white/10 px-5 py-3 text-sm text-moon/50 transition hover:bg-white/6"
+            >
+              {tradeNoCopied ? "✓ 已複製訂單編號" : "複製訂單編號"}
+            </button>
+
             <a
-              href="mailto:ciut0000@gmail.com"
-              className="rounded-full border border-white/15 px-6 py-3 text-sm text-moon/60 transition hover:bg-white/8"
+              href={`mailto:ciut0000@gmail.com?subject=付款成功但未收到通行碼&body=訂單編號：${merchantTradeNo}`}
+              className="flex w-full items-center justify-center rounded-full border border-white/10 px-5 py-3 text-sm text-moon/50 transition hover:bg-white/6"
             >
               聯繫客服
             </a>
@@ -253,6 +375,8 @@ export default function PaymentResultClient() {
     );
   }
 
+  // ── 付款失敗 ──────────────────────────────────────────────────────────────
+
   if (order.status === "failed") {
     return (
       <AppShell>
@@ -260,8 +384,7 @@ export default function PaymentResultClient() {
           <p className="text-5xl">✕</p>
           <h1 className="mt-4 text-xl font-semibold text-moon">付款未成功</h1>
           <p className="mt-3 text-sm leading-7 text-moon/60">
-            此次付款未能完成，你的帳戶不會被收費。<br />
-            如有疑問，請聯繫客服。
+            此次付款未能完成，你的帳戶不會被收費。
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
             <Link href="/tarot" className="rounded-full bg-moon px-6 py-3 font-medium text-midnight transition hover:bg-white">
@@ -275,6 +398,8 @@ export default function PaymentResultClient() {
       </AppShell>
     );
   }
+
+  // ── 找不到 / 錯誤 ─────────────────────────────────────────────────────────
 
   if (order.status === "not_found" || order.status === "error") {
     return (
@@ -290,6 +415,7 @@ export default function PaymentResultClient() {
   }
 
   // ── 付款成功 ──────────────────────────────────────────────────────────────
+
   return (
     <AppShell>
       <section className="mx-auto w-full max-w-md py-12">
@@ -304,7 +430,6 @@ export default function PaymentResultClient() {
               </p>
               <div className="mt-4 flex gap-2">
                 <button
-                  type="button"
                   onClick={() => setShowUnsaved(false)}
                   className="flex-1 rounded-xl border border-[#d8bd70]/50 px-3 py-2.5 text-xs font-semibold text-[#d8bd70] transition hover:border-[#d8bd70]/80"
                 >
@@ -354,14 +479,13 @@ export default function PaymentResultClient() {
           </div>
         </div>
 
-        {/* 保存提醒 */}
         <p className="mt-3 text-center text-xs leading-6 text-moon/45">
           請先保存此通行碼。此通行碼不綁帳號，可自行使用，也可分享給朋友共同使用。
         </p>
 
         {/* 複製按鈕 */}
         <button
-          onClick={handleCopy}
+          onClick={handleCopyCode}
           className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-[#d8bd70]/30 bg-[#d8bd70]/8 px-4 py-3 text-sm font-medium text-[#d8bd70] transition hover:bg-[#d8bd70]/14 active:scale-[0.98]"
         >
           {codeCopied ? "✓ 已複製" : "複製通行碼"}
@@ -382,9 +506,7 @@ export default function PaymentResultClient() {
           </p>
 
           {emailStatus === "sent" ? (
-            <p className="mt-3 flex items-center gap-2 text-sm text-aurora">
-              <span>✓</span> 已寄出通行碼，請到信箱確認。
-            </p>
+            <p className="mt-3 flex items-center gap-2 text-sm text-aurora">✓ 已寄出通行碼，請到信箱確認。</p>
           ) : (
             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
               <input
@@ -411,9 +533,7 @@ export default function PaymentResultClient() {
             </p>
           )}
           {order.emailError && !order.emailSent && emailStatus === "idle" && (
-            <p className="mt-2 text-xs text-amber-400/70">
-              自動寄送未成功，請手動輸入 Email 補寄。
-            </p>
+            <p className="mt-2 text-xs text-amber-400/70">自動寄送未成功，請手動輸入 Email 補寄。</p>
           )}
         </div>
 
