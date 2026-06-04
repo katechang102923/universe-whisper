@@ -8,7 +8,7 @@
  *  - 最後必須回覆純文字 "1|OK"。
  */
 import { NextRequest, NextResponse } from "next/server";
-import { verifyCheckMacValue } from "@/lib/ecpay";
+import { verifyCheckMacValue, getEcpayCredentials } from "@/lib/ecpay";
 import { fulfillPaidOrder } from "@/lib/paymentFulfillment";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
@@ -32,8 +32,10 @@ function fail(msg: string): NextResponse {
 }
 
 export async function POST(req: NextRequest) {
-  const hashKey = process.env.ECPAY_HASH_KEY;
-  const hashIV  = process.env.ECPAY_HASH_IV;
+  console.log("[ECPay Return] received raw request");
+
+  // ── 讀取正確 credentials（stage 模式自動切換測試帳號） ───────────────────
+  const { hashKey, hashIV, isStage } = getEcpayCredentials();
 
   if (!hashKey || !hashIV) {
     console.error("[ECPay Return] HashKey/IV 未設定");
@@ -49,27 +51,33 @@ export async function POST(req: NextRequest) {
     return fail("PARSE_ERROR");
   }
 
-  console.log("[ECPay Return] received", {
-    merchantTradeNo:  params.MerchantTradeNo,
-    rtnCode:          params.RtnCode,
+  const merchantTradeNo = params.MerchantTradeNo;
+  const rtnCode         = params.RtnCode;
+
+  console.log("[ECPay Return] parsed", {
+    merchantTradeNo,
+    merchantId:       params.MerchantID,
+    rtnCode,
     rtnMsg:           params.RtnMsg,
     tradeNo:          params.TradeNo,
     tradeAmt:         params.TradeAmt,
-    paymentType:      params.PaymentType,
     paymentDate:      params.PaymentDate,
+    paymentType:      params.PaymentType,
     hasCheckMacValue: Boolean(params.CheckMacValue),
+    stage:            isStage,
   });
 
   // ── 驗證 CheckMacValue ───────────────────────────────────────────────────
   if (!verifyCheckMacValue(params, hashKey, hashIV)) {
-    console.error("[ECPay Return] CheckMacValue 驗證失敗", {
-      merchantTradeNo: params.MerchantTradeNo,
+    console.error("[ECPay Return] CheckMacValue invalid", {
+      merchantTradeNo,
+      merchantId: params.MerchantID,
+      rtnCode,
+      rtnMsg:     params.RtnMsg,
+      stage:      isStage,
     });
     return fail("INVALID_MAC");
   }
-
-  const merchantTradeNo = params.MerchantTradeNo;
-  const rtnCode         = params.RtnCode;
 
   if (!merchantTradeNo) return fail("MISSING_TRADE_NO");
 
@@ -82,7 +90,9 @@ export async function POST(req: NextRequest) {
         .where("merchantTradeNo", "==", merchantTradeNo)
         .limit(1)
         .get();
-      if (!snap.empty) {
+      if (snap.empty) {
+        console.error("[ECPay Return] order not found", { merchantTradeNo });
+      } else {
         await snap.docs[0].ref.update({
           status:           "failed",
           ecpayTradeNo:     params.TradeNo ?? null,
@@ -107,8 +117,9 @@ export async function POST(req: NextRequest) {
       source:          "ecpay_return",
     });
 
-    console.log("[ECPay Return] order paid", {
+    console.log("[ECPay Return] paid confirmed", {
       merchantTradeNo,
+      tradeNo:          params.TradeNo,
       code:             result.redeemCode,
       alreadyFulfilled: result.alreadyFulfilled,
       emailSent:        result.emailSent,

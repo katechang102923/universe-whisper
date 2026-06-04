@@ -15,6 +15,7 @@ import { getAdminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 import { PAYMENT_ORDERS_COLLECTION } from "@/lib/redeemCodes";
 import { fulfillPaidOrder } from "@/lib/paymentFulfillment";
+import { getEcpayCredentials } from "@/lib/ecpay";
 import crypto from "crypto";
 
 export const runtime = "nodejs";
@@ -51,10 +52,8 @@ function buildQueryCheckMac(
 // ── POST handler ──────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  const merchantId = process.env.ECPAY_MERCHANT_ID;
-  const hashKey    = process.env.ECPAY_HASH_KEY;
-  const hashIV     = process.env.ECPAY_HASH_IV;
-  const isStage    = process.env.ECPAY_STAGE === "true";
+  // 使用 getEcpayCredentials() 確保 stage 模式下使用測試帳號
+  const { merchantId, hashKey, hashIV, isStage } = getEcpayCredentials();
 
   if (!merchantId || !hashKey || !hashIV) {
     return NextResponse.json({ ok: false, error: "PAYMENT_NOT_CONFIGURED" }, { status: 503 });
@@ -72,7 +71,7 @@ export async function POST(req: NextRequest) {
 
   const db = getAdminDb();
 
-  console.log("[ECPay Sync] start", { merchantTradeNo, forceGenerate });
+  console.log("[ECPay Sync] start", { merchantTradeNo, forceGenerate, isStage });
 
   // ── 找到訂單 ──────────────────────────────────────────────────────────────
   const orderQuery = await db
@@ -168,11 +167,13 @@ export async function POST(req: NextRequest) {
     const resultText = await ecpayRes.text();
     ecpayResult      = Object.fromEntries(new URLSearchParams(resultText));
 
-    console.log("[ECPay Sync] QueryTradeInfo 結果", {
+    console.log("[ECPay Sync] query response", {
       merchantTradeNo,
       TradeStatus:  ecpayResult.TradeStatus,
       TradeNo:      ecpayResult.TradeNo,
       PaymentDate:  ecpayResult.PaymentDate,
+      TradeAmt:     ecpayResult.TradeAmt,
+      RtnCode:      ecpayResult.RtnCode,
     });
   } catch (err) {
     console.error("[ECPay Sync] 向綠界查詢失敗", err);
