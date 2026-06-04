@@ -1907,6 +1907,12 @@ export function TarotDrawClient() {
   const hasFullAccess = isAdmin || fbShareUnlocked || paidUnlocked;
   const isOutOfFreeDraws = !isAdmin && drawsRemaining === 0;
   const shouldShowPaidPlan = isOutOfFreeDraws && fbShareUnlockUsedToday && !hasFullAccess;
+  /** 免費次數 API 尚未回應（避免載入中就顯示「0 次」） */
+  const isLoadingDraws = !isAdmin && drawsRemaining === null;
+  /** 已啟用有效通行碼（購買 / 通行碼驗證 / FB 解鎖），可以 paid mode 抽牌 */
+  const hasActivePass = hasFullAccess || !!preDrawCodePending;
+  /** 狀態 B：次數用完且無有效通行碼 → 選牌區應鎖定 */
+  const isBlockedState = isOutOfFreeDraws && !hasActivePass;
   const currentSpreadGroup = spreadQuestionGroups[topic];
   const freeSummary = useMemo(() => buildFreeSummary(cards, fullReading), [cards, fullReading]);
   const isSingleResult = mode === "single_tarot" && cards.length === 1;
@@ -3017,60 +3023,34 @@ export function TarotDrawClient() {
       />
 
       {/* ── Draw CTA / 付費方案區（依免費次數狀態切換位置）── */}
-      {isOutOfFreeDraws ? (
-        /* ── 狀態 B：免費次數已用完 → 付費方案在選牌區上方 ── */
+      {/* ── Draw CTA 區（四狀態切換） ── */}
+      {isLoadingDraws ? (
+        /* ── 載入中：API 尚未回應，不顯示「0 次」或付費方案 ── */
+        <div className="relative z-10 mt-5 rounded-2xl border border-white/8 bg-midnight/40 px-5 py-4">
+          <p className="text-sm text-moon/45">正在確認今日免費次數…</p>
+        </div>
+
+      ) : isBlockedState ? (
+        /* ── 狀態 B：次數用完 + 無有效通行碼 ── */
         <div className="relative z-10 mt-5 space-y-3">
-          {/* 免費次數已用完提示 */}
+          {/* 已用完提示（友善，不強迫） */}
           <div className="rounded-2xl border border-white/10 bg-midnight/50 px-4 py-3.5">
-            <p className="text-sm font-semibold text-moon">
-              今日免費次數：0 次，明天可再次免費抽牌
-            </p>
+            <p className="text-sm font-semibold text-moon">今日免費次數已使用完畢</p>
             <p className="mt-1 text-xs leading-5 text-moon/55">
-              你可以明天再回來免費抽牌，或購買通行碼立即繼續抽牌。
+              你可以明天再回來免費抽牌，或使用通行碼繼續抽牌。
             </p>
           </div>
 
-          {/* 想抽更多次？付費方案 */}
-          <div className="rounded-2xl border border-[#d8bd70]/22 bg-midnight/50 p-4">
-            <p className="text-base font-semibold text-moon">想抽更多次？</p>
-            <p className="mt-0.5 text-xs leading-5 text-moon/55">解鎖更多抽牌次數，獲得更多指引</p>
-            <div className="mt-3 grid gap-3 sm:grid-cols-3">
-              {PASS_PLANS.map((plan) => (
-                <button
-                  key={plan.key}
-                  type="button"
-                  onClick={() => { setSelectedPlan(plan); openPaidDrawModal(); }}
-                  className="rounded-2xl border border-[#d8bd70]/35 bg-midnight/50 p-4 text-left transition hover:border-[#d8bd70]/65 hover:bg-white/6 active:scale-[0.98]"
-                >
-                  <p className="text-xs font-semibold tracking-wide text-[#d8bd70]">{plan.label}</p>
-                  <p className="mt-1 text-2xl font-bold text-moon">{plan.price} 元</p>
-                  <p className="mt-1.5 text-xs leading-5 text-moon/55">{plan.desc}</p>
-                </button>
-              ))}
-            </div>
-            <p className="mt-2 text-center text-xs text-moon/38">
-              支付後可立即使用，次數有效期 30 天 ⓘ
-            </p>
-          </div>
-
-          <p className="text-center text-xs text-moon/38">
-            已購買宇宙通行碼？
-            <a href="/redeem/check" className="ml-1 underline underline-offset-2 text-moon/55 transition hover:text-moon/80">查詢剩餘次數</a>
-          </p>
-
-          {/* 通行碼輸入區 */}
-          <div className="rounded-2xl border border-lavender/22 bg-midnight/50 p-4 sm:p-5">
-            <p className="text-sm font-semibold text-moon">輸入你的宇宙通行碼</p>
-            <p className="mt-1 text-xs leading-6 text-moon/55">
-              購買或獲得後，輸入通行碼以啟用次數
-            </p>
+          {/* 通行碼輸入（主要 CTA，優先顯示） */}
+          <div className="rounded-2xl border border-lavender/28 bg-midnight/50 p-4 sm:p-5">
+            <p className="text-sm font-semibold text-moon">已有通行碼？</p>
             <div className="mt-3 flex flex-col gap-2">
               <input
                 type="text"
                 value={preDrawCode}
                 onChange={(e) => { setPreDrawCode(e.target.value.toUpperCase()); setPreDrawCodeError(""); }}
                 onKeyDown={(e) => e.key === "Enter" && !preDrawCodeChecking && void handlePreDrawCode()}
-                placeholder="輸入通行碼（例如：ABC123）"
+                placeholder="輸入你的宇宙通行碼"
                 maxLength={12}
                 disabled={preDrawCodeChecking}
                 className="w-full rounded-xl border border-white/14 bg-white/6 px-4 py-3 font-mono text-sm tracking-[0.12em] text-moon placeholder-moon/30 outline-none transition focus:border-lavender/50"
@@ -3082,7 +3062,7 @@ export function TarotDrawClient() {
                 disabled={preDrawCodeChecking || !preDrawCode.trim()}
                 className="w-full rounded-xl bg-lavender px-5 py-3 text-sm font-medium text-midnight transition hover:bg-lavender/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {preDrawCodeChecking ? "驗證中…" : "啟用並解鎖抽牌"}
+                {preDrawCodeChecking ? "驗證中…" : "啟用通行碼並開始抽牌"}
               </button>
             </div>
             {preDrawCodeError && (
@@ -3092,13 +3072,57 @@ export function TarotDrawClient() {
               <a href="/redeem/check" className="underline underline-offset-2 transition hover:text-moon/55">查詢剩餘次數</a>
             </p>
           </div>
+
+          {/* 想今天繼續抽？付費方案（次要，視覺上不搶眼） */}
+          <div className="rounded-2xl border border-white/8 bg-midnight/38 p-4">
+            <p className="text-sm font-semibold text-moon/80">想今天繼續抽？</p>
+            <p className="mt-1 text-xs leading-5 text-moon/48">
+              如果想今天繼續抽牌，可以購買通行碼；不急的話，明天也會恢復免費次數。
+            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              {PASS_PLANS.map((plan) => (
+                <button
+                  key={plan.key}
+                  type="button"
+                  onClick={() => { setSelectedPlan(plan); openPaidDrawModal(); }}
+                  className="rounded-2xl border border-white/12 bg-midnight/50 p-3 text-left transition hover:border-[#d8bd70]/40 hover:bg-white/5 active:scale-[0.98]"
+                >
+                  <p className="text-xs text-[#d8bd70]/80">{plan.label}</p>
+                  <p className="mt-0.5 text-xl font-bold text-moon">{plan.price} 元</p>
+                  <p className="mt-1 text-[11px] leading-4 text-moon/45">{plan.desc}</p>
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-center text-xs text-moon/32">支付後可立即使用，次數有效期 30 天</p>
+          </div>
         </div>
-      ) : (
-        /* ── 狀態 A：還有免費次數 → 顯示免費抽牌 CTA，付費方案移到選牌區下方 ── */
-        <div className="relative z-10 mt-5 rounded-2xl border border-[#d8bd70]/22 bg-midnight/50 px-5 py-4">
-          <p className="text-sm font-semibold text-moon">
-            今日免費次數：{drawsRemaining !== null ? `${drawsRemaining} 次` : "…"}
+
+      ) : isOutOfFreeDraws && hasActivePass ? (
+        /* ── 狀態 C：次數用完但有效通行碼已啟用 ── */
+        <div className="relative z-10 mt-5 rounded-2xl border border-aurora/22 bg-aurora/6 px-5 py-4">
+          <p className="text-sm font-semibold text-aurora">✓ 已啟用通行碼</p>
+          <p className="mt-1 text-xs leading-5 text-moon/60">
+            通行碼已啟用，請開始選牌。
           </p>
+          <button
+            type="button"
+            onClick={handleDrawButtonClick}
+            disabled={
+              status === "drawing" ||
+              status === "selecting" ||
+              status === "revealing" ||
+              readingStatus === "loading"
+            }
+            className="mt-4 w-full rounded-full bg-moon px-6 py-3 font-medium text-midnight shadow-[0_0_24px_rgba(247,241,223,0.28)] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {status === "drawing" ? "星光正在流動..." : "✦ 開始抽牌"}
+          </button>
+        </div>
+
+      ) : (
+        /* ── 狀態 A：今日免費次數還有（或管理員） ── */
+        <div className="relative z-10 mt-5 rounded-2xl border border-[#d8bd70]/22 bg-midnight/50 px-5 py-4">
+          <p className="text-sm font-semibold text-moon">今日免費抽牌</p>
           <p className="mt-1 text-xs leading-6 text-moon/60">
             你今天還有 {drawsRemaining ?? 1} 次免費抽牌機會，可以先免費體驗一次。
           </p>
@@ -3170,7 +3194,15 @@ export function TarotDrawClient() {
       ) : null}
 
       {/* Card display */}
-      {status === "idle" || status === "revealed" ? (
+      {/* 狀態 B（次數用完 + 無通行碼）在 idle 時顯示鎖定提示，不顯示可點選的牌背 */}
+      {status === "idle" && isBlockedState ? (
+        <div className="relative z-10 mt-8 rounded-2xl border border-white/8 bg-midnight/30 px-5 py-6 text-center">
+          <p className="text-sm font-semibold text-moon/55">選牌區會在可抽牌時開啟</p>
+          <p className="mt-2 text-xs leading-6 text-moon/38">
+            明天免費次數恢復，或啟用通行碼後，就可以開始選牌。
+          </p>
+        </div>
+      ) : status === "idle" || status === "revealed" ? (
         <>
           {/* Single-card: original layout unchanged */}
           {isSingleResult ? (
@@ -3220,8 +3252,8 @@ export function TarotDrawClient() {
         </>
       ) : null}
 
-      {/* ── 狀態 A：免費次數還有時，在選牌區下方才顯示付費加購區 ── */}
-      {!isOutOfFreeDraws && !isAdmin && !canShowReadings ? (
+      {/* ── 狀態 A / C：有可抽資格時，選牌區下方才顯示付費加購區 ── */}
+      {!isAdmin && !isBlockedState && !canShowReadings ? (
         <div className="relative z-10 mt-8 rounded-2xl border border-[#d8bd70]/18 bg-midnight/40 p-5">
           <p className="text-base font-semibold text-moon">想抽更多次？</p>
           <p className="mt-1 text-xs leading-6 text-moon/55">
