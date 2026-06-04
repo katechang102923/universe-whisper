@@ -1901,6 +1901,9 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
   const storyCardRef = useRef<HTMLDivElement | null>(null);
   const readingSectionRef = useRef<HTMLElement | null>(null);
   const savedPaidResultKeyRef = useRef("");
+  // Ref for the pending code — avoids React 18 batching overwrite issues.
+  // Always reflects the latest value regardless of render cycle.
+  const preDrawCodeRef = useRef<string>("");
   const [restoredToastVisible, setRestoredToastVisible] = useState(false);
   const [spreadQuestionsOpen, setSpreadQuestionsOpen] = useState(false);
 
@@ -2044,40 +2047,11 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canShowReadings, hasFullAccess, readingStatus, lineResultId, fullReading]);
 
-  // 抽牌成功後，扣除 preDrawCode 的 1 次（只有 AI 成功 + resultId 建立後才執行）
-  useEffect(() => {
-    if (
-      canShowReadings &&
-      readingStatus === "done" &&
-      lineResultId &&
-      preDrawCodePending
-    ) {
-      fetch("/api/redeem/validate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: preDrawCodePending, resultId: lineResultId }),
-      })
-        .then((r) => r.json() as Promise<{ ok: boolean; remainingUses?: number; errorCode?: string }>)
-        .then((data) => {
-          if (data.ok) {
-            setCodeDeductResult({ remainingUses: data.remainingUses ?? 0 });
-            setCodeDeductError("");
-          } else {
-            // 扣失敗（例如已重複扣過），顯示錯誤但不隱藏解讀
-            const msg: Record<string, string> = {
-              ALREADY_USED: "此通行碼已解鎖本次結果",
-              USED_UP: "此通行碼次數已用完",
-              EXPIRED: "此通行碼已過期",
-              NOT_FOUND: "查無此通行碼",
-            };
-            setCodeDeductError(msg[data.errorCode ?? ""] ?? "通行碼扣次數失敗，請聯絡客服");
-          }
-          setPreDrawCodePending("");
-        })
-        .catch(() => { setCodeDeductError("網路錯誤，通行碼次數可能未扣除"); setPreDrawCodePending(""); });
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canShowReadings, readingStatus, lineResultId, preDrawCodePending]);
+  // NOTE: Code deduction is now handled inline inside requestFullReading()
+  // after a successful AI reading, using preDrawCodeRef to avoid React batching
+  // and stale-closure issues. The old useEffect was removed because it depended
+  // on lineResultId being created by a separate async effect first, which was
+  // unreliable and caused the deduction to silently not fire.
 
 
   // 付費解鎖後自動建立 Firestore 結果記錄（供 LINE claim code 使用）
@@ -2117,6 +2091,7 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
     setPreDrawCode("");
     setPreDrawCodeChecking(false);
     setPreDrawCodeError("");
+    preDrawCodeRef.current = ""; // clear ref in sync with state
     setPreDrawCodePending("");
     setCodeDeductResult(null);
     setCodeDeductError("");
@@ -2190,6 +2165,16 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
         console.log("[perf] C0: sessionStorage cache HIT — skipping AI call");
         setFullReading(cached);
         setReadingStatus("done");
+        // Deduct code even on cache hit
+        const pendingCode = preDrawCodeRef.current;
+        if (pendingCode) {
+          preDrawCodeRef.current = "";
+          setPreDrawCodePending("");
+          void consumeCodeAfterReading(pendingCode, targetCards, cached).catch((err: unknown) => {
+            console.error("[redeem] consumeCode error:", err instanceof Error ? err.message : err);
+            setCodeDeductError("通行碼扣次數失敗，請聯絡客服");
+          });
+        }
         return; // ← no network request needed
       }
     } catch {
@@ -2241,7 +2226,19 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
     }
 
     console.timeEnd("[perf] C3: tarot-reading API (total)");
-    // ── End PERF-C ────────────────────────────────────────────────────────────
+
+    // ── Deduct pre-draw code (if active) ─────────────────────────────────────
+    // preDrawCodeRef is a ref — immune to React batching/closure issues.
+    // consumeCodeAfterReading passes fresh data explicitly (not stale state).
+    const pendingCode = preDrawCodeRef.current;
+    if (pendingCode) {
+      preDrawCodeRef.current = "";
+      setPreDrawCodePending("");
+      void consumeCodeAfterReading(pendingCode, targetCards, reading).catch((err: unknown) => {
+        console.error("[redeem] consumeCode error:", err instanceof Error ? err.message : err);
+        setCodeDeductError("通行碼扣次數失敗，請聯絡客服");
+      });
+    }
   }
 
   // Creates (or returns cached) a Firestore result record for LINE/FB sharing
@@ -2285,6 +2282,82 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
     return data.resultId;
   }
 
+
+  /**
+   * Called after a successful AI reading when a pre-draw code is pending.
+   * Creates the Firestore result record (with the fresh reading data) and
+   * then deducts one use from the code in a single reliable sequence.
+   * Uses explicit parameters to avoid stale-closure issues with React state.
+   */
+  async function consumeCodeAfterReading(
+    code: string,
+    targetCards: TarotCardFaceData[],
+    reading: string,
+  ) {
+    console.log("[redeem] consumeCodeAfterReading start, code:", code);
+
+    // Step 1: Create result record with explicit fresh data (not stale state)
+    let resultId: string;
+    const existingId = lineResultId; // capture closure value
+    if (existingId) {
+      resultId = existingId;
+      console.log("[redeem] reusing existing resultId:", resultId);
+    } else {
+      const freshSummary = buildFreeSummary(targetCards, reading);
+      const createRes = await fetch("/api/results/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "tarot",
+          question,
+          cards: targetCards.map((c) => ({
+            ...c,
+            keywords:
+              c.orientation === "reversed"
+                ? (c.reversedKeywords ?? c.keywords)
+                : (c.uprightKeywords ?? c.keywords),
+          })),
+          shortText: freshSummary.message,
+          fullText: reading,
+          unlocked: true,
+        }),
+      });
+      const createData = (await createRes.json().catch(() => ({}))) as {
+        ok?: boolean; resultId?: string; error?: string;
+      };
+      if (!createRes.ok || !createData.ok || !createData.resultId) {
+        throw new Error(createData.error || "結果暫時無法建立，通行碼未扣除。");
+      }
+      resultId = createData.resultId;
+      setLineResultId(resultId);
+      console.log("[redeem] created result record, resultId:", resultId);
+    }
+
+    // Step 2: Deduct one use via Firestore transaction
+    const validateRes = await fetch("/api/redeem/validate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, resultId }),
+    });
+    const validateData = (await validateRes.json().catch(() => ({}))) as {
+      ok: boolean; remainingUses?: number; errorCode?: string;
+    };
+
+    if (validateData.ok) {
+      setCodeDeductResult({ remainingUses: validateData.remainingUses ?? 0 });
+      setCodeDeductError("");
+      console.log("[redeem] deducted 1 use, remaining:", validateData.remainingUses);
+    } else {
+      const msgs: Record<string, string> = {
+        ALREADY_USED: "此通行碼已解鎖本次結果",
+        USED_UP: "此通行碼次數已用完",
+        EXPIRED: "此通行碼已過期",
+        NOT_FOUND: "查無此通行碼",
+      };
+      setCodeDeductError(msgs[validateData.errorCode ?? ""] ?? "通行碼扣次數失敗，請聯絡客服");
+      console.warn("[redeem] deduction failed:", validateData.errorCode);
+    }
+  }
   // ??? Draw flow ????????????????????????????????????????????????????????????
 
   async function draw(options: { paid?: boolean; pendingCode?: string } = {}) {
@@ -2303,9 +2376,10 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
       setPaidDrawMode(true);
       setPaidUnlocked(true);
     }
-    // Re-set the pending code AFTER resetReading() so React batches this last
-    // and doesn't let resetReading's setPreDrawCodePending("") overwrite it.
+    // Set both ref and state AFTER resetReading().
+    // Ref gives reliable access inside async functions regardless of render cycles.
     if (options.pendingCode) {
+      preDrawCodeRef.current = options.pendingCode;
       setPreDrawCodePending(options.pendingCode);
     }
 
