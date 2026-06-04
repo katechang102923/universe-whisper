@@ -53,10 +53,10 @@ function StatusBadge({ status }: { status: string }) {
 
 function SourceBadge({ source }: { source?: string }) {
   const map: Record<string, { text: string; cls: string }> = {
-    ecpay_paid:   { text: "綠界付款", cls: "bg-aurora/12 text-aurora" },
-    manual_admin: { text: "後台建立", cls: "bg-lavender/12 text-lavender" },
-    test:         { text: "測試",     cls: "bg-white/8 text-moon/40" },
-    free_grant:   { text: "免費贈送", cls: "bg-amber-400/12 text-amber-300" },
+    ecpay_paid:     { text: "綠界付款", cls: "bg-aurora/12 text-aurora" },
+    manual_admin:   { text: "後台建立", cls: "bg-lavender/12 text-lavender" },
+    test:           { text: "測試",     cls: "bg-white/8 text-moon/40" },
+    free_grant:     { text: "免費贈送", cls: "bg-amber-400/12 text-amber-300" },
     refund_reissue: { text: "退款補發", cls: "bg-red-500/12 text-red-300" },
   };
   if (!source) return <span className="text-moon/30 text-xs">—</span>;
@@ -98,10 +98,10 @@ function RedeemCodeModal({
   const remaining = code.remainingUses;
 
   const sourceLabel: Record<string, string> = {
-    ecpay_paid:   "綠界付款",
-    manual_admin: "後台建立",
-    test:         "測試",
-    free_grant:   "免費贈送",
+    ecpay_paid:     "綠界付款",
+    manual_admin:   "後台建立",
+    test:           "測試",
+    free_grant:     "免費贈送",
     refund_reissue: "退款補發",
   };
 
@@ -233,91 +233,307 @@ function RedeemCodeModal({
   );
 }
 
+// ── 刪除確認 Modal ────────────────────────────────────────────────────────────
+
+function DeleteConfirmModal({
+  code,
+  onCancel,
+  onConfirm,
+  loading,
+}: {
+  code: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+  loading: boolean;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm"
+      onClick={(e) => { if (e.target === e.currentTarget && !loading) onCancel(); }}
+    >
+      <div className="w-full max-w-md rounded-2xl border border-red-500/20 bg-[#0d0d1a] shadow-2xl">
+        <div className="border-b border-white/8 px-6 py-5">
+          <p className="text-base font-semibold text-moon">確定要刪除此通行碼？</p>
+        </div>
+        <div className="px-6 py-5 space-y-3">
+          <p className="text-sm text-moon/60">
+            刪除後，此通行碼將無法再使用，相關紀錄也會從管理列表移除。此操作無法復原。
+          </p>
+          <div className="rounded-xl border border-white/8 bg-white/4 px-4 py-3">
+            <span className="text-xs text-moon/44">即將刪除</span>
+            <p className="mt-1 font-mono text-sm tracking-[0.14em] text-red-300">{code}</p>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-white/8 px-6 py-4">
+          <button
+            onClick={onCancel}
+            disabled={loading}
+            className="rounded-full border border-white/12 bg-white/6 px-5 py-2 text-sm text-moon/70 transition hover:bg-white/10 disabled:opacity-50"
+          >
+            取消
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            className="rounded-full bg-red-500/80 px-5 py-2 text-sm text-white transition hover:bg-red-500 disabled:opacity-50"
+          >
+            {loading ? "刪除中…" : "確認刪除"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 批次刪除測試碼確認 Modal ──────────────────────────────────────────────────
+
+function BulkDeleteConfirmModal({
+  count,
+  onCancel,
+  onConfirm,
+  loading,
+}: {
+  count: number;
+  onCancel: () => void;
+  onConfirm: () => void;
+  loading: boolean;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm"
+      onClick={(e) => { if (e.target === e.currentTarget && !loading) onCancel(); }}
+    >
+      <div className="w-full max-w-md rounded-2xl border border-red-500/20 bg-[#0d0d1a] shadow-2xl">
+        <div className="border-b border-white/8 px-6 py-5">
+          <p className="text-base font-semibold text-moon">確定刪除測試通行碼？</p>
+        </div>
+        <div className="px-6 py-5 space-y-3">
+          <p className="text-sm text-moon/60">
+            這會刪除目前後台建立的測試通行碼（source = manual_admin 且無正式付款資料），正式販售前請確認沒有要保留的通行碼。
+          </p>
+          {count > 0 && (
+            <div className="rounded-xl border border-white/8 bg-white/4 px-4 py-3">
+              <span className="text-xs text-moon/44">符合條件的通行碼</span>
+              <p className="mt-1 text-sm font-semibold text-red-300">{count} 筆</p>
+            </div>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 border-t border-white/8 px-6 py-4">
+          <button
+            onClick={onCancel}
+            disabled={loading}
+            className="rounded-full border border-white/12 bg-white/6 px-5 py-2 text-sm text-moon/70 transition hover:bg-white/10 disabled:opacity-50"
+          >
+            取消
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            className="rounded-full bg-red-500/80 px-5 py-2 text-sm text-white transition hover:bg-red-500 disabled:opacity-50"
+          >
+            {loading ? "刪除中…" : "確認刪除"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── 主元件：通行碼列表 ────────────────────────────────────────────────────────
 
-export function RedeemCodeList({ codes }: { codes: SerializableRedeemCode[] }) {
+export function RedeemCodeList({ codes: initialCodes }: { codes: SerializableRedeemCode[] }) {
+  const [codes, setCodes] = useState<SerializableRedeemCode[]>(initialCodes);
   const [selected, setSelected] = useState<SerializableRedeemCode | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SerializableRedeemCode | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+  const [showBulkConfirm, setShowBulkConfirm] = useState(false);
+  const [bulkLoading, setBulkLoading] = useState(false);
 
-  if (codes.length === 0) {
-    return (
-      <div className="rounded-2xl border border-white/10 bg-midnight/50 p-5">
-        <p className="text-sm text-moon/44">尚無通行碼紀錄。</p>
-      </div>
-    );
+  // 測試碼：source === "manual_admin" 且無正式付款資料
+  const adminCodes = codes.filter(
+    (c) => c.source === "manual_admin" && !c.merchantTradeNo && !c.ecpayTradeNo && !c.buyerEmail && c.paymentStatus !== "paid",
+  );
+
+  function showToast(msg: string, type: "success" | "error") {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3500);
+  }
+
+  async function handleDelete(code: SerializableRedeemCode) {
+    setDeleteLoading(true);
+    try {
+      const res = await fetch("/api/redeem/delete", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: code.code }),
+      });
+      const data = (await res.json()) as { ok: boolean; error?: string };
+      if (!data.ok) throw new Error(data.error ?? "刪除失敗");
+      setCodes((prev) => prev.filter((c) => c.code !== code.code));
+      showToast(`已刪除通行碼 ${code.code}`, "success");
+    } catch {
+      showToast("刪除失敗，請稍後再試", "error");
+    } finally {
+      setDeleteLoading(false);
+      setDeleteTarget(null);
+    }
+  }
+
+  async function handleBulkDelete() {
+    setBulkLoading(true);
+    try {
+      const res = await fetch("/api/admin/cleanup?type=admin_codes", { method: "DELETE" });
+      const data = (await res.json()) as { ok: boolean; deleted?: number; error?: string };
+      if (!data.ok) throw new Error(data.error ?? "刪除失敗");
+      // 從列表中移除同條件的通行碼
+      setCodes((prev) =>
+        prev.filter(
+          (c) => !(c.source === "manual_admin" && !c.merchantTradeNo && !c.ecpayTradeNo && !c.buyerEmail && c.paymentStatus !== "paid"),
+        ),
+      );
+      showToast(`已刪除 ${data.deleted ?? 0} 筆測試通行碼`, "success");
+    } catch {
+      showToast("批次刪除失敗，請稍後再試", "error");
+    } finally {
+      setBulkLoading(false);
+      setShowBulkConfirm(false);
+    }
   }
 
   return (
     <>
+      {/* Toast 提示 */}
+      {toast && (
+        <div
+          className={[
+            "fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded-full px-5 py-2.5 text-sm shadow-xl transition",
+            toast.type === "success"
+              ? "bg-aurora/90 text-midnight"
+              : "bg-red-500/90 text-white",
+          ].join(" ")}
+        >
+          {toast.msg}
+        </div>
+      )}
+
+      {/* 詳細 Modal */}
       {selected && (
         <RedeemCodeModal code={selected} onClose={() => setSelected(null)} />
       )}
 
-      <div className="overflow-hidden rounded-2xl border border-white/10 bg-midnight/50">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-white/8 text-left">
-                {["通行碼", "方案", "已用/總次", "狀態", "來源", "到期日", "購買Email", "MerchantNo", "Email", "使用次數", "操作"].map((h) => (
-                  <th key={h} className="whitespace-nowrap px-4 py-3 font-medium uppercase tracking-wider text-moon/44">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {codes.map((c, i) => {
-                const usedCount = c.usedLogs.length;
-                return (
-                  <tr
-                    key={c.code}
-                    className={[
-                      i < codes.length - 1 ? "border-b border-white/6" : "",
-                      "transition hover:bg-white/4",
-                    ].join(" ")}
-                  >
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => setSelected(c)}
-                        className="font-mono tracking-[0.12em] text-moon/90 underline-offset-2 hover:text-aurora hover:underline"
-                      >
-                        {c.code}
-                      </button>
-                    </td>
-                    <td className="px-4 py-3 text-moon/70">{c.displayName}</td>
-                    <td className="px-4 py-3">
-                      <span className="font-semibold text-moon">{usedCount}</span>
-                      <span className="text-moon/40">/{c.totalUses}</span>
-                    </td>
-                    <td className="px-4 py-3"><StatusBadge status={c.status} /></td>
-                    <td className="px-4 py-3"><SourceBadge source={c.source} /></td>
-                    <td className="whitespace-nowrap px-4 py-3 text-moon/50">
-                      {c.expiresAt ? new Date(c.expiresAt).toLocaleDateString("zh-TW") : "—"}
-                    </td>
-                    <td className="max-w-[120px] truncate px-4 py-3 text-moon/60">
-                      {c.buyerEmail ?? "—"}
-                    </td>
-                    <td className="px-4 py-3 font-mono text-moon/40">{c.merchantTradeNo ?? "—"}</td>
-                    <td className="px-4 py-3">
-                      {c.emailSent
-                        ? <span className="rounded-full bg-aurora/12 px-2 py-0.5 text-aurora">已寄</span>
-                        : <span className="text-moon/30">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-moon/60">{usedCount} 筆</td>
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => setSelected(c)}
-                        className="rounded-full border border-lavender/30 bg-lavender/10 px-3 py-1 text-xs text-lavender transition hover:bg-lavender/20"
-                      >
-                        查看
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      {/* 刪除確認 Modal */}
+      {deleteTarget && (
+        <DeleteConfirmModal
+          code={deleteTarget.code}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => void handleDelete(deleteTarget)}
+          loading={deleteLoading}
+        />
+      )}
+
+      {/* 批次刪除確認 Modal */}
+      {showBulkConfirm && (
+        <BulkDeleteConfirmModal
+          count={adminCodes.length}
+          onCancel={() => setShowBulkConfirm(false)}
+          onConfirm={() => void handleBulkDelete()}
+          loading={bulkLoading}
+        />
+      )}
+
+      {/* 列表上方：批次刪除按鈕 */}
+      {adminCodes.length > 0 && (
+        <div className="mb-3 flex justify-end">
+          <button
+            onClick={() => setShowBulkConfirm(true)}
+            className="rounded-full border border-red-500/30 bg-red-500/8 px-4 py-2 text-xs text-red-300 transition hover:bg-red-500/16"
+          >
+            刪除測試通行碼（{adminCodes.length} 筆）
+          </button>
         </div>
-      </div>
+      )}
+
+      {codes.length === 0 ? (
+        <div className="rounded-2xl border border-white/10 bg-midnight/50 p-5">
+          <p className="text-sm text-moon/44">尚無通行碼紀錄。</p>
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-2xl border border-white/10 bg-midnight/50">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-white/8 text-left">
+                  {["通行碼", "方案", "已用/總次", "狀態", "來源", "到期日", "購買Email", "MerchantNo", "Email", "使用次數", "操作"].map((h) => (
+                    <th key={h} className="whitespace-nowrap px-4 py-3 font-medium uppercase tracking-wider text-moon/44">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {codes.map((c, i) => {
+                  const usedCount = c.usedLogs.length;
+                  return (
+                    <tr
+                      key={c.code}
+                      className={[
+                        i < codes.length - 1 ? "border-b border-white/6" : "",
+                        "transition hover:bg-white/4",
+                      ].join(" ")}
+                    >
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => setSelected(c)}
+                          className="font-mono tracking-[0.12em] text-moon/90 underline-offset-2 hover:text-aurora hover:underline"
+                        >
+                          {c.code}
+                        </button>
+                      </td>
+                      <td className="px-4 py-3 text-moon/70">{c.displayName}</td>
+                      <td className="px-4 py-3">
+                        <span className="font-semibold text-moon">{usedCount}</span>
+                        <span className="text-moon/40">/{c.totalUses}</span>
+                      </td>
+                      <td className="px-4 py-3"><StatusBadge status={c.status} /></td>
+                      <td className="px-4 py-3"><SourceBadge source={c.source} /></td>
+                      <td className="whitespace-nowrap px-4 py-3 text-moon/50">
+                        {c.expiresAt ? new Date(c.expiresAt).toLocaleDateString("zh-TW") : "—"}
+                      </td>
+                      <td className="max-w-[120px] truncate px-4 py-3 text-moon/60">
+                        {c.buyerEmail ?? "—"}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-moon/40">{c.merchantTradeNo ?? "—"}</td>
+                      <td className="px-4 py-3">
+                        {c.emailSent
+                          ? <span className="rounded-full bg-aurora/12 px-2 py-0.5 text-aurora">已寄</span>
+                          : <span className="text-moon/30">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-moon/60">{usedCount} 筆</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => setSelected(c)}
+                            className="rounded-full border border-lavender/30 bg-lavender/10 px-3 py-1 text-xs text-lavender transition hover:bg-lavender/20"
+                          >
+                            查看
+                          </button>
+                          <button
+                            onClick={() => setDeleteTarget(c)}
+                            className="rounded-full border border-red-500/30 bg-red-500/8 px-3 py-1 text-xs text-red-300 transition hover:bg-red-500/20"
+                          >
+                            刪除
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </>
   );
 }

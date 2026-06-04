@@ -147,6 +147,157 @@ function stripLabelPrefix(text: string, ...labels: string[]): string {
   return s.trim();
 }
 
+// ── 結構化資料提取工具（供 LINE 與 Email 共用） ────────────────────────────────
+
+/**
+ * 從三張牌 fullText 中提取第 i 張牌（0-indexed）的完整段落文字
+ */
+export function extractCardSectionText(fullText: string, cardIndex: number): string {
+  const nums = ["1", "2", "3"];
+  const n = nums[cardIndex];
+  if (!n) return "";
+  return extractSection(fullText, `第${n}張牌`);
+}
+
+/**
+ * 從一張牌的段落文字中解析結構化欄位
+ * 支援 AI 生成格式（牌面重點／對你的問題代表／這張牌提醒你）與 fallback 單段格式
+ */
+export function parseCardFields(sectionContent: string): {
+  cardPoint: string;
+  questionMeaning: string;
+  cardAdvice: string;
+} {
+  const cleaned = sectionContent.replace(/\*\*/g, "").trim();
+  if (!cleaned) return { cardPoint: "", questionMeaning: "", cardAdvice: "" };
+
+  const cardPoint = extractSubfield(
+    cleaned, "牌面重點", "對你的問題代表", "在你的問題中代表", "這張牌提醒你",
+  );
+  const questionMeaning =
+    extractSubfield(cleaned, "對你的問題代表", "這張牌提醒你") ||
+    extractSubfield(cleaned, "在你的問題中代表", "這張牌提醒你");
+  const cardAdvice = extractSubfield(cleaned, "這張牌提醒你");
+
+  if (cardPoint || questionMeaning || cardAdvice) {
+    return { cardPoint, questionMeaning, cardAdvice };
+  }
+
+  // Fallback：整段視為 cardPoint（去掉牌名行與摘要行）
+  const lines = cleaned.split("\n");
+  const body = lines
+    .filter((l, i) => i > 0 && !l.startsWith("摘要："))
+    .join("\n")
+    .trim();
+  return { cardPoint: body || cleaned, questionMeaning: "", cardAdvice: "" };
+}
+
+/**
+ * 從 fullText 提取牌陣總結（整體答案 / 為什麼會這樣 / 接下來的方向）
+ */
+export function extractSpreadSummaryFields(fullText: string): {
+  overallAnswer: string;
+  whyThisHappens: string;
+  actionAdvice: string;
+} {
+  const summaryRaw = extractSection(fullText, "牌陣總結", "三張牌整合");
+  const overallAnswer =
+    extractSubfield(summaryRaw, "整體答案", "為什麼會這樣", "接下來的方向") ||
+    extractSubfield(summaryRaw, "核心判斷", "為什麼會這樣", "接下來的方向") ||
+    stripLabelPrefix(summaryRaw.split("\n")[0] ?? "", "整體答案", "核心判斷");
+  const whyThisHappens = extractSubfield(summaryRaw, "為什麼會這樣", "接下來的方向");
+  const actionAdvice =
+    extractSubfield(summaryRaw, "接下來的方向") ||
+    extractSection(fullText, "3～7 天行動建議", "行動建議", "溫柔提醒");
+  return { overallAnswer, whyThisHappens, actionAdvice };
+}
+
+/**
+ * 從 fullText 提取心靈收束（溫柔提醒 + 一句祝福）
+ */
+export function extractSpiritualClosing(fullText: string): string {
+  const gentleReminder = extractSection(fullText, "給你的溫柔提醒", "溫柔提醒");
+  const blessing = extractSection(fullText, "一句專屬祝福", "一句祝福");
+  return [gentleReminder, blessing].filter(Boolean).join("\n\n");
+}
+
+/**
+ * 從 fullText 提取單張牌各欄位
+ */
+export function extractSingleCardFields(fullText: string): {
+  cardPoint: string;
+  questionMeaning: string;
+  cardAdvice: string;
+  overallAnswer: string;
+  actionAdvice: string;
+  spiritualClosing: string;
+} {
+  const cardPoint =
+    extractSection(fullText, "這張牌正在說什麼", "針對你的問題") ||
+    extractSection(fullText, "宇宙偷偷話", "針對你的問題");
+  const questionMeaning =
+    extractSection(fullText, "針對你的問題", "今天可以怎麼做", "接下來可以怎麼做") ||
+    extractSection(fullText, "一句話結論", "今天可以怎麼做");
+  const cardAdvice = extractSection(fullText, "今天可以怎麼做", "給你的溫柔提醒", "溫柔提醒");
+  const overallAnswer =
+    extractSection(fullText, "宇宙偷偷話", "這張牌正在說什麼") ||
+    extractSection(fullText, "一句話結論", "這張牌正在說什麼");
+  const actionAdvice = extractSection(fullText, "今天可以怎麼做", "給你的溫柔提醒", "溫柔提醒");
+  const spiritualClosing = extractSpiritualClosing(fullText);
+  return { cardPoint, questionMeaning, cardAdvice, overallAnswer, actionAdvice, spiritualClosing };
+}
+
+// ── 內容完整性驗證 ─────────────────────────────────────────────────────────────
+
+export interface ContentValidationResult {
+  valid: boolean;
+  errors: string[];
+}
+
+export function validateLineContent(
+  result: LineResultData,
+  fullText: string,
+  resultId: string,
+): ContentValidationResult {
+  const errors: string[] = [];
+
+  if (!fullText || fullText.length < 100) {
+    errors.push("fullText 為空或過短");
+  }
+  if (!result.question?.trim()) {
+    errors.push("question 為空");
+  }
+  if (!result.cards || result.cards.length === 0) {
+    errors.push("cards 為空");
+  }
+
+  if (result.cards.length === 3 && fullText.length > 100) {
+    const { overallAnswer } = extractSpreadSummaryFields(fullText);
+    if (!overallAnswer) errors.push("牌陣總結整體答案 為空");
+    const spiritualClosing = extractSpiritualClosing(fullText);
+    if (!spiritualClosing) errors.push("心靈收束 為空");
+    // 至少第一張牌有內容
+    const card1Section = extractCardSectionText(fullText, 0);
+    if (!card1Section) errors.push("第1張牌段落 為空");
+  }
+
+  if (result.cards.length === 1 && fullText.length > 100) {
+    const { cardPoint } = extractSingleCardFields(fullText);
+    if (!cardPoint) errors.push("單張牌解讀內容 為空");
+    const spiritualClosing = extractSpiritualClosing(fullText);
+    if (!spiritualClosing) errors.push("心靈收束 為空");
+  }
+
+  if (errors.length > 0) {
+    console.error(
+      `[lineResults/validate] 內容驗證失敗 resultId=${resultId}`,
+      { errors, cardCount: result.cards.length, fullTextLength: fullText.length },
+    );
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
 // ── LINE 三張牌訊息 ────────────────────────────────────────────────────────────
 
 function buildLineThreeCardMessage(
@@ -155,48 +306,56 @@ function buildLineThreeCardMessage(
   resultUrl: string,
   fullText: string,
 ): string {
-  const LINE_DIVIDER = "━━━━━━━━━━━━";
+  const D = "━━━━━━━━━━━━";
   const DEFAULT_POSITIONS = ["過去", "現在", "未來"];
 
-  // ── 整體答案：從牌陣總結提取 ─────────────────────────────────────────────────
-  const summaryRaw = extractSection(fullText, "牌陣總結", "三張牌整合");
-  const answerFromSub =
-    extractSubfield(summaryRaw, "整體答案", "為什麼會這樣", "接下來的方向") ||
-    extractSubfield(summaryRaw, "核心判斷", "為什麼會這樣", "接下來的方向");
-  const overallAnswerRaw = answerFromSub || stripLabelPrefix(summaryRaw, "整體答案", "核心判斷");
-  const overallAnswer = sliceAtSentence(overallAnswerRaw, 200);
+  const parts: string[] = [
+    `你的問題：\n${questionText}`,
+    "",
+    "你抽到的牌完整解讀：",
+  ];
 
-  // ── 心靈收束：溫柔提醒 + 一句祝福 ───────────────────────────────────────────
-  const gentleReminder = extractSection(fullText, "給你的溫柔提醒", "溫柔提醒");
-  const blessing = extractSection(fullText, "一句專屬祝福", "一句祝福");
-  const closingRaw = [gentleReminder, blessing].filter(Boolean).join("\n");
-  const closingMessage = closingRaw
-    ? firstTwoSentences(closingRaw, 150)
-    : firstTwoSentences(overallAnswerRaw, 120);
-
-  // ── 牌列表（牌名 + 關鍵字，各自獨立一行）────────────────────────────────────
-  const cardListLines: string[] = [];
+  // ── 每張牌完整解讀 ────────────────────────────────────────────────────────────
   result.cards.forEach((card, i) => {
     const pos = card.position ?? DEFAULT_POSITIONS[i] ?? `第${i + 1}張`;
     const name = card.nameZh ?? card.name ?? "塔羅牌";
     const ori = card.orientationLabel ? `（${card.orientationLabel}）` : "";
-    const kw = card.keywords || "";
-    cardListLines.push(`${i + 1}. ${pos}｜${name}${ori}`);
-    if (kw) cardListLines.push(`   關鍵字：${kw}`);
+
+    // 從 fullText 提取該張牌的段落，再解析各欄位
+    const cardSectionRaw = extractCardSectionText(fullText, i);
+    const { cardPoint, questionMeaning, cardAdvice } = parseCardFields(cardSectionRaw);
+
+    parts.push("", `${pos}｜${name}${ori}`);
+
+    if (cardPoint) {
+      parts.push("", `牌面重點：\n${cardPoint}`);
+    }
+    if (questionMeaning) {
+      parts.push("", `在你的問題中代表：\n${questionMeaning}`);
+    }
+    if (cardAdvice) {
+      parts.push("", `這張牌提醒你：\n${cardAdvice}`);
+    }
+    // 若三欄位都空，至少顯示關鍵字
+    if (!cardPoint && !questionMeaning && !cardAdvice) {
+      const kw = card.keywords || "";
+      if (kw) parts.push(`關鍵字：${kw}`);
+    }
   });
 
-  // ── 組合訊息 ──────────────────────────────────────────────────────────────────
-  const parts: string[] = [
-    `你的問題：\n${questionText}`,
-    "",
-    "你抽到的牌：",
-    "",
-    cardListLines.join("\n"),
-  ];
+  // ── 牌陣總結 ──────────────────────────────────────────────────────────────────
+  const { overallAnswer, whyThisHappens, actionAdvice } = extractSpreadSummaryFields(fullText);
+  parts.push("", D, "", "✨ 牌陣總結");
+  if (overallAnswer) parts.push("", `整體答案：\n${overallAnswer}`);
+  if (whyThisHappens) parts.push("", `為什麼會這樣：\n${whyThisHappens}`);
+  if (actionAdvice)   parts.push("", `接下來 3～7 天建議：\n${actionAdvice}`);
 
-  parts.push("", LINE_DIVIDER, "", "✨ 牌陣總結", "", `整體答案：\n${overallAnswer}`);
-  parts.push("", LINE_DIVIDER, "", "🧘 心靈收束", "", closingMessage);
-  parts.push("", `📚 收藏版完整排版：\n${resultUrl}`);
+  // ── 心靈收束 ──────────────────────────────────────────────────────────────────
+  const spiritualClosing = extractSpiritualClosing(fullText);
+  parts.push("", D, "", "🧘 心靈收束");
+  if (spiritualClosing) parts.push("", spiritualClosing);
+
+  parts.push("", D, "", `📚 收藏版完整排版：\n${resultUrl}`);
 
   return parts.join("\n");
 }
@@ -209,39 +368,42 @@ function buildLineSingleCardMessage(
   resultUrl: string,
   fullText: string,
 ): string {
-  const LINE_DIVIDER = "━━━━━━━━━━━━";
+  const D = "━━━━━━━━━━━━";
   const card = result.cards[0] ?? {};
   const cardName = card.nameZh ?? card.name ?? "塔羅牌";
   const cardOri = card.orientationLabel ? `（${card.orientationLabel}）` : "";
-  const kw = card.keywords || "";
 
-  // ── 整體答案：宇宙訊息 / 針對你的問題 ───────────────────────────────────────
-  const cosmicRaw = extractSection(fullText, "宇宙偷偷話", "針對你的問題");
-  const questionAnswerRaw = extractSection(fullText, "針對你的問題", "今天可以怎麼做", "接下來可以怎麼做");
-  const overallAnswerRaw = cosmicRaw || questionAnswerRaw || result.shortText || "";
-  const overallAnswer = sliceAtSentence(overallAnswerRaw, 200);
+  const {
+    cardPoint,
+    questionMeaning,
+    cardAdvice,
+    overallAnswer,
+    actionAdvice,
+    spiritualClosing,
+  } = extractSingleCardFields(fullText);
 
-  // ── 心靈收束：溫柔提醒 + 一句祝福 ───────────────────────────────────────────
-  const gentleReminder = extractSection(fullText, "給你的溫柔提醒", "溫柔提醒");
-  const blessing = extractSection(fullText, "一句專屬祝福", "一句祝福");
-  const closingRaw = [gentleReminder, blessing].filter(Boolean).join("\n");
-  const closingMessage = closingRaw
-    ? firstTwoSentences(closingRaw, 150)
-    : firstTwoSentences(overallAnswerRaw, 120);
-
-  // ── 組合訊息 ──────────────────────────────────────────────────────────────────
   const parts: string[] = [
     `你的問題：\n${questionText}`,
     "",
-    "你抽到的牌：",
+    "你抽到的牌完整解讀：",
     "",
-    `${cardName}${cardOri}`,
+    `本次訊息｜${cardName}${cardOri}`,
   ];
-  if (kw) parts.push(`關鍵字：${kw}`);
 
-  parts.push("", LINE_DIVIDER, "", "✨ 宇宙訊息", "", `整體答案：\n${overallAnswer}`);
-  parts.push("", LINE_DIVIDER, "", "🧘 心靈收束", "", closingMessage);
-  parts.push("", `📚 收藏版完整排版：\n${resultUrl}`);
+  if (cardPoint)       parts.push("", `牌面重點：\n${cardPoint}`);
+  if (questionMeaning) parts.push("", `在你的問題中代表：\n${questionMeaning}`);
+  if (cardAdvice)      parts.push("", `這張牌提醒你：\n${cardAdvice}`);
+
+  // ── 解讀總結 ──────────────────────────────────────────────────────────────────
+  parts.push("", D, "", "✨ 解讀總結");
+  if (overallAnswer) parts.push("", `整體答案：\n${overallAnswer}`);
+  if (actionAdvice)  parts.push("", `接下來 3～7 天建議：\n${actionAdvice}`);
+
+  // ── 心靈收束 ──────────────────────────────────────────────────────────────────
+  parts.push("", D, "", "🧘 心靈收束");
+  if (spiritualClosing) parts.push("", spiritualClosing);
+
+  parts.push("", D, "", `📚 收藏版完整排版：\n${resultUrl}`);
 
   return parts.join("\n");
 }
@@ -266,7 +428,7 @@ export function buildLineResultMessage(result: LineResultData, resultId: string,
     "",
     `你的問題：\n${questionText}`,
     "",
-    fullText ? `✨ 宇宙給你的重點\n\n${sliceAtSentence(fullText, 200)}` : "宇宙的訊息正在整理中。",
+    fullText ? `✨ 宇宙給你的重點\n\n${sliceAtSentence(fullText, 400)}` : "宇宙的訊息正在整理中。",
     "",
     DIVIDER,
     "",
@@ -315,6 +477,17 @@ export async function pushResultToLine(resultId: string, lineUserId: string, sit
   }
 
   const result = snap.data() as LineResultData;
+  const fullText = (result.fullText || result.shortText || "").replace(/\*\*/g, "").trim();
+  const validation = validateLineContent(result, fullText, resultId);
+  if (!validation.valid) {
+    const errMsg = `LINE 內容驗證失敗：${validation.errors.join("、")}`;
+    await ref.set(
+      { pushStatus: "failed", pushError: errMsg, updatedAt: FieldValue.serverTimestamp() },
+      { merge: true },
+    );
+    throw new Error(errMsg);
+  }
+
   const message = buildLineResultMessage(result, resultId, siteUrl);
 
   try {
