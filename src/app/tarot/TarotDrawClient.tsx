@@ -7,6 +7,7 @@ import { TarotCardBack, TarotCardFace, TarotCardFaceCompact, type TarotCardFaceD
 import { TarotShuffleAnimation } from "./TarotShuffleAnimation";
 import { useAuth } from "@/contexts/AuthContext";
 import RedeemCodeBlock from "@/components/RedeemCodeBlock";
+import EmailResultBlock from "@/components/EmailResultBlock";
 
 type DrawStatus = "idle" | "drawing" | "selecting" | "revealing" | "revealed";
 type ReadingStatus = "idle" | "loading" | "done" | "error";
@@ -3633,17 +3634,37 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
                   : <ReadingSectionList text={fullReading} />
                 }
               </div>
-              {/* LINE 驗證碼領取區（完整解讀已解鎖版） */}
+              {/* 保存結果區塊 */}
               <div className="mt-6 border-t border-white/10 pt-5">
-                <p className="mb-1 text-sm font-semibold text-moon/70">將本次結果傳送到 LINE（LINE 結果驗證碼）</p>
-                <LineClaimSection
-                  status={lineClaimStatus}
-                  claimCode={lineClaimCode}
-                  error={lineClaimError}
-                  onOpen={() => void openLineClaimFlow()}
-                  onCheck={() => void checkLineClaimStatus()}
-                  onReset={() => { setLineClaimStatus("idle"); setLineClaimError(""); setLineClaimCode(""); }}
-                />
+                <p className="mb-1 text-sm font-semibold text-moon/80">將本次結果保存起來</p>
+                <p className="mb-4 text-xs leading-6 text-moon/50">
+                  你可以把本次完整解讀傳送到 LINE，或寄到 Email 收藏，之後想回來看也找得到。
+                </p>
+
+                {/* LINE 子區塊 */}
+                <div className="mb-4 border-b border-white/8 pb-4">
+                  <p className="mb-1 text-xs font-medium tracking-[0.16em] text-moon/55 uppercase">
+                    傳送到 LINE
+                  </p>
+                  <LineClaimSection
+                    status={lineClaimStatus}
+                    claimCode={lineClaimCode}
+                    error={lineClaimError}
+                    onOpen={() => void openLineClaimFlow()}
+                    onCheck={() => void checkLineClaimStatus()}
+                    onReset={() => { setLineClaimStatus("idle"); setLineClaimError(""); setLineClaimCode(""); }}
+                  />
+                </div>
+
+                {/* Email 子區塊 */}
+                {lineResultId && (
+                  <div>
+                    <p className="mb-1 text-xs font-medium tracking-[0.16em] text-moon/55 uppercase">
+                      寄送到 Email
+                    </p>
+                    <EmailResultBlock resultId={lineResultId} />
+                  </div>
+                )}
               </div>
             </div>
           )}

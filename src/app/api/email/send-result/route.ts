@@ -364,6 +364,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "NOT_UNLOCKED" }, { status: 403 });
     }
 
+    // ── 防濫用：同一筆結果最多寄 5 次，且 1 分鐘內只能寄 1 次 ─────────────
+    const rateRef  = db.collection("emailSendLogs").doc(resultId);
+    const rateSnap = await rateRef.get();
+    const rateData = rateSnap.exists
+      ? (rateSnap.data() as { count: number; lastSentAt: number })
+      : null;
+
+    const now     = Date.now();
+    const MAX_SENDS   = 5;
+    const COOLDOWN_MS = 60_000;
+
+    if (rateData) {
+      if (rateData.count >= MAX_SENDS) {
+        return NextResponse.json({ ok: false, error: "RATE_LIMIT_EXCEEDED" }, { status: 429 });
+      }
+      if (now - rateData.lastSentAt < COOLDOWN_MS) {
+        return NextResponse.json({ ok: false, error: "COOLDOWN_ACTIVE" }, { status: 429 });
+      }
+    }
+
     // ── 內容完整性驗證 ────────────────────────────────────────────────────
     const validation = validateLineContent(result, fullText, resultId);
     if (!validation.valid) {
@@ -413,6 +433,18 @@ export async function POST(req: NextRequest) {
       console.error("[email/send-result] Resend error:", resendRes.status, errText);
       return NextResponse.json({ ok: false, error: "SEND_FAILED" }, { status: 500 });
     }
+
+    // ── 更新寄送次數記錄 ──────────────────────────────────────────────────
+    const maskedEmail = email.replace(/^(.).*@/, (_, c: string) => `${c}***@`);
+    await rateRef.set(
+      {
+        count:      (rateData?.count ?? 0) + 1,
+        lastSentAt: now,
+        lastEmail:  maskedEmail,
+        resultId,
+      },
+      { merge: true },
+    );
 
     return NextResponse.json({ ok: true });
   } catch (err) {
