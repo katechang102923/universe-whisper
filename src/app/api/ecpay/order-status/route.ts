@@ -13,6 +13,12 @@ function toIso(v: unknown): string | null {
   return null;
 }
 
+/** 遮罩 Email：a***@gmail.com */
+function maskEmail(email: string | null | undefined): string | null {
+  if (!email) return null;
+  return email.replace(/^(.).*@/, (_, c: string) => `${c}***@`);
+}
+
 export async function GET(req: NextRequest) {
   const merchantTradeNo = req.nextUrl.searchParams.get("merchantTradeNo");
 
@@ -21,7 +27,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const db = getAdminDb();
+    const db   = getAdminDb();
     const snap = await db
       .collection(PAYMENT_ORDERS_COLLECTION)
       .where("merchantTradeNo", "==", merchantTradeNo)
@@ -33,20 +39,24 @@ export async function GET(req: NextRequest) {
     }
 
     const data = snap.docs[0].data() as {
-      status: string;
-      planName?: string;
-      amount?: number;
-      redeemCode?: string;
-      buyerEmail?: string;
-      paidAt?: unknown;
+      status:        string;
+      planName?:     string;
+      amount?:       number;
+      redeemCode?:   string;
+      buyerEmail?:   string;
+      emailSent?:    boolean;
+      emailSentAt?:  unknown;
+      emailError?:   string;
+      paidAt?:       unknown;
+      merchantTradeNo?: string;
     };
 
-    // Fetch redeem code details if paid
+    // 已付款才撈通行碼詳細資料
     let codeDetail: {
-      totalUses?: number;
+      totalUses?:     number;
       remainingUses?: number;
-      expiresAt?: string | null;
-      displayName?: string;
+      expiresAt?:     string | null;
+      displayName?:   string;
     } | null = null;
 
     if (data.status === "paid" && data.redeemCode) {
@@ -56,10 +66,10 @@ export async function GET(req: NextRequest) {
         .get();
       if (codeSnap.exists) {
         const cd = codeSnap.data() as {
-          totalUses?: number;
+          totalUses?:     number;
           remainingUses?: number;
-          expiresAt?: unknown;
-          displayName?: string;
+          expiresAt?:     unknown;
+          displayName?:   string;
         };
         codeDetail = {
           totalUses:     cd.totalUses,
@@ -71,13 +81,20 @@ export async function GET(req: NextRequest) {
     }
 
     return NextResponse.json({
-      ok:           true,
-      status:       data.status,
-      planName:     data.planName ?? "",
-      amount:       data.amount ?? 0,
-      redeemCode:   data.status === "paid" ? (data.redeemCode ?? null) : null,
-      paidAt:       toIso(data.paidAt),
+      ok:               true,
+      status:           data.status,
+      merchantTradeNo:  data.merchantTradeNo ?? merchantTradeNo,
+      planName:         data.planName ?? "",
+      amount:           data.amount ?? 0,
+      // 只在已付款且已產生通行碼時才回傳
+      redeemCode:       data.status === "paid" ? (data.redeemCode ?? null) : null,
+      paidAt:           toIso(data.paidAt),
       codeDetail,
+      // Email 相關（遮罩 Email 位址）
+      buyerEmail:       maskEmail(data.buyerEmail),
+      emailSent:        data.emailSent ?? false,
+      emailSentAt:      toIso(data.emailSentAt),
+      emailError:       data.emailError ?? null,
     });
   } catch (err) {
     console.error("[ecpay/order-status] error:", err);

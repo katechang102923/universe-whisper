@@ -3885,10 +3885,10 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
                   <p className="mt-1 text-xs text-moon/40">購買後 60 天有效 · 可解鎖 {selectedPlan ? (selectedPlan.key === "single" ? 1 : selectedPlan.key === "five" ? 5 : 10) : 1} 次完整版</p>
                 </div>
 
-                {/* Email 輸入（選填，用於寄送通行碼） */}
+                {/* Email 輸入（選填，付款後寄送通行碼） */}
                 <div className="mt-4 text-left">
-                  <label className="text-xs text-moon/50">
-                    收據 Email（選填，付款後寄送通行碼）
+                  <label className="text-xs font-medium text-moon/60">
+                    Email（用來接收通行碼備份）
                   </label>
                   <input
                     type="email"
@@ -3898,6 +3898,9 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
                     className="mt-1.5 w-full rounded-xl border border-white/14 bg-white/6 px-4 py-2.5 text-sm text-moon placeholder-moon/30 outline-none transition focus:border-lavender/40"
                     disabled={paymentStatus === "processing"}
                   />
+                  <p className="mt-1.5 text-[11px] leading-5 text-moon/38">
+                    付款成功後，系統會將宇宙通行碼寄到這個 Email。你也會在付款完成頁直接看到通行碼。
+                  </p>
                 </div>
 
                 {paymentError && (
@@ -3918,15 +3921,14 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
                     disabled={paymentStatus === "processing"}
                     className="flex-1 rounded-full bg-[#d8bd70] px-5 py-3 text-sm font-semibold text-midnight shadow-[0_0_28px_rgba(216,189,112,0.28)] transition hover:bg-moon disabled:opacity-60"
                   >
-                    {paymentStatus === "processing" ? "導向付款頁…" : `NT$${selectedPlan ? selectedPlan.price : 49} 前往信用卡付款`}
+                    {paymentStatus === "processing" ? "導向付款頁…" : "前往綠界安全付款"}
                   </button>
                 </div>
-                <p className="mt-4 text-xs leading-6 text-moon/42 text-center px-2">
-                  付款由綠界金流處理，本站不儲存信用卡資訊。<br />
+                <p className="mt-4 text-xs leading-6 text-moon/38 text-center px-2">
+                  付款將前往綠界金流安全頁面完成刷卡，本站不會保存你的完整信用卡資料。<br />
                   本服務為即時產生之數位內容，付款成功並取得通行碼後恕不退費。
                   若付款成功但未收到通行碼，請於 24 小時內聯繫
-                  <a href="mailto:ciut0000@gmail.com" className="underline underline-offset-2 hover:text-moon/70">客服信箱</a>
-                  ，確認後協助補發或退款。
+                  <a href="mailto:ciut0000@gmail.com" className="underline underline-offset-2 hover:text-moon/70">客服信箱</a>。
                 </p>
               </div>
             )}

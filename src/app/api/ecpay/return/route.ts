@@ -273,20 +273,32 @@ async function sendRedeemEmail(
     });
 
     const emailSent = res.ok;
-    await db.collection(PAYMENT_ORDERS_COLLECTION).doc(orderId).update({
+    let emailError: string | null = null;
+
+    if (!emailSent) {
+      const errText = await res.text().catch(() => "");
+      emailError = `HTTP ${res.status}: ${errText.slice(0, 200)}`;
+      console.error("[ecpay/return] Email 寄送失敗:", res.status, errText);
+    }
+
+    const orderUpdate: Record<string, unknown> = {
       emailSent,
       emailSentAt: FieldValue.serverTimestamp(),
-    });
+    };
+    if (emailError) orderUpdate.emailError = emailError;
+
+    await db.collection(PAYMENT_ORDERS_COLLECTION).doc(orderId).update(orderUpdate);
     await db.collection(REDEEM_CODES_COLLECTION).doc(code).update({
       emailSent,
       emailSentAt: FieldValue.serverTimestamp(),
     });
-
-    if (!emailSent) {
-      const errText = await res.text().catch(() => "");
-      console.error("[ecpay/return] Email 寄送失敗:", res.status, errText);
-    }
   } catch (err) {
-    console.error("[ecpay/return] Email 寄送 exception:", err);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[ecpay/return] Email 寄送 exception:", msg);
+    await db
+      .collection(PAYMENT_ORDERS_COLLECTION)
+      .doc(orderId)
+      .update({ emailSent: false, emailError: msg.slice(0, 200) })
+      .catch(() => {});
   }
 }
