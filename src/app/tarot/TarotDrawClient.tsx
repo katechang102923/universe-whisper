@@ -1861,6 +1861,9 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
   const [codeEmailInput, setCodeEmailInput] = useState("");
   const [codeEmailStatus, setCodeEmailStatus] = useState<"idle" | "sending" | "sent" | "error" | "not_configured">("idle");
   const [codeCopied, setCodeCopied] = useState(false);
+  // 綠界付款：結帳前 Email 輸入 & 錯誤訊息
+  const [checkoutEmail, setCheckoutEmail] = useState("");
+  const [paymentError, setPaymentError] = useState("");
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
   // 抽牌前通行碼輸入
   const [preDrawCode, setPreDrawCode] = useState("");
@@ -2803,33 +2806,63 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
   }
 
 
-  function simulatePayment() {
+  /** 透過綠界信用卡收單完成購買，提交 hidden form 導向付款頁 */
+  async function startEcpayPayment() {
     if (paymentStatus === "processing") return;
+    const plan    = selectedPlan ?? PASS_PLANS[0];
+    const planKey = plan.key === "single" ? "single" : plan.key === "five" ? "five_pack" : "ten_pack";
+
     setPaymentStatus("processing");
-    paymentTimerRef.current = window.setTimeout(() => {
-      setPaymentStatus("success");
-      // 呼叫 purchase API 建立真實宇宙通行碼
-      const plan = selectedPlan ?? PASS_PLANS[0];
-      const planKey = plan.key === "single" ? "single" : plan.key === "five" ? "five_pack" : "ten_pack";
-      fetch("/api/redeem/purchase", {
-        method: "POST",
+    setPaymentError("");
+
+    try {
+      const res = await fetch("/api/ecpay/create-order", {
+        method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planName: planKey }),
-      })
-        .then((r) => r.json() as Promise<{ ok?: boolean; code?: string; displayName?: string; totalUses?: number; expiresAt?: string }>)
-        .then((data) => {
-          if (data.ok && data.code) {
-            setPurchasedCode({
-              code: data.code,
-              displayName: data.displayName ?? plan.label,
-              totalUses: data.totalUses ?? plan.price,
-              expiresAt: data.expiresAt ?? "",
-              planName: planKey,
-            });
-          }
-        })
-        .catch(() => {});
-    }, 1000);
+        body:    JSON.stringify({
+          planId:     planKey,
+          buyerEmail: checkoutEmail.trim() || undefined,
+        }),
+      });
+
+      const data = (await res.json()) as {
+        ok: boolean;
+        actionUrl?: string;
+        params?: Record<string, string>;
+        error?: string;
+      };
+
+      if (!data.ok || !data.actionUrl || !data.params) {
+        setPaymentStatus("idle");
+        setPaymentError(
+          data.error === "PAYMENT_NOT_CONFIGURED"
+            ? "金流服務尚未開通，請聯繫客服。"
+            : "訂單建立失敗，請稍後再試。",
+        );
+        return;
+      }
+
+      // 建立 hidden form，POST 到綠界付款頁（不暴露 CheckMacValue 計算邏輯給前端）
+      const form = document.createElement("form");
+      form.method = "POST";
+      form.action = data.actionUrl;
+      form.style.display = "none";
+
+      Object.entries(data.params).forEach(([key, value]) => {
+        const input    = document.createElement("input");
+        input.type     = "hidden";
+        input.name     = key;
+        input.value    = value;
+        form.appendChild(input);
+      });
+
+      document.body.appendChild(form);
+      form.submit();
+      // form 送出後頁面會跳轉，不需要 cleanup
+    } catch {
+      setPaymentStatus("idle");
+      setPaymentError("網路異常，請稍後再試。");
+    }
   }
 
   /** 恢復上次付費結果（從 localStorage 重新載入） */
@@ -3840,7 +3873,7 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
                 </div>
               </div>
             ) : (
-              /* 付款前確認畫面 */
+              /* 付款前確認畫面（導向綠界信用卡付款頁） */
               <div className="text-center">
                 <p className="text-sm tracking-[0.22em] text-[#d8bd70]/78">購買宇宙通行碼</p>
                 <h3 className="mt-3 text-2xl font-semibold text-moon">
@@ -3851,24 +3884,45 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
                   <p className="mt-1 text-3xl font-semibold text-moon">NT$ {selectedPlan ? selectedPlan.price : 49}</p>
                   <p className="mt-1 text-xs text-moon/40">購買後 60 天有效 · 可解鎖 {selectedPlan ? (selectedPlan.key === "single" ? 1 : selectedPlan.key === "five" ? 5 : 10) : 1} 次完整版</p>
                 </div>
+
+                {/* Email 輸入（選填，用於寄送通行碼） */}
+                <div className="mt-4 text-left">
+                  <label className="text-xs text-moon/50">
+                    收據 Email（選填，付款後寄送通行碼）
+                  </label>
+                  <input
+                    type="email"
+                    value={checkoutEmail}
+                    onChange={(e) => setCheckoutEmail(e.target.value)}
+                    placeholder="請輸入你的 Email"
+                    className="mt-1.5 w-full rounded-xl border border-white/14 bg-white/6 px-4 py-2.5 text-sm text-moon placeholder-moon/30 outline-none transition focus:border-lavender/40"
+                    disabled={paymentStatus === "processing"}
+                  />
+                </div>
+
+                {paymentError && (
+                  <p className="mt-3 text-xs text-red-300/80" role="alert">{paymentError}</p>
+                )}
+
                 <div className="mt-5 flex flex-col gap-3 sm:flex-row">
                   <button
                     type="button"
-                    onClick={() => setPaymentModalOpen(false)}
+                    onClick={() => { setPaymentModalOpen(false); setPaymentError(""); }}
                     className="rounded-full border border-moon/25 px-5 py-3 text-sm font-semibold text-moon transition hover:bg-white/10"
                   >
                     取消
                   </button>
                   <button
                     type="button"
-                    onClick={simulatePayment}
+                    onClick={() => void startEcpayPayment()}
                     disabled={paymentStatus === "processing"}
                     className="flex-1 rounded-full bg-[#d8bd70] px-5 py-3 text-sm font-semibold text-midnight shadow-[0_0_28px_rgba(216,189,112,0.28)] transition hover:bg-moon disabled:opacity-60"
                   >
-                    {paymentStatus === "processing" ? "處理中..." : `NT$${selectedPlan ? selectedPlan.price : 49} 確認購買`}
+                    {paymentStatus === "processing" ? "導向付款頁…" : `NT$${selectedPlan ? selectedPlan.price : 49} 前往信用卡付款`}
                   </button>
                 </div>
                 <p className="mt-4 text-xs leading-6 text-moon/42 text-center px-2">
+                  付款由綠界金流處理，本站不儲存信用卡資訊。<br />
                   本服務為即時產生之數位內容，付款成功並取得通行碼後恕不退費。
                   若付款成功但未收到通行碼，請於 24 小時內聯繫
                   <a href="mailto:ciut0000@gmail.com" className="underline underline-offset-2 hover:text-moon/70">客服信箱</a>
