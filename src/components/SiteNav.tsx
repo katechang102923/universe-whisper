@@ -211,11 +211,29 @@ function GoogleIcon() {
 
 // ── Main SiteNav ────────────────────────────────────────────────────────────
 
+/** 點「立即抽牌」時：若已在 /tarot 則平滑捲動到模式選擇區，否則讓 Link 正常導向 */
+function useTarotNavClick(onAfterNavigate?: () => void) {
+  const pathname = usePathname();
+
+  return function handleClick(e: React.MouseEvent) {
+    if (pathname === "/tarot") {
+      e.preventDefault();
+      document.getElementById("tarot-mode-select")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }
+    onAfterNavigate?.();
+  };
+}
+
 export function SiteNav() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
   const isTarotActive = pathname === "/tarot";
+  const tarotNavClick = useTarotNavClick();
+  const tarotNavClickMobile = useTarotNavClick(() => setOpen(false));
 
   return (
     <div className="relative flex items-center gap-2">
@@ -224,9 +242,10 @@ export function SiteNav() {
 
       {/* Nav links — 桌機 */}
       <nav className="hidden items-center gap-1 text-sm text-moon/76 md:flex">
-        {/* 主 CTA：立即抽牌 */}
+        {/* 主 CTA：立即抽牌 → /tarot#tarot-mode-select */}
         <Link
-          href="/tarot"
+          href="/tarot#tarot-mode-select"
+          onClick={tarotNavClick}
           className={[
             "flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition",
             isTarotActive
@@ -304,8 +323,8 @@ export function SiteNav() {
         <nav className="absolute right-0 top-12 z-30 w-60 rounded-3xl border border-white/12 bg-midnight/95 p-2 text-sm text-moon shadow-glow backdrop-blur-xl md:hidden">
           {/* 主 CTA */}
           <Link
-            href="/tarot"
-            onClick={() => setOpen(false)}
+            href="/tarot#tarot-mode-select"
+            onClick={tarotNavClickMobile}
             className={[
               "mb-1 flex items-center gap-2 rounded-2xl px-4 py-3 font-semibold transition",
               isTarotActive

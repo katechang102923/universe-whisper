@@ -2287,7 +2287,7 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
 
   // ??? Draw flow ????????????????????????????????????????????????????????????
 
-  async function draw(options: { paid?: boolean } = {}) {
+  async function draw(options: { paid?: boolean; pendingCode?: string } = {}) {
     if (status === "drawing" || readingStatus === "loading") return;
     const isPaidDraw = Boolean(options.paid);
 
@@ -2298,10 +2298,15 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
 
     setStatus("drawing");
     setCards([]);
-    resetReading();
+    resetReading(); // clears preDrawCodePending — must re-set after
     if (isPaidDraw) {
       setPaidDrawMode(true);
       setPaidUnlocked(true);
+    }
+    // Re-set the pending code AFTER resetReading() so React batches this last
+    // and doesn't let resetReading's setPreDrawCodePending("") overwrite it.
+    if (options.pendingCode) {
+      setPreDrawCodePending(options.pendingCode);
     }
 
     try {
@@ -2711,10 +2716,10 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
         setPreDrawCodeError(data.error ?? "此通行碼無效或已用完，請確認後再試");
         return;
       }
-      // 通過驗證：存入 pending，以 paid mode 開始抽牌（AI 產生完整解讀）
-      setPreDrawCodePending(trimmed);
+      // 通過驗證：以 paid mode 開始抽牌（AI 產生完整解讀）
+      // pendingCode 傳入 draw() 在 resetReading() 之後才設定，避免被覆蓋
       setPreDrawCode("");
-      void draw({ paid: true });
+      void draw({ paid: true, pendingCode: trimmed });
     } catch {
       setPreDrawCodeError("網路錯誤，請稍後再試");
     } finally {
