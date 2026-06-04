@@ -25,6 +25,7 @@ import {
 import RedeemCodeGenerator from "../redeem-codes/RedeemCodeGenerator";
 import { CleanupClient } from "./CleanupClient";
 import { FortuneManagementClient } from "./FortuneManagementClient";
+import { RedeemCodeList, type SerializableRedeemCode } from "./RedeemCodeList";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -174,6 +175,39 @@ function SourceBadge({ source }: { source?: string }) {
   return <span className={`rounded-full px-2 py-0.5 text-xs ${cls}`}>{text}</span>;
 }
 
+// ── 序列化（Timestamp → string，供 Client Component 使用） ───────────────────
+
+function serializeCodes(codes: RedeemCodeData[]): SerializableRedeemCode[] {
+  return codes.map((c) => ({
+    code: c.code,
+    planName: c.planName,
+    displayName: c.displayName,
+    price: c.price,
+    totalUses: c.totalUses,
+    remainingUses: c.remainingUses,
+    status: c.status,
+    createdAt: toDate(c.createdAt)?.toISOString() ?? null,
+    expiresAt: toDate(c.expiresAt)?.toISOString() ?? null,
+    usedLogs: (c.usedLogs ?? []).map((log) => ({
+      usedAt: toDate(log.usedAt)?.toISOString() ?? null,
+      resultId: log.resultId,
+      question: log.question,
+      spreadType: log.spreadType,
+      mode: log.mode,
+      source: log.source,
+      remainingUsesAfter: log.remainingUsesAfter,
+    })),
+    source: c.source,
+    createdByAdmin: c.createdByAdmin,
+    paymentStatus: c.paymentStatus,
+    isTest: c.isTest,
+    merchantTradeNo: c.merchantTradeNo,
+    ecpayTradeNo: c.ecpayTradeNo,
+    buyerEmail: c.buyerEmail,
+    emailSent: c.emailSent,
+  }));
+}
+
 // ── 各 Tab 內容元件 ────────────────────────────────────────────────────────────
 
 function OverviewTab({
@@ -307,24 +341,9 @@ function OrdersTab({ orders }: { orders: PaymentOrderData[] }) {
 }
 
 function RedeemTab({ codes }: { codes: RedeemCodeData[] }) {
+  const serialized = serializeCodes(codes);
   return (
     <div className="space-y-8">
-      {/* 方案說明 */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        {(Object.entries(REDEEM_PLANS) as [string, typeof REDEEM_PLANS[keyof typeof REDEEM_PLANS]][]).map(([key, plan]) => (
-          <div key={key} className="rounded-2xl border border-white/10 bg-midnight/50 p-4">
-            <p className="text-sm font-semibold text-moon">{plan.displayName}</p>
-            <p className="mt-1 text-xs text-moon/50">{plan.description}</p>
-            <p className="mt-2 text-lg font-bold text-aurora">
-              NT${plan.price}
-              <span className="ml-1 text-xs font-normal text-moon/44">
-                · {plan.totalUses} 次 · 60 天有效
-              </span>
-            </p>
-          </div>
-        ))}
-      </div>
-
       {/* 產生器 */}
       <div>
         <h2 className="mb-4 text-lg font-semibold text-moon">產生新宇宙通行碼</h2>
@@ -334,66 +353,7 @@ function RedeemTab({ codes }: { codes: RedeemCodeData[] }) {
       {/* 通行碼列表 */}
       <div>
         <h2 className="mb-4 text-lg font-semibold text-moon">最近通行碼（前 50 筆）</h2>
-        {codes.length === 0 ? (
-          <div className="rounded-2xl border border-white/10 bg-midnight/50 p-5">
-            <p className="text-sm text-moon/44">尚無通行碼紀錄。</p>
-          </div>
-        ) : (
-          <div className="overflow-hidden rounded-2xl border border-white/10 bg-midnight/50">
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b border-white/8 text-left">
-                    {["通行碼", "方案", "剩餘/總次", "狀態", "來源", "到期日", "購買Email", "MerchantNo", "Email", "使用次數", "測試"].map((h) => (
-                      <th key={h} className="whitespace-nowrap px-4 py-3 font-medium uppercase tracking-wider text-moon/44">
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {codes.map((c, i) => {
-                    const expiry = toDate(c.expiresAt);
-                    return (
-                      <tr key={c.code} className={i < codes.length - 1 ? "border-b border-white/6" : ""}>
-                        <td className="px-4 py-3 font-mono tracking-[0.12em] text-moon/90">{c.code}</td>
-                        <td className="px-4 py-3 text-moon/70">{c.displayName}</td>
-                        <td className="px-4 py-3">
-                          <span className="font-semibold text-moon">{c.remainingUses}</span>
-                          <span className="text-moon/40">/{c.totalUses}</span>
-                        </td>
-                        <td className="px-4 py-3"><RedeemStatusBadge status={c.status} /></td>
-                        <td className="px-4 py-3"><SourceBadge source={c.source} /></td>
-                        <td className="whitespace-nowrap px-4 py-3 text-moon/50">
-                          {expiry ? expiry.toLocaleDateString("zh-TW") : "—"}
-                        </td>
-                        <td className="max-w-[120px] truncate px-4 py-3 text-moon/60">
-                          {c.buyerEmail ?? "—"}
-                        </td>
-                        <td className="px-4 py-3 font-mono text-moon/40">{c.merchantTradeNo ?? "—"}</td>
-                        <td className="px-4 py-3">
-                          {c.emailSent ? (
-                            <span className="rounded-full bg-aurora/12 px-2 py-0.5 text-aurora">已寄</span>
-                          ) : (
-                            <span className="text-moon/30">—</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-moon/60">{(c.usedLogs ?? []).length} 筆</td>
-                        <td className="px-4 py-3">
-                          {c.isTest ? (
-                            <span className="rounded-full bg-lavender/12 px-2 py-0.5 text-lavender">測試</span>
-                          ) : (
-                            <span className="text-moon/30">—</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+        <RedeemCodeList codes={serialized} />
       </div>
     </div>
   );

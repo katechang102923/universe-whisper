@@ -59,6 +59,35 @@ export async function DELETE(req: NextRequest) {
         });
         await batch.commit();
       }
+    } else if (type === "admin_codes") {
+      // 只刪除後台手動建立、且沒有正式付款的通行碼
+      // 安全條件：source === "manual_admin" 且沒有 merchantTradeNo 且沒有 ecpayTradeNo 且 paymentStatus !== "paid"
+      const snap = await db
+        .collection(REDEEM_CODES_COLLECTION)
+        .where("source", "==", "manual_admin")
+        .get();
+      if (!snap.empty) {
+        const batch = db.batch();
+        snap.docs.forEach((doc) => {
+          const data = doc.data() as {
+            merchantTradeNo?: string;
+            ecpayTradeNo?: string;
+            paymentStatus?: string;
+            buyerEmail?: string;
+          };
+          // 雙重保護：確認沒有正式付款資料
+          const isSafeTodelete =
+            !data.merchantTradeNo &&
+            !data.ecpayTradeNo &&
+            data.paymentStatus !== "paid" &&
+            !data.buyerEmail;
+          if (isSafeTodelete) {
+            batch.delete(doc.ref);
+            deleted++;
+          }
+        });
+        if (deleted > 0) await batch.commit();
+      }
     } else {
       return NextResponse.json({ ok: false, error: "Unknown type" }, { status: 400 });
     }

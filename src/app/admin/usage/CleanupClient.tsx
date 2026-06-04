@@ -2,24 +2,37 @@
 
 import { useState } from "react";
 
-type CleanupType = "test_codes" | "test_orders";
+type CleanupType = "test_codes" | "test_orders" | "admin_codes";
 
 interface CleanupTask {
   type: CleanupType;
   label: string;
   description: string;
+  confirmText: string;
+  safeNote: string;
 }
 
 const TASKS: CleanupTask[] = [
   {
+    type: "admin_codes",
+    label: "刪除後台建立的測試通行碼",
+    description: "刪除所有 source = manual_admin 且沒有正式付款資料的通行碼",
+    confirmText: "你確定要刪除後台建立的測試通行碼嗎？",
+    safeNote: "此操作不會刪除綠界付款產生的正式通行碼（有 MerchantTradeNo / buyerEmail 的資料會被保留）。",
+  },
+  {
     type: "test_codes",
-    label: "刪除測試通行碼",
+    label: "刪除測試通行碼（isTest）",
     description: "刪除所有 isTest = true 的通行碼資料",
+    confirmText: "確定刪除所有 isTest = true 的通行碼？",
+    safeNote: "此操作只會刪除標記為測試的資料，刪除後無法復原。",
   },
   {
     type: "test_orders",
     label: "刪除測試付款訂單",
     description: "刪除所有 isTest = true 的付款訂單資料",
+    confirmText: "確定刪除所有 isTest = true 的付款訂單？",
+    safeNote: "此操作只會刪除標記為測試的訂單資料，正式付款訂單不受影響。",
   },
 ];
 
@@ -32,6 +45,7 @@ interface TaskState {
 
 export function CleanupClient() {
   const [states, setStates] = useState<Record<CleanupType, TaskState>>({
+    admin_codes: { confirming: false, loading: false, result: null, error: null },
     test_codes: { confirming: false, loading: false, result: null, error: null },
     test_orders: { confirming: false, loading: false, result: null, error: null },
   });
@@ -81,8 +95,7 @@ export function CleanupClient() {
       {/* 警告說明 */}
       <div className="rounded-2xl border border-amber-400/20 bg-amber-400/6 p-4 text-sm text-amber-200/80">
         <span className="font-semibold text-amber-300">注意：</span>
-        以下操作只會刪除標記為 <code className="rounded bg-white/8 px-1 py-0.5 text-xs">isTest = true</code> 的資料，刪除後無法復原。
-        正式付款訂單（status = paid）不受影響。
+        以下操作刪除後無法復原。正式付款訂單（status = paid、有 MerchantTradeNo）不受影響。
       </div>
 
       {TASKS.map((task) => {
@@ -131,10 +144,8 @@ export function CleanupClient() {
             {/* 確認框 */}
             {s.confirming && (
               <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/6 p-4">
-                <p className="text-sm font-semibold text-red-300">確定刪除測試資料？</p>
-                <p className="mt-1 text-xs text-moon/60">
-                  此操作只會刪除標記為測試的資料，刪除後無法復原。
-                </p>
+                <p className="text-sm font-semibold text-red-300">{task.confirmText}</p>
+                <p className="mt-1 text-xs text-moon/60">{task.safeNote}</p>
                 <div className="mt-3 flex gap-2">
                   <button
                     type="button"

@@ -9,10 +9,13 @@ export interface RedeemUsedLog {
   resultId: string;
   question?: string;
   spreadType?: string;
+  mode?: "single" | "three" | "unknown";
+  source?: "web" | "line" | "admin" | "unknown";
   remainingUsesAfter: number;
   userAgent?: string;
   emailSent?: boolean;
 }
+
 
 export interface RedeemCodeData {
   code: string;
@@ -27,6 +30,8 @@ export interface RedeemCodeData {
   usedLogs: RedeemUsedLog[];
   // 擴充欄位（付款來源與管理）
   source?: RedeemSource;
+  createdByAdmin?: boolean;
+  paymentStatus?: string;
   isTest?: boolean;
   orderId?: string;
   paymentOrderId?: string;

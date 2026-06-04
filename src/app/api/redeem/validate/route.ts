@@ -87,6 +87,7 @@ export async function POST(req: NextRequest) {
       const resultData = resultSnap.data() as {
         question?: string;
         type?: string;
+        spreadType?: string;
         fullText?: string;
         unlocked?: boolean;
       };
@@ -95,11 +96,19 @@ export async function POST(req: NextRequest) {
       const newRemainingUses = codeData.remainingUses - 1;
       const newStatus = newRemainingUses <= 0 ? "used_up" : "active";
 
+      const rawSpread = resultData.spreadType ?? resultData.type ?? "";
+      const mode: "single" | "three" | "unknown" =
+        rawSpread === "three" || rawSpread === "three_card" ? "three"
+        : rawSpread === "single" || rawSpread === "tarot" || rawSpread === "single_tarot" ? "single"
+        : "unknown";
+
       const logEntry = {
         usedAt: new Date(),
         resultId,
         question: resultData.question ?? "",
         spreadType: resultData.type ?? "tarot",
+        mode,
+        source: "web" as const,
         remainingUsesAfter: newRemainingUses,
       };
 
