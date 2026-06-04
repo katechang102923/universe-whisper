@@ -9,6 +9,7 @@ import {
 import {
   generateCheckMacValue,
   getEcpayCheckoutUrl,
+  getEcpayCredentials,
   generateMerchantTradeNo,
   formatEcpayDate,
 } from "@/lib/ecpay";
@@ -29,15 +30,18 @@ function isValidEmail(email: string): boolean {
 }
 
 export async function POST(req: NextRequest) {
-  const merchantId = process.env.ECPAY_MERCHANT_ID;
-  const hashKey    = process.env.ECPAY_HASH_KEY;
-  const hashIV     = process.env.ECPAY_HASH_IV;
-  const siteUrl    = (
+  const { merchantId, hashKey, hashIV, isStage } = getEcpayCredentials();
+  const siteUrl = (
     process.env.NEXT_PUBLIC_SITE_URL || "https://universe-whisper.vercel.app"
   ).replace(/\/$/, "");
 
   if (!merchantId || !hashKey || !hashIV) {
-    console.error("[ecpay/create-order] 環境變數 ECPAY_MERCHANT_ID / HASH_KEY / HASH_IV 未設定");
+    const missing = [
+      !merchantId && "ECPAY_MERCHANT_ID",
+      !hashKey    && "ECPAY_HASH_KEY",
+      !hashIV     && "ECPAY_HASH_IV",
+    ].filter(Boolean).join(", ");
+    console.error(`[ecpay/create-order] 缺少環境變數：${missing}`);
     return NextResponse.json(
       { ok: false, error: "PAYMENT_NOT_CONFIGURED" },
       { status: 503 },
@@ -63,7 +67,7 @@ export async function POST(req: NextRequest) {
     const plan            = REDEEM_PLANS[planName];
     const merchantTradeNo = generateMerchantTradeNo();
     const tradeDate       = formatEcpayDate(new Date());
-    const isTest          = process.env.ECPAY_STAGE === "true";
+    const isTest          = isStage; // 由 getEcpayCredentials() 已決定
 
     // ── 建立 paymentOrders 文件（status: pending） ────────────────────────────
     const db       = getAdminDb();
@@ -106,9 +110,40 @@ export async function POST(req: NextRequest) {
     const checkMacValue = generateCheckMacValue(ecpayParams, hashKey, hashIV);
     ecpayParams.CheckMacValue = checkMacValue;
 
+    const actionUrl = getEcpayCheckoutUrl();
+
+    // ── 安全除錯 log（不印 HashKey / HashIV）─────────────────────────────────
+    console.log("[ECPay create-order]", {
+      stage:          isStage,
+      actionUrl,
+      merchantId,
+      merchantTradeNo,
+      totalAmount:    ecpayParams.TotalAmount,
+      choosePayment:  ecpayParams.ChoosePayment,
+      itemName:       ecpayParams.ItemName,
+      tradeDesc:      ecpayParams.TradeDesc,
+      hasHashKey:     Boolean(hashKey),
+      hasHashIV:      Boolean(hashIV),
+      paramKeys:      Object.keys(ecpayParams).sort(),
+    });
+
+    // 開發環境或啟用 ECPAY_DEBUG 時，印出遮罩後的簽章字串輔助除錯
+    if (process.env.NODE_ENV === "development" || process.env.ECPAY_DEBUG === "true") {
+      // 用 *** 遮罩 HashKey / HashIV，只顯示前 4 碼
+      const maskedKey = hashKey.slice(0, 4) + "***";
+      const maskedIV  = hashIV.slice(0, 4)  + "***";
+      const { CheckMacValue: _cmv, ...debugParams } = ecpayParams;
+      const sorted = Object.keys(debugParams)
+        .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
+        .map((k) => `${k}=${debugParams[k]}`)
+        .join("&");
+      const rawMasked = `HashKey=${maskedKey}&${sorted}&HashIV=${maskedIV}`;
+      console.log("[ECPay create-order debug] raw (masked):", rawMasked.slice(0, 300) + "…");
+    }
+
     return NextResponse.json({
       ok:               true,
-      actionUrl:        getEcpayCheckoutUrl(),
+      actionUrl,
       params:           ecpayParams,
       merchantTradeNo,
     });

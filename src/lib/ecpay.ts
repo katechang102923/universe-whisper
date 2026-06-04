@@ -9,9 +9,51 @@ export const ECPAY_PROD_URL =
 export const ECPAY_STAGE_URL =
   "https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5";
 
+// ECPay 官方公開測試商家帳號（可安全寫進程式碼）
+export const ECPAY_TEST_MERCHANT_ID = "3002607";
+export const ECPAY_TEST_HASH_KEY    = "pwFHCqoQZGmho4w6";
+export const ECPAY_TEST_HASH_IV     = "EkRm7iFT261dpevs";
+
 /** Return the checkout URL based on ECPAY_STAGE env. */
 export function getEcpayCheckoutUrl(): string {
   return process.env.ECPAY_STAGE === "true" ? ECPAY_STAGE_URL : ECPAY_PROD_URL;
+}
+
+/**
+ * 依 ECPAY_STAGE 回傳對應的 credentials。
+ * Stage=true：優先使用環境變數，若未設定則 fallback 到公開測試值。
+ * Stage=false：直接使用環境變數（若缺失回傳 undefined）。
+ */
+export function getEcpayCredentials(): {
+  merchantId: string | undefined;
+  hashKey:    string | undefined;
+  hashIV:     string | undefined;
+  isStage:    boolean;
+} {
+  const isStage = process.env.ECPAY_STAGE === "true";
+
+  if (isStage) {
+    const merchantId = process.env.ECPAY_MERCHANT_ID ?? ECPAY_TEST_MERCHANT_ID;
+    const hashKey    = process.env.ECPAY_HASH_KEY    ?? ECPAY_TEST_HASH_KEY;
+    const hashIV     = process.env.ECPAY_HASH_IV     ?? ECPAY_TEST_HASH_IV;
+
+    // 偵測 stage 模式卻帶入正式商家 ID，可能造成 CheckMacValue 錯誤
+    if (merchantId !== ECPAY_TEST_MERCHANT_ID) {
+      console.warn(
+        "[ECPay] ⚠ ECPAY_STAGE=true 但 ECPAY_MERCHANT_ID 不是測試帳號 3002607，" +
+        "可能會導致 CheckMacValue Error。請確認 Vercel 環境變數。",
+      );
+    }
+
+    return { merchantId, hashKey, hashIV, isStage: true };
+  }
+
+  return {
+    merchantId: process.env.ECPAY_MERCHANT_ID,
+    hashKey:    process.env.ECPAY_HASH_KEY,
+    hashIV:     process.env.ECPAY_HASH_IV,
+    isStage:    false,
+  };
 }
 
 /**
@@ -32,7 +74,7 @@ function ecpayUrlEncode(str: string): string {
  * Compute ECPay CheckMacValue (EncryptType=1, SHA-256).
  * Algorithm:
  *   1. Remove CheckMacValue from params.
- *   2. Sort remaining keys A-Z.
+ *   2. Sort remaining keys A-Z (case-insensitive, per ECPay spec).
  *   3. Join as key=value&… pairs.
  *   4. Prepend HashKey=…& and append &HashIV=…
  *   5. PHP-urlencode, lowercase.
@@ -46,12 +88,13 @@ export function generateCheckMacValue(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { CheckMacValue: _removed, ...rest } = params;
 
+  // Case-insensitive sort（符合綠界官方規格）
   const sorted = Object.keys(rest)
-    .sort()
+    .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
     .map((k) => `${k}=${rest[k]}`)
     .join("&");
 
-  const raw = `HashKey=${hashKey}&${sorted}&HashIV=${hashIV}`;
+  const raw     = `HashKey=${hashKey}&${sorted}&HashIV=${hashIV}`;
   const encoded = ecpayUrlEncode(raw).toLowerCase();
 
   return crypto.createHash("sha256").update(encoded).digest("hex").toUpperCase();
