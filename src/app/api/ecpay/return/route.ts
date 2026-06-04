@@ -61,16 +61,21 @@ export async function POST(req: NextRequest) {
     return fail("PARSE_ERROR");
   }
 
-  console.log("[ecpay/return] received params:", {
-    MerchantTradeNo: params.MerchantTradeNo,
-    RtnCode: params.RtnCode,
-    TradeNo: params.TradeNo,
+  console.log("[ECPay Return] received", {
+    merchantTradeNo:   params.MerchantTradeNo,
+    rtnCode:           params.RtnCode,
+    rtnMsg:            params.RtnMsg,
+    tradeNo:           params.TradeNo,
+    tradeAmt:          params.TradeAmt,
+    paymentType:       params.PaymentType,
+    paymentDate:       params.PaymentDate,
+    hasCheckMacValue:  Boolean(params.CheckMacValue),
   });
 
   // ── 驗證 CheckMacValue ───────────────────────────────────────────────────
   if (!verifyCheckMacValue(params, hashKey, hashIV)) {
-    console.error("[ecpay/return] CheckMacValue mismatch", {
-      MerchantTradeNo: params.MerchantTradeNo,
+    console.error("[ECPay Return] CheckMacValue invalid", {
+      merchantTradeNo: params.MerchantTradeNo,
     });
     return fail("INVALID_MAC");
   }
@@ -91,7 +96,7 @@ export async function POST(req: NextRequest) {
     .get();
 
   if (orderQuery.empty) {
-    console.error("[ecpay/return] order not found:", merchantTradeNo);
+    console.error("[ECPay Return] order not found", { merchantTradeNo });
     return fail("ORDER_NOT_FOUND");
   }
 
@@ -198,8 +203,13 @@ export async function POST(req: NextRequest) {
       tx.update(orderDoc.ref, {
         status:           "paid",
         ecpayTradeNo:     ecpayTradeNo ?? null,
+        tradeNo:          ecpayTradeNo ?? null,
         paymentMethod:    params.PaymentType ?? null,
         paymentType:      params.PaymentType ?? null,
+        paymentDate:      params.PaymentDate ?? null,
+        tradeAmt:         params.TradeAmt ?? null,
+        rtnCode:          params.RtnCode ?? null,
+        rtnMsg:           params.RtnMsg ?? null,
         authCode:         params.auth_code ?? null,
         cardLast4:        params.card_4no  ?? null,
         cardType:         params.card_Type ?? null,
@@ -222,10 +232,13 @@ export async function POST(req: NextRequest) {
       void sendRedeemEmail(code, buyerEmail, orderData, orderDoc.id, db);
     }
 
-    console.log("[ecpay/return] success, merchantTradeNo:", merchantTradeNo, "code:", code);
+    console.log("[ECPay Return] success", { merchantTradeNo, code });
     return ok();
   } catch (err) {
-    console.error("[ecpay/return] transaction error:", err);
+    console.error("[ECPay Return] redeem code create failed", {
+      merchantTradeNo,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return fail("TRANSACTION_ERROR");
   }
 }

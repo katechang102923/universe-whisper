@@ -26,6 +26,7 @@ import RedeemCodeGenerator from "../redeem-codes/RedeemCodeGenerator";
 import { CleanupClient } from "./CleanupClient";
 import { FortuneManagementClient } from "./FortuneManagementClient";
 import { RedeemCodeList, type SerializableRedeemCode } from "./RedeemCodeList";
+import { OrdersTabClient } from "./OrdersTabClient";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -287,57 +288,7 @@ function OverviewTab({
 }
 
 function OrdersTab({ orders }: { orders: PaymentOrderData[] }) {
-  if (orders.length === 0) {
-    return (
-      <div className="rounded-2xl border border-white/10 bg-midnight/50 p-8 text-center">
-        <p className="text-moon/50">尚無付款訂單資料</p>
-        <p className="mt-2 text-xs text-moon/30">
-          ECPay 付款成功後，訂單會自動寫入 paymentOrders collection 並顯示於此。
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="overflow-hidden rounded-2xl border border-white/10 bg-midnight/50">
-      <div className="border-b border-white/8 px-5 py-4">
-        <p className="text-sm font-semibold text-moon">付款訂單（{orders.length} 筆）</p>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="border-b border-white/8 text-left">
-              {["時間", "方案", "金額", "付款狀態", "Email", "通行碼", "MerchantTradeNo", "Email 狀態"].map((h) => (
-                <th key={h} className="whitespace-nowrap px-4 py-3 font-medium uppercase tracking-wider text-moon/44">
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {orders.map((o, i) => (
-              <tr key={o.id ?? i} className={i < orders.length - 1 ? "border-b border-white/6" : ""}>
-                <td className="whitespace-nowrap px-4 py-3 text-moon/60">{fmtDate(o.createdAt)}</td>
-                <td className="px-4 py-3 text-moon/80">{o.planName}</td>
-                <td className="whitespace-nowrap px-4 py-3 font-semibold text-moon">NT${o.amount}</td>
-                <td className="px-4 py-3"><OrderStatusBadge status={o.status} /></td>
-                <td className="max-w-[140px] truncate px-4 py-3 text-moon/60">{o.buyerEmail ?? "—"}</td>
-                <td className="px-4 py-3 font-mono tracking-[0.12em] text-moon/80">{o.redeemCode ?? "—"}</td>
-                <td className="px-4 py-3 font-mono text-moon/50">{o.merchantTradeNo ?? "—"}</td>
-                <td className="px-4 py-3">
-                  {o.emailSent ? (
-                    <span className="rounded-full bg-aurora/12 px-2 py-0.5 text-aurora">已寄出</span>
-                  ) : (
-                    <span className="rounded-full bg-white/6 px-2 py-0.5 text-moon/40">未寄</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
+  return <OrdersTabClient orders={orders} />;
 }
 
 function RedeemTab({ codes }: { codes: RedeemCodeData[] }) {

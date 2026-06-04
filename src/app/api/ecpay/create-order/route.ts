@@ -84,19 +84,19 @@ export async function POST(req: NextRequest) {
     });
 
     // ── 組 ECPay AioCheckOut 參數 ─────────────────────────────────────────────
-    const resultPageUrl = `${siteUrl}/payment/result?merchantTradeNo=${merchantTradeNo}`;
-
+    // OrderResultURL 必須是 API route（支援 POST），不可直接指向 Next.js page。
+    // 使用者刷卡後，綠界會 POST 到 OrderResultURL，我們再 303 redirect 到 /payment/result。
     const ecpayParams: Record<string, string> = {
       MerchantID:        merchantId,
       MerchantTradeNo:   merchantTradeNo,
       MerchantTradeDate: tradeDate,
       PaymentType:       "aio",
       TotalAmount:       String(plan.price),
-      TradeDesc:         "宇宙偷偷話通行碼",
+      TradeDesc:         "Universe Whisper Pass",       // ASCII only，避免編碼不一致
       ItemName:          `${plan.displayName} x1`,
-      ReturnURL:         `${siteUrl}/api/ecpay/return`,
-      OrderResultURL:    resultPageUrl,
-      ClientBackURL:     resultPageUrl,
+      ReturnURL:         `${siteUrl}/api/ecpay/return`, // server-to-server 通知
+      OrderResultURL:    `${siteUrl}/api/ecpay/order-result`, // 使用者瀏覽器付款後 POST 到這裡
+      ClientBackURL:     `${siteUrl}/payment/result?merchantTradeNo=${merchantTradeNo}`,
       ChoosePayment:     "Credit",
       EncryptType:       "1",
       NeedExtraPaidInfo: "Y",
