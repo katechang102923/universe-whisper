@@ -15,6 +15,7 @@ export const SITE_URL = (
 
 export type EmailErrorCode =
   | "MISSING_ENV"
+  | "RESEND_AUTH_FAILED"
   | "RESEND_FAILED"
   | "UNKNOWN_ERROR";
 
@@ -138,16 +139,19 @@ export async function sendRedeemCodeEmail(opts: {
   const fromAddr = process.env.EMAIL_FROM || "宇宙偷偷話 <noreply@universewhisper.com>";
 
   // ── 環境變數檢查 ─────────────────────────────────────────────────────────
-  const missing: string[] = [];
-  if (!apiKey) missing.push("RESEND_API_KEY");
-  if (missing.length > 0) {
-    console.error("[Email] Missing env", { missing });
-    return { ok: false, errorCode: "MISSING_ENV", errorMsg: `缺少環境變數：${missing.join(", ")}` };
+  if (!apiKey) {
+    console.error("[Email] Missing env", { missing: ["RESEND_API_KEY"], hasApiKey: false });
+    return {
+      ok: false,
+      errorCode: "MISSING_ENV",
+      errorMsg: "Email 服務尚未設定，請管理員檢查 RESEND_API_KEY",
+    };
   }
 
   console.log("[Email] send redeem code start", {
     to:         opts.to,
-    hasApiKey:  true,           // 不印出實際 key
+    hasApiKey:  true,
+    keyPrefix:  apiKey.slice(0, 4) + "…",   // 只印前 4 碼，不洩漏完整 key
     from:       fromAddr,
     codePrefix: opts.code.slice(0, 5) + "…",
   });
@@ -183,6 +187,10 @@ export async function sendRedeemCodeEmail(opts: {
     let parsed: { name?: string; message?: string; statusCode?: number } = {};
     try { parsed = JSON.parse(errText); } catch { /* ignore */ }
 
+    const isAuthError = res.status === 401 ||
+      parsed.name === "validation_error" ||
+      (parsed.message ?? "").toLowerCase().includes("api key");
+
     console.error("[Email] resend failed", {
       to:         opts.to,
       from:       fromAddr,
@@ -190,7 +198,16 @@ export async function sendRedeemCodeEmail(opts: {
       name:       parsed.name,
       message:    parsed.message ?? errText.slice(0, 300),
       code:       (parsed as { code?: string }).code,
+      isAuthError,
     });
+
+    if (isAuthError) {
+      return {
+        ok:        false,
+        errorCode: "RESEND_AUTH_FAILED",
+        errorMsg:  `Resend HTTP ${res.status}: API 金鑰無效或未授權`,
+      };
+    }
 
     return {
       ok:        false,

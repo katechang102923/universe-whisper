@@ -34,6 +34,7 @@ interface OrderResult {
   planName?:       string;
   amount?:         number;
   redeemCode?:     string | null;
+  redeemCodeId?:   string | null;   // fallback：有些訂單只存 redeemCodeId
   paidAt?:         string | null;
   codeDetail?:     CodeDetail | null;
   /** 遮罩後的 email（僅供顯示，不可用於寄信） */
@@ -116,6 +117,7 @@ export default function PaymentResultClient() {
         planName?:        string;
         amount?:          number;
         redeemCode?:      string | null;
+        redeemCodeId?:    string | null;
         paidAt?:          string | null;
         codeDetail?:      CodeDetail | null;
         buyerEmail?:      string | null;
@@ -136,6 +138,7 @@ export default function PaymentResultClient() {
         planName:        data.planName,
         amount:          data.amount,
         redeemCode:      data.redeemCode,
+        redeemCodeId:    data.redeemCodeId,
         paidAt:          data.paidAt,
         codeDetail:      data.codeDetail,
         buyerEmail:      data.buyerEmail ?? null,       // 遮罩後，僅顯示用
@@ -174,23 +177,25 @@ export default function PaymentResultClient() {
   }, [merchantTradeNo]);
 
   useEffect(() => {
-    if ((order.status === "paid" && order.redeemCode) || order.status === "failed") {
+    const code = order.redeemCode ?? order.redeemCodeId ?? null;
+    if ((order.status === "paid" && code) || order.status === "failed") {
       setPollStopped(true);
       setPollCount(MAX_POLLS);
     }
-  }, [order.status, order.redeemCode]);
+  }, [order.status, order.redeemCode, order.redeemCodeId]);
 
   useEffect(() => {
     if (order.emailSent) setCodeSaved(true);
   }, [order.emailSent]);
 
   useEffect(() => {
-    if (pollStopped && !order.redeemCode && !autoSyncedRef.current) {
+    const code = order.redeemCode ?? order.redeemCodeId ?? null;
+    if (pollStopped && !code && !autoSyncedRef.current) {
       autoSyncedRef.current = true;
       void handleSync();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pollStopped, order.redeemCode]);
+  }, [pollStopped, order.redeemCode, order.redeemCodeId]);
 
   // ── 同步 sync-order ───────────────────────────────────────────────────────
 
@@ -237,8 +242,9 @@ export default function PaymentResultClient() {
   // ── 複製 ─────────────────────────────────────────────────────────────────
 
   function handleCopyCode() {
-    if (!order.redeemCode) return;
-    void navigator.clipboard.writeText(order.redeemCode).then(() => {
+    const displayRedeemCode = order.redeemCode ?? order.redeemCodeId ?? null;
+    if (!displayRedeemCode) return;
+    void navigator.clipboard.writeText(displayRedeemCode).then(() => {
       setCodeCopied(true);
       setCodeSaved(true);
       setTimeout(() => setCodeCopied(false), 2500);
@@ -269,18 +275,25 @@ export default function PaymentResultClient() {
       return;
     }
 
+    // displayRedeemCode：優先 redeemCode，fallback redeemCodeId
+    const displayRedeemCode = order.redeemCode ?? order.redeemCodeId ?? null;
+
+    if (!displayRedeemCode) {
+      setEmailMsg("缺少通行碼，請重新整理頁面後再試。");
+      return;
+    }
+
     setEmailStatus("sending");
     setEmailMsg("");
 
     try {
-      // ★ 一定要帶 redeemCode（畫面上已顯示的通行碼）
-      //   merchantTradeNo 有就帶，沒有也沒關係，API 可以用 redeemCode 查
-      const body: Record<string, string> = {};
-      if (order.redeemCode) body.redeemCode = order.redeemCode;
-      if (merchantTradeNo)  body.merchantTradeNo = merchantTradeNo;
-      if (trimmed)          body.email = trimmed;
+      const body: Record<string, string> = {
+        redeemCode: displayRedeemCode,   // 畫面上顯示的通行碼，必帶
+      };
+      if (merchantTradeNo) body.merchantTradeNo = merchantTradeNo;
+      if (trimmed)         body.email = trimmed;
 
-      console.log("[Email] send body", body);   // debug，可事後移除
+      console.log("[Email] send body", body);   // debug：確認 payload 有帶 redeemCode
 
       const res  = await fetch("/api/redeem-codes/send-email", {
         method:  "POST",
@@ -320,7 +333,7 @@ export default function PaymentResultClient() {
 
   // ── Loading / Pending ─────────────────────────────────────────────────────
 
-  const isPaidNoCode   = order.status === "paid" && !order.redeemCode;
+  const isPaidNoCode   = order.status === "paid" && !(order.redeemCode ?? order.redeemCodeId);
   const isStillWaiting = ((order.status === "loading" || order.status === "pending" || isPaidNoCode) && !pollStopped);
 
   if (isStillWaiting) {
@@ -428,6 +441,9 @@ export default function PaymentResultClient() {
 
   // ── 付款成功 ──────────────────────────────────────────────────────────────
 
+  // 統一的通行碼變數：畫面顯示與寄信都使用同一來源
+  const displayRedeemCode = order.redeemCode ?? order.redeemCodeId ?? null;
+
   const hasBuyerEmail = Boolean(order.hasBuyerEmail);
 
   // Email 狀態 Banner
@@ -490,7 +506,7 @@ export default function PaymentResultClient() {
         <div className="mt-8 rounded-2xl border border-[#d8bd70]/35 bg-[#d8bd70]/8 px-6 py-6 text-center">
           <p className="text-xs uppercase tracking-[0.28em] text-[#d8bd70]/80">宇宙通行碼</p>
           <p className="mt-3 font-mono text-3xl font-bold tracking-[0.22em] text-[#d8bd70] select-all">
-            {order.redeemCode ?? "—"}
+            {displayRedeemCode ?? "—"}
           </p>
           <div className="mt-5 grid grid-cols-2 gap-3 text-left text-sm">
             <div>
@@ -584,7 +600,7 @@ export default function PaymentResultClient() {
             className="flex w-full items-center justify-center rounded-full bg-moon px-5 py-3.5 font-semibold text-midnight transition hover:bg-white">
             我已保存通行碼，立即抽牌
           </Link>
-          <Link href={`/redeem/check?code=${encodeURIComponent(order.redeemCode ?? "")}`}
+          <Link href={`/redeem/check?code=${encodeURIComponent(displayRedeemCode ?? "")}`}
             className="flex w-full items-center justify-center rounded-full border border-white/20 px-5 py-3.5 text-sm text-moon/70 transition hover:bg-white/8">
             查詢剩餘次數
           </Link>

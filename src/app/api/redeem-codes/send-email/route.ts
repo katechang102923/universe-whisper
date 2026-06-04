@@ -33,6 +33,7 @@ type ApiErrorCode =
   | "ORDER_NOT_FOUND"
   | "REDEEM_CODE_NOT_FOUND"
   | "MISSING_ENV"
+  | "RESEND_AUTH_FAILED"
   | "RESEND_FAILED"
   | "UNKNOWN_ERROR";
 
@@ -222,7 +223,9 @@ export async function POST(req: NextRequest) {
         ok:        false,
         errorCode: result.errorCode ?? "UNKNOWN_ERROR",
         message:   result.errorCode === "MISSING_ENV"
-          ? "Email 系統尚未設定完成，請先複製通行碼保存，或聯繫客服補寄。"
+          ? "Email 服務尚未設定，請管理員檢查 RESEND_API_KEY"
+          : result.errorCode === "RESEND_AUTH_FAILED"
+          ? "Email 服務金鑰失效，通行碼仍可正常使用，請先複製保存，稍後再試。"
           : result.errorCode === "RESEND_FAILED"
           ? "Email 備份寄送失敗，可能是寄信服務暫時異常。請先複製通行碼保存，稍後再試。"
           : "Email 備份寄送失敗，不影響通行碼使用。請先複製通行碼保存，或稍後再試。",
