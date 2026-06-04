@@ -3,7 +3,6 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { AppShell } from "@/components/AppShell";
 import { FeatureCard } from "@/components/FeatureCard";
-import { LineCtaBanner } from "@/components/LineCtaBanner";
 
 export const metadata: Metadata = {
   title: "宇宙偷偷話 Universe Whisper",
@@ -44,34 +43,65 @@ export default function Home() {
               宇宙塔羅 · 每日提醒
             </p>
             <h1 className="mt-4 text-[2.6rem] font-semibold leading-tight text-moon sm:text-5xl lg:text-6xl">
-              今晚，宇宙想偷偷
+              今晚想聽
               <br className="hidden sm:block" />
-              告訴你一句話
+              宇宙說什麼？
             </h1>
             <p className="mt-5 max-w-xl text-lg leading-8 text-moon/76 sm:text-xl">
               深夜裡，陪你抽一張牌，聽聽宇宙想對你說什麼。
             </p>
 
-            <div className="mt-7 flex flex-col gap-3">
+            {/* ── Two entry cards ── */}
+            <div className="mt-7 grid gap-3 sm:grid-cols-2">
+              {/* 單張入口 */}
               <Link
-                href="/tarot"
-                className="cosmic-cta-primary w-full rounded-full px-7 py-4 text-center text-lg font-semibold text-midnight transition hover:brightness-105 active:scale-[0.98] sm:w-auto sm:self-start"
-                style={{
-                  background: "linear-gradient(135deg, #d8bd70 0%, #b89adf 60%, #d8bd70 100%)",
-                  backgroundSize: "200% 200%",
-                }}
+                href="/tarot?spread=single"
+                className="group flex flex-col rounded-3xl border border-[#d8bd70]/30 bg-midnight/50 p-5 transition hover:border-[#d8bd70]/60 hover:bg-white/5 active:scale-[0.98]"
               >
-                ✨ 抽一張宇宙訊息
+                <span className="text-2xl">✨</span>
+                <span className="mt-2 text-base font-semibold text-moon">單張宇宙訊息</span>
+                <span className="mt-1 text-sm leading-6 text-moon/55">
+                  適合快速獲得一個提醒與方向
+                </span>
+                <span
+                  className="mt-4 self-start rounded-full px-5 py-2.5 text-sm font-semibold text-midnight transition group-hover:brightness-105"
+                  style={{
+                    background: "linear-gradient(135deg, #d8bd70 0%, #b89adf 60%, #d8bd70 100%)",
+                    backgroundSize: "200% 200%",
+                  }}
+                >
+                  抽一張
+                </span>
               </Link>
+
+              {/* 三張入口 */}
+              <Link
+                href="/tarot?spread=three"
+                className="group flex flex-col rounded-3xl border border-lavender/30 bg-midnight/50 p-5 transition hover:border-lavender/60 hover:bg-white/5 active:scale-[0.98]"
+              >
+                <span className="text-2xl">🔮</span>
+                <span className="mt-2 text-base font-semibold text-moon">三張宇宙訊息</span>
+                <span className="mt-1 text-sm leading-6 text-moon/55">
+                  從過去、現在、未來看清整體脈絡
+                </span>
+                <span className="mt-4 self-start rounded-full border border-lavender/50 bg-lavender/20 px-5 py-2.5 text-sm font-semibold text-lavender transition group-hover:bg-lavender/30">
+                  抽三張
+                </span>
+              </Link>
+            </div>
+
+            {/* LINE 輔助文字 */}
+            <p className="mt-4 text-xs text-moon/40">
+              抽完牌可同步收藏至{" "}
               <a
                 href={lineAddFriendUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="w-full rounded-full border border-white/15 px-5 py-2.5 text-center text-sm font-medium text-moon/60 transition hover:border-white/30 hover:text-moon/85 active:scale-95 sm:w-auto sm:self-start"
+                className="underline underline-offset-2 transition hover:text-moon/60"
               >
-                抽完牌可同步收藏至 LINE
+                LINE
               </a>
-            </div>
+            </p>
           </div>
 
           {/* ── Right: cat illustration + today's cosmic message ─── */}
@@ -103,16 +133,16 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── Feature entry cards ────────────────────────────────────── */}
+      {/* ── Feature entry cards（下半部）────────────────────────────────────── */}
       <section className="pb-8 sm:pb-12">
         <p className="mb-5 text-center text-xs uppercase tracking-[0.28em] text-moon/38">
-          選擇你的探索方式
+          今日星座 · 每日運勢
         </p>
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2">
           {/* 今日運勢 */}
           <FeatureCard
             gradient="from-lavender/40 to-nebula/24"
-            title="今日運勢"
+            title="今日星座運勢"
             description="查看你的星座今日愛情、工作、生活與心情提醒，讓宇宙幫你整理今天。"
             href="/daily"
             icon={
@@ -134,12 +164,12 @@ export default function Home() {
             }
           />
 
-          {/* 單張塔羅 */}
+          {/* 塔羅牌庫 */}
           <FeatureCard
             gradient="from-aurora/36 to-nebula/22"
-            title="單張塔羅牌"
-            description="默想一個問題，讓宇宙為你抽一張牌，給你溫柔而直接的回應。"
-            href="/tarot"
+            title="塔羅牌庫"
+            description="瀏覽 78 張塔羅牌的牌義、關鍵字與宇宙解讀，作為學習與參考。"
+            href="/tarot-cards"
             icon={
               <svg
                 viewBox="0 0 22 22"
@@ -166,61 +196,8 @@ export default function Home() {
               </svg>
             }
           />
-
-          {/* 三張牌訊息 */}
-          <FeatureCard
-            gradient="from-moon/22 to-lavender/20"
-            title="三張牌訊息"
-            description="過去、現在、未來——完整牌陣帶你看見整體走向與宇宙提醒。"
-            href="/tarot"
-            icon={
-              <svg
-                viewBox="0 0 26 22"
-                className="h-5 w-5"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-                aria-hidden="true"
-              >
-                <rect
-                  x="1"
-                  y="3"
-                  width="9"
-                  height="14"
-                  rx="2"
-                  stroke="#f7f1df"
-                  strokeWidth="1.4"
-                  strokeOpacity="0.55"
-                  transform="rotate(-8 1 3)"
-                />
-                <rect
-                  x="8.5"
-                  y="2"
-                  width="9"
-                  height="14"
-                  rx="2"
-                  stroke="#f7f1df"
-                  strokeWidth="1.4"
-                  strokeOpacity="0.90"
-                />
-                <rect
-                  x="16"
-                  y="3"
-                  width="9"
-                  height="14"
-                  rx="2"
-                  stroke="#f7f1df"
-                  strokeWidth="1.4"
-                  strokeOpacity="0.55"
-                  transform="rotate(8 16 3)"
-                />
-              </svg>
-            }
-          />
         </div>
       </section>
-
-      {/* ── LINE add-friend banner ─────────────────────────────────── */}
-      <LineCtaBanner />
     </AppShell>
   );
 }

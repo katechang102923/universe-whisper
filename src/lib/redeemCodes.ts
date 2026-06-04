@@ -1,7 +1,8 @@
 import type { Timestamp } from "firebase-admin/firestore";
 
 export type RedeemPlan = "single" | "five_pack" | "ten_pack";
-export type RedeemStatus = "active" | "used_up" | "expired" | "disabled";
+export type RedeemStatus = "active" | "used_up" | "expired" | "disabled" | "revoked" | "refunded" | "test";
+export type RedeemSource = "ecpay_paid" | "manual_admin" | "test" | "free_grant" | "refund_reissue";
 
 export interface RedeemUsedLog {
   usedAt: Timestamp | Date;
@@ -24,7 +25,50 @@ export interface RedeemCodeData {
   createdAt: Timestamp | Date;
   expiresAt: Timestamp | Date;
   usedLogs: RedeemUsedLog[];
+  // 擴充欄位（付款來源與管理）
+  source?: RedeemSource;
+  isTest?: boolean;
+  orderId?: string;
+  paymentOrderId?: string;
+  merchantTradeNo?: string;
+  ecpayTradeNo?: string;
+  buyerEmail?: string;
+  userId?: string;
+  emailSent?: boolean;
+  emailSentAt?: Timestamp | Date;
 }
+
+/** 付款訂單資料結構（paymentOrders collection） */
+export interface PaymentOrderData {
+  id: string;
+  orderNo: string;
+  merchantTradeNo: string;
+  ecpayTradeNo?: string;
+  status: "pending" | "paid" | "failed" | "cancelled" | "refunded" | "test";
+  planId: string;
+  planName: string;
+  amount: number;
+  currency: "TWD";
+  uses: number;
+  buyerEmail?: string;
+  userId?: string;
+  paymentMethod?: string;
+  cardLast4?: string;
+  cardType?: string;
+  authCode?: string;
+  redeemCode?: string;
+  redeemCodeId?: string;
+  emailSent?: boolean;
+  emailSentAt?: Timestamp | Date;
+  createdAt: Timestamp | Date;
+  paidAt?: Timestamp | Date;
+  failedAt?: Timestamp | Date;
+  refundedAt?: Timestamp | Date;
+  isTest?: boolean;
+  note?: string;
+}
+
+export const PAYMENT_ORDERS_COLLECTION = "paymentOrders";
 
 export const REDEEM_CODES_COLLECTION = "redeemCodes";
 export const REDEEM_CODE_EXPIRY_DAYS = 60;

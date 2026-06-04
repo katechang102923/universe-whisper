@@ -12,7 +12,20 @@ export const metadata: Metadata = {
   },
 };
 
-export default function TarotPage() {
+export default async function TarotPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ spread?: string }>;
+}) {
+  const params = await searchParams;
+  const spread = params.spread === "three" ? "three" : "single";
+
+  const title = spread === "three" ? "三張宇宙訊息" : "單張宇宙訊息";
+  const subtitle =
+    spread === "three"
+      ? "從過去、現在、未來看清整體脈絡。"
+      : "適合快速獲得一個提醒與方向。";
+
   return (
     <AppShell>
       <section className="mx-auto w-full max-w-5xl py-8 sm:py-12">
@@ -21,10 +34,10 @@ export default function TarotPage() {
           <p className="text-xs uppercase tracking-[0.32em] text-aurora/80">
             cosmic tarot · 星夜牌陣
           </p>
-          <h1 className="mt-3 text-4xl font-semibold text-moon sm:text-5xl">塔羅抽牌</h1>
+          <h1 className="mt-3 text-4xl font-semibold text-moon sm:text-5xl">{title}</h1>
           <div className="mt-1.5 h-px w-24 bg-gradient-to-r from-aurora/60 to-transparent" />
           <p className="mt-4 max-w-2xl text-base leading-8 text-moon/72 sm:text-lg">
-            在心裡默想一個問題，讓宇宙透過牌面給你一個溫柔的提醒。
+            {subtitle}
           </p>
 
           {/* Decorative star accents */}
@@ -42,7 +55,7 @@ export default function TarotPage() {
           </span>
         </div>
 
-        <TarotDrawClient />
+        <TarotDrawClient initialSpread={spread} />
       </section>
     </AppShell>
   );

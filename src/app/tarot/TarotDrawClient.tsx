@@ -1828,9 +1828,11 @@ function ThreeCardStoryPortalModal({
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function TarotDrawClient() {
+export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | "three" }) {
   const { isAdmin, getIdToken } = useAuth();
-  const [mode, setMode] = useState<(typeof modes)[number]["key"]>("single_tarot");
+  const [mode, setMode] = useState<(typeof modes)[number]["key"]>(
+    initialSpread === "three" ? "three_card" : "single_tarot",
+  );
   const [topic, setTopic] = useState<TarotTopicOption>("愛情");
   const [question, setQuestion] = useState("");
   const [selectedSpreadQuestion, setSelectedSpreadQuestion] = useState("");
@@ -1900,6 +1902,7 @@ export function TarotDrawClient() {
   const readingSectionRef = useRef<HTMLElement | null>(null);
   const savedPaidResultKeyRef = useRef("");
   const [restoredToastVisible, setRestoredToastVisible] = useState(false);
+  const [spreadQuestionsOpen, setSpreadQuestionsOpen] = useState(false);
 
   const cardCount = mode === "three_card" ? 3 : 1;
   const visibleBacks = useMemo(() => Array.from({ length: cardCount }), [cardCount]);
@@ -2872,6 +2875,7 @@ export function TarotDrawClient() {
     setQuestion(spreadQuestion);
     setStatus("idle");
     setCards([]);
+    setSpreadQuestionsOpen(false);
     resetReading();
   }
 
@@ -2888,46 +2892,18 @@ export function TarotDrawClient() {
       </div>
 
       {/* ✨ Operation guide ✨ */}
-      <div className="relative z-10 mb-6 rounded-2xl border border-white/8 bg-midnight/30 px-4 py-4">
-        <p className="mb-3 text-xs tracking-[0.2em] text-moon/45 uppercase">怎麼使用</p>
-        <ol className="space-y-2.5">
-          <li className="flex gap-3 text-sm text-moon/70">
-            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-lavender/40 text-xs text-lavender">1</span>
-            <span><span className="font-medium text-moon/90">選擇抽牌方式</span>　單張牌接收一句宇宙提醒；三張牌從過去、現在、未來看完整流動。</span>
+      <ol className="relative z-10 mb-5 flex flex-wrap gap-x-5 gap-y-1.5">
+        {["選擇愛情、工作或生活", "寫下你想問的問題", "抽牌後查看宇宙訊息"].map((step, i) => (
+          <li key={i} className="flex items-center gap-1.5 text-sm text-moon/50">
+            <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-lavender/35 text-[10px] text-lavender">
+              {i + 1}
+            </span>
+            {step}
           </li>
-          <li className="flex gap-3 text-sm text-moon/70">
-            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-lavender/40 text-xs text-lavender">2</span>
-            <span><span className="font-medium text-moon/90">選擇想問的方向</span>　愛情、工作或生活，宇宙會依照你選的方向解讀。</span>
-          </li>
-          <li className="flex gap-3 text-sm text-moon/70">
-            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-lavender/40 text-xs text-lavender">3</span>
-            <span><span className="font-medium text-moon/90">輸入你的問題</span>　把想問的事寫下來，越具體，解讀越貼近你。</span>
-          </li>
-        </ol>
-      </div>
+        ))}
+      </ol>
 
       {/* ?? Mode selector ?? */}
-      <div className="relative z-10 grid gap-3 sm:grid-cols-2">
-        {modes.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            onClick={() => handleModeChange(item.key)}
-            className={`rounded-3xl border p-4 text-left transition ${
-              mode === item.key
-                ? "border-moon bg-moon text-midnight"
-                : "border-white/12 bg-midnight/45 text-moon hover:bg-white/10"
-            }`}
-          >
-            <span className="block text-lg font-semibold">{item.label}</span>
-            <span
-              className={`mt-1 block text-sm ${mode === item.key ? "text-midnight/70" : "text-moon/58"}`}
-            >
-              {item.description}
-            </span>
-          </button>
-        ))}
-      </div>
 
       {/* ?? Topic selector ?? */}
       <div className="relative z-10 mt-5 grid grid-cols-3 gap-2">
@@ -2955,52 +2931,69 @@ export function TarotDrawClient() {
       </div>
 
       {/* ?? Three-card spread questions ?? */}
-      {mode === "three_card" ? (
-        <div className="relative z-10 mt-6 rounded-3xl border border-lavender/18 bg-midnight/38 p-4">
-          <p className="text-sm tracking-[0.22em] text-lavender/70">
-            {currentSpreadGroup.title}
-          </p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            {currentSpreadGroup.questions.map((item) => (
-              <button
-                key={item}
-                type="button"
-                onClick={() => selectSpreadQuestion(item)}
-                className={`rounded-2xl border px-4 py-3 text-left text-base leading-6 transition ${
-                  selectedSpreadQuestion === item
-                    ? "border-moon bg-moon text-midnight"
-                    : "border-white/12 bg-white/8 text-moon/78 hover:bg-white/12"
-                }`}
-              >
-                {item}
-              </button>
-            ))}
+      <div className="relative z-10 mt-4">
+        <button
+          type="button"
+          onClick={() => setSpreadQuestionsOpen((v) => !v)}
+          className="flex items-center gap-2 text-sm text-moon/55 transition hover:text-moon/80"
+        >
+          <span>不知道怎麼問？</span>
+          <span className="rounded-full border border-white/14 bg-white/6 px-3 py-1 text-xs">
+            {spreadQuestionsOpen ? "收合推薦問題" : "展開推薦問題"}
+          </span>
+        </button>
+
+        {spreadQuestionsOpen ? (
+          <div className="mt-3 rounded-3xl border border-lavender/18 bg-midnight/38 p-4">
+            {mode === "three_card" ? (
+              <>
+                <p className="mb-2 text-xs tracking-[0.22em] text-lavender/70">{currentSpreadGroup.title}</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {currentSpreadGroup.questions.map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => selectSpreadQuestion(item)}
+                      className={`rounded-2xl border px-4 py-3 text-left text-base leading-6 transition ${
+                        selectedSpreadQuestion === item
+                          ? "border-moon bg-moon text-midnight"
+                          : "border-white/12 bg-white/8 text-moon/78 hover:bg-white/12"
+                      }`}
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="mb-2 text-xs tracking-[0.22em] text-lavender/70">範例問題</p>
+                <div className="flex flex-wrap gap-2">
+                  {singleCardQuestions[topic].map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => {
+                        setQuestion(item);
+                        setSpreadQuestionsOpen(false);
+                      }}
+                      className={`rounded-2xl border px-3 py-2 text-left text-sm leading-6 transition ${
+                        question === item
+                          ? "border-moon bg-moon text-midnight"
+                          : "border-white/12 bg-white/8 text-moon/78 hover:bg-white/12"
+                      }`}
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
 
       {/* ✨ Single-card example questions ✨ */}
-      {mode === "single_tarot" ? (
-        <div className="relative z-10 mt-6 rounded-3xl border border-lavender/18 bg-midnight/38 p-4">
-          <p className="text-sm tracking-[0.22em] text-lavender/70">範例問題</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {singleCardQuestions[topic].map((item) => (
-              <button
-                key={item}
-                type="button"
-                onClick={() => setQuestion(item)}
-                className={`rounded-2xl border px-3 py-2 text-left text-sm leading-6 transition ${
-                  question === item
-                    ? "border-moon bg-moon text-midnight"
-                    : "border-white/12 bg-white/8 text-moon/78 hover:bg-white/12"
-                }`}
-              >
-                {item}
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : null}
 
       {/* ?? Question input ?? */}
       <div className="relative z-10 mt-6">
@@ -3252,30 +3245,6 @@ export function TarotDrawClient() {
         </>
       ) : null}
 
-      {/* ── 狀態 A / C：有可抽資格時，選牌區下方才顯示付費加購區 ── */}
-      {!isAdmin && !isBlockedState && !canShowReadings ? (
-        <div className="relative z-10 mt-8 rounded-2xl border border-[#d8bd70]/18 bg-midnight/40 p-5">
-          <p className="text-base font-semibold text-moon">想抽更多次？</p>
-          <p className="mt-1 text-xs leading-6 text-moon/55">
-            免費次數使用完後，可以購買通行碼繼續抽牌。
-          </p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            {PASS_PLANS.map((plan) => (
-              <button
-                key={plan.key}
-                type="button"
-                onClick={() => { setSelectedPlan(plan); openPaidDrawModal(); }}
-                className="rounded-2xl border border-[#d8bd70]/30 bg-midnight/50 p-3 text-left transition hover:border-[#d8bd70]/55 hover:bg-white/5 active:scale-[0.98]"
-              >
-                <p className="text-xs text-[#d8bd70]">{plan.label}</p>
-                <p className="mt-0.5 text-xl font-bold text-moon">{plan.price} 元</p>
-                <p className="mt-1 text-[11px] leading-4 text-moon/50">{plan.desc}</p>
-              </button>
-            ))}
-          </div>
-          <p className="mt-2 text-center text-xs text-moon/38">支付後可立即使用，次數有效期 30 天</p>
-        </div>
-      ) : null}
 
       {/* ????????????????????????????????????????????????????????????????????
           Reading area ??only shown after cards are revealed

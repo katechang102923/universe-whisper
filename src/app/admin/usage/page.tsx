@@ -15,15 +15,52 @@ import {
   SESSION_COOKIE_NAME,
   verifyAdminSessionCookie,
 } from "@/lib/verifyAdmin";
+import {
+  REDEEM_CODES_COLLECTION,
+  PAYMENT_ORDERS_COLLECTION,
+  REDEEM_PLANS,
+  type RedeemCodeData,
+  type PaymentOrderData,
+} from "@/lib/redeemCodes";
+import RedeemCodeGenerator from "../redeem-codes/RedeemCodeGenerator";
+import { CleanupClient } from "./CleanupClient";
+import { FortuneManagementClient } from "./FortuneManagementClient";
 
-export const dynamic = "force-dynamic"; // 每次請求都取得最新資料
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
-// ── 工具 ──────────────────────────────────────────────────────────────────────
+// ── 型別 ──────────────────────────────────────────────────────────────────────
+
+type AdminTab = "overview" | "orders" | "redeem" | "fortune" | "antiabuse" | "cleanup";
+
+const TABS: { id: AdminTab; label: string }[] = [
+  { id: "overview", label: "使用統計" },
+  { id: "orders", label: "付款訂單" },
+  { id: "redeem", label: "通行碼管理" },
+  { id: "fortune", label: "今日星座" },
+  { id: "antiabuse", label: "防濫用" },
+  { id: "cleanup", label: "測試清理" },
+];
+
+// ── 工具函式 ──────────────────────────────────────────────────────────────────
 
 function sortedEntries(map: Record<string, number>): Array<{ key: string; count: number }> {
   return Object.entries(map)
     .map(([key, count]) => ({ key, count }))
     .sort((a, b) => b.count - a.count);
+}
+
+function toDate(v: unknown): Date | null {
+  if (!v) return null;
+  if (v instanceof Date) return v;
+  if (typeof v === "object" && "toDate" in v) return (v as { toDate(): Date }).toDate();
+  return null;
+}
+
+function fmtDate(v: unknown): string {
+  const d = toDate(v);
+  if (!d) return "—";
+  return d.toLocaleDateString("zh-TW") + " " + d.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" });
 }
 
 // ── 子元件 ────────────────────────────────────────────────────────────────────
@@ -33,7 +70,7 @@ function StatCard({ label, value, sub }: { label: string; value: number | string
     <div className="rounded-2xl border border-white/10 bg-midnight/50 p-5">
       <p className="text-xs uppercase tracking-[0.24em] text-moon/48">{label}</p>
       <p className="mt-2 text-4xl font-semibold text-moon">{value}</p>
-      {sub ? <p className="mt-1 text-xs text-moon/44">{sub}</p> : null}
+      {sub && <p className="mt-1 text-xs text-moon/44">{sub}</p>}
     </div>
   );
 }
@@ -57,7 +94,6 @@ function UsageTable({
       </div>
     );
   }
-
   return (
     <div className="overflow-hidden rounded-2xl border border-white/10 bg-midnight/50">
       <div className="border-b border-white/8 px-5 py-4">
@@ -70,15 +106,15 @@ function UsageTable({
             <tr className="border-b border-white/8 text-left">
               <th className="px-5 py-3 text-xs font-medium uppercase tracking-wider text-moon/48">#</th>
               <th className="px-5 py-3 text-xs font-medium uppercase tracking-wider text-moon/48">{keyLabel}</th>
-              <th className="px-5 py-3 text-xs font-medium uppercase tracking-wider text-moon/48 text-right">次數</th>
-              <th className="px-5 py-3 text-xs font-medium uppercase tracking-wider text-moon/48 text-right">狀態</th>
+              <th className="px-5 py-3 text-right text-xs font-medium uppercase tracking-wider text-moon/48">次數</th>
+              <th className="px-5 py-3 text-right text-xs font-medium uppercase tracking-wider text-moon/48">狀態</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row, i) => (
               <tr key={row.display} className={i < rows.length - 1 ? "border-b border-white/6" : ""}>
                 <td className="px-5 py-3 text-moon/40">{i + 1}</td>
-                <td className="px-5 py-3 font-mono text-xs text-moon/78 break-all">{row.display}</td>
+                <td className="break-all px-5 py-3 font-mono text-xs text-moon/78">{row.display}</td>
                 <td className="px-5 py-3 text-right font-semibold text-moon">{row.count}</td>
                 <td className="px-5 py-3 text-right">
                   {row.count >= limit ? (
@@ -98,120 +134,104 @@ function UsageTable({
   );
 }
 
-// ── 主頁面 ────────────────────────────────────────────────────────────────────
+function RedeemStatusBadge({ status }: { status: string }) {
+  const map: Record<string, { text: string; cls: string }> = {
+    active:   { text: "使用中", cls: "bg-aurora/14 text-aurora" },
+    used_up:  { text: "已用完", cls: "bg-red-500/14 text-red-300" },
+    expired:  { text: "已過期", cls: "bg-white/8 text-moon/40" },
+    disabled: { text: "已停用", cls: "bg-white/8 text-moon/40" },
+    revoked:  { text: "已作廢", cls: "bg-red-500/14 text-red-300" },
+    refunded: { text: "已退款", cls: "bg-amber-400/14 text-amber-300" },
+    test:     { text: "測試",   cls: "bg-lavender/14 text-lavender" },
+  };
+  const { text, cls } = map[status] ?? { text: status, cls: "bg-white/8 text-moon/40" };
+  return <span className={`rounded-full px-2 py-0.5 text-xs ${cls}`}>{text}</span>;
+}
 
-export default async function AdminUsagePage() {
-  // ── 驗證管理員身份（Google session cookie 或 LINE cookie）──────────────
-  const cookieStore = await cookies();
+function OrderStatusBadge({ status }: { status: string }) {
+  const map: Record<string, { text: string; cls: string }> = {
+    pending:   { text: "待付款", cls: "bg-amber-400/14 text-amber-300" },
+    paid:      { text: "已付款", cls: "bg-aurora/14 text-aurora" },
+    failed:    { text: "付款失敗", cls: "bg-red-500/14 text-red-300" },
+    cancelled: { text: "已取消", cls: "bg-white/8 text-moon/40" },
+    refunded:  { text: "已退款", cls: "bg-lavender/14 text-lavender" },
+    test:      { text: "測試",   cls: "bg-white/10 text-moon/50" },
+  };
+  const { text, cls } = map[status] ?? { text: status, cls: "bg-white/8 text-moon/40" };
+  return <span className={`rounded-full px-2 py-0.5 text-xs ${cls}`}>{text}</span>;
+}
 
-  const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-  const isGoogleAdmin = await verifyAdminSessionCookie(sessionCookie);
+function SourceBadge({ source }: { source?: string }) {
+  const map: Record<string, { text: string; cls: string }> = {
+    ecpay_paid:      { text: "綠界付款", cls: "bg-aurora/12 text-aurora" },
+    manual_admin:    { text: "手動建立", cls: "bg-lavender/12 text-lavender" },
+    test:            { text: "測試", cls: "bg-white/8 text-moon/40" },
+    free_grant:      { text: "免費贈送", cls: "bg-amber-400/12 text-amber-300" },
+    refund_reissue:  { text: "退款補發", cls: "bg-red-500/12 text-red-300" },
+  };
+  if (!source) return <span className="text-moon/30 text-xs">—</span>;
+  const { text, cls } = map[source] ?? { text: source, cls: "bg-white/8 text-moon/40" };
+  return <span className={`rounded-full px-2 py-0.5 text-xs ${cls}`}>{text}</span>;
+}
 
-  const lineUserId = cookieStore.get("line_user_id")?.value ?? null;
-  const isLineAdmin = Boolean(lineUserId && getAdminUserIds().includes(lineUserId));
+// ── 各 Tab 內容元件 ────────────────────────────────────────────────────────────
 
-  if (!isGoogleAdmin && !isLineAdmin) {
-    redirect("/");
-  }
-
-  // ── 取得今日使用資料 ─────────────────────────────────────────────────────
-  const today = getTaipeiDate();
-  let usageData: Partial<DailyUsageDoc> = {};
-  let fortuneStats: Partial<FortuneStatsDoc> = {};
-  let fetchError = false;
-
-  try {
-    const db = getAdminDb();
-    const [usageSnap, fortuneSnap] = await Promise.all([
-      db.collection("rate_limits").doc(today).get(),
-      db.collection("fortune_stats").doc(today).get(),
-    ]);
-    usageData = (usageSnap.data() as Partial<DailyUsageDoc>) ?? {};
-    fortuneStats = (fortuneSnap.data() as Partial<FortuneStatsDoc>) ?? {};
-  } catch {
-    fetchError = true;
-  }
-
+function OverviewTab({
+  today,
+  usageData,
+  fortuneStats,
+  redeemStats,
+  orderStats,
+  fetchError,
+}: {
+  today: string;
+  usageData: Partial<DailyUsageDoc>;
+  fortuneStats: Partial<FortuneStatsDoc>;
+  redeemStats: { total: number; active: number; usedUp: number; test: number };
+  orderStats: { total: number; paid: number; failed: number; todayRevenue: number };
+  fetchError: boolean;
+}) {
   const totalRequests = usageData.total_requests ?? 0;
-  const totalBlocked = usageData.total_blocked ?? 0;
+  const totalBlocked  = usageData.total_blocked  ?? 0;
+  const fortuneCoverage = (fortuneStats.generated_zodiacs ?? []).length;
   const featureUsage = usageData.feature_usage ?? {};
-  const ipUsage = usageData.ip_usage ?? {};
-  const ipDisplay = usageData.ip_display ?? {};
-  const anonUsage = usageData.anon_usage ?? {};
-  const lineUsage = usageData.line_usage ?? {};
-
-  // 建立排行榜資料
-  const ipRanking = sortedEntries(ipUsage)
-    .slice(0, 20)
-    .map(({ key, count }) => ({ display: ipDisplay[key] ?? key, count }));
-
-  const anonRanking = sortedEntries(anonUsage)
-    .slice(0, 20)
-    .map(({ key, count }) => ({ display: key, count }));
-
-  const lineRanking = sortedEntries(lineUsage)
-    .slice(0, 20)
-    .map(({ key, count }) => ({ display: key, count }));
-
-  const blockRate =
-    totalRequests + totalBlocked > 0
-      ? Math.round((totalBlocked / (totalRequests + totalBlocked)) * 100)
-      : 0;
-
-  // ── 今日運勢快取統計 ──────────────────────────────────────────────────────
-  const fortuneAiGenerations = fortuneStats.ai_generations ?? 0;
-  const fortuneCacheHits = fortuneStats.cache_hits ?? 0;
-  const fortuneGeneratedZodiacs = fortuneStats.generated_zodiacs ?? [];
-  const fortuneSaved = fortuneCacheHits; // cache hit = 一次節省的 AI 呼叫
-  const fortuneCoverage = fortuneGeneratedZodiacs.length;
 
   return (
-    <AppShell>
-      <section className="mx-auto w-full max-w-5xl py-8 sm:py-12">
-        {/* Header */}
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.32em] text-aurora/80">admin · 後台</p>
-            <h1 className="mt-2 text-3xl font-semibold text-moon sm:text-4xl">使用統計</h1>
-            <p className="mt-1.5 text-sm text-moon/50">
-              統計日期：{today}（Asia/Taipei）
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2 mt-1">
-            <Link
-              href="/admin/redeem-codes"
-              className="rounded-full border border-lavender/30 bg-lavender/10 px-5 py-2.5 text-sm text-moon transition hover:bg-lavender/18"
-            >
-              ✦ 宇宙通行碼
-            </Link>
-            <Link
-              href="/admin/usage"
-              className="rounded-full border border-white/12 bg-white/8 px-5 py-2.5 text-sm text-moon transition hover:bg-white/14"
-            >
-              ↻ 重新整理
-            </Link>
-          </div>
+    <div className="space-y-8">
+      {fetchError && (
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+          ⚠ Firestore 資料讀取失敗，請確認 Firebase 環境變數設定。
         </div>
+      )}
 
-        {fetchError && (
-          <div className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
-            ⚠ Firestore 資料讀取失敗，請確認 Firebase 環境變數設定。
-          </div>
-        )}
-
-        {/* 限制說明 */}
-        <div className="mt-6 rounded-2xl border border-lavender/18 bg-lavender/8 p-4 text-sm leading-7 text-moon/72">
-          <span className="font-semibold text-lavender">限制規則：</span>
-          未登入：每日 {UNAUTH_DAILY_LIMIT} 次（IP＋anonymousId 雙重）&nbsp;·&nbsp;
-          LINE 用戶：每日 {LINE_DAILY_LIMIT} 次&nbsp;·&nbsp;
-          管理員：無限制
+      {/* 付款概覽 */}
+      <div>
+        <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.24em] text-moon/50">付款概覽（全期）</h2>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard label="付款訂單總筆數" value={orderStats.total} />
+          <StatCard label="成功付款" value={orderStats.paid} sub="status = paid" />
+          <StatCard label="付款失敗" value={orderStats.failed} sub="status = failed" />
+          <StatCard label="今日累積營收" value={orderStats.todayRevenue > 0 ? `NT$${orderStats.todayRevenue}` : "—"} sub="付款成功訂單加總" />
         </div>
+      </div>
 
-        {/* 摘要統計 */}
-        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="今日成功次數" value={totalRequests} sub="AI API 已呼叫" />
-          <StatCard label="今日阻擋次數" value={totalBlocked} sub="限流攔截，未呼叫 AI" />
-          <StatCard label="阻擋率" value={`${blockRate}%`} sub={`${totalRequests + totalBlocked} 次總請求`} />
+      {/* 通行碼概覽 */}
+      <div>
+        <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.24em] text-moon/50">通行碼概覽（全期）</h2>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard label="通行碼總數" value={redeemStats.total} />
+          <StatCard label="使用中" value={redeemStats.active} sub="status = active" />
+          <StatCard label="已用完" value={redeemStats.usedUp} sub="status = used_up" />
+          <StatCard label="測試資料" value={redeemStats.test} sub="isTest = true" />
+        </div>
+      </div>
+
+      {/* 今日使用 */}
+      <div>
+        <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.24em] text-moon/50">今日免費抽牌（{today}）</h2>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard label="成功請求" value={totalRequests} sub="AI API 已呼叫" />
+          <StatCard label="阻擋請求" value={totalBlocked} sub="限流攔截" />
           <StatCard
             label="最多使用功能"
             value={
@@ -221,166 +241,477 @@ export default async function AdminUsagePage() {
             }
             sub={`單張 ${featureUsage["single_tarot"] ?? 0} · 三張 ${featureUsage["three_card"] ?? 0}`}
           />
+          <StatCard
+            label="星座快取覆蓋"
+            value={`${fortuneCoverage} / ${ZODIAC_SIGNS.length}`}
+            sub={fortuneCoverage === ZODIAC_SIGNS.length ? "✓ 全部完成" : "今日已生成"}
+          />
         </div>
+      </div>
+    </div>
+  );
+}
 
-        {/* 功能使用明細 */}
-        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+function OrdersTab({ orders }: { orders: PaymentOrderData[] }) {
+  if (orders.length === 0) {
+    return (
+      <div className="rounded-2xl border border-white/10 bg-midnight/50 p-8 text-center">
+        <p className="text-moon/50">尚無付款訂單資料</p>
+        <p className="mt-2 text-xs text-moon/30">
+          ECPay 付款成功後，訂單會自動寫入 paymentOrders collection 並顯示於此。
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-white/10 bg-midnight/50">
+      <div className="border-b border-white/8 px-5 py-4">
+        <p className="text-sm font-semibold text-moon">付款訂單（{orders.length} 筆）</p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-white/8 text-left">
+              {["時間", "方案", "金額", "付款狀態", "Email", "通行碼", "MerchantTradeNo", "Email 狀態"].map((h) => (
+                <th key={h} className="whitespace-nowrap px-4 py-3 font-medium uppercase tracking-wider text-moon/44">
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {orders.map((o, i) => (
+              <tr key={o.id ?? i} className={i < orders.length - 1 ? "border-b border-white/6" : ""}>
+                <td className="whitespace-nowrap px-4 py-3 text-moon/60">{fmtDate(o.createdAt)}</td>
+                <td className="px-4 py-3 text-moon/80">{o.planName}</td>
+                <td className="whitespace-nowrap px-4 py-3 font-semibold text-moon">NT${o.amount}</td>
+                <td className="px-4 py-3"><OrderStatusBadge status={o.status} /></td>
+                <td className="max-w-[140px] truncate px-4 py-3 text-moon/60">{o.buyerEmail ?? "—"}</td>
+                <td className="px-4 py-3 font-mono tracking-[0.12em] text-moon/80">{o.redeemCode ?? "—"}</td>
+                <td className="px-4 py-3 font-mono text-moon/50">{o.merchantTradeNo ?? "—"}</td>
+                <td className="px-4 py-3">
+                  {o.emailSent ? (
+                    <span className="rounded-full bg-aurora/12 px-2 py-0.5 text-aurora">已寄出</span>
+                  ) : (
+                    <span className="rounded-full bg-white/6 px-2 py-0.5 text-moon/40">未寄</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function RedeemTab({ codes }: { codes: RedeemCodeData[] }) {
+  return (
+    <div className="space-y-8">
+      {/* 方案說明 */}
+      <div className="grid gap-3 sm:grid-cols-3">
+        {(Object.entries(REDEEM_PLANS) as [string, typeof REDEEM_PLANS[keyof typeof REDEEM_PLANS]][]).map(([key, plan]) => (
+          <div key={key} className="rounded-2xl border border-white/10 bg-midnight/50 p-4">
+            <p className="text-sm font-semibold text-moon">{plan.displayName}</p>
+            <p className="mt-1 text-xs text-moon/50">{plan.description}</p>
+            <p className="mt-2 text-lg font-bold text-aurora">
+              NT${plan.price}
+              <span className="ml-1 text-xs font-normal text-moon/44">
+                · {plan.totalUses} 次 · 60 天有效
+              </span>
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {/* 產生器 */}
+      <div>
+        <h2 className="mb-4 text-lg font-semibold text-moon">產生新宇宙通行碼</h2>
+        <RedeemCodeGenerator />
+      </div>
+
+      {/* 通行碼列表 */}
+      <div>
+        <h2 className="mb-4 text-lg font-semibold text-moon">最近通行碼（前 50 筆）</h2>
+        {codes.length === 0 ? (
           <div className="rounded-2xl border border-white/10 bg-midnight/50 p-5">
-            <p className="text-xs uppercase tracking-[0.24em] text-moon/48">功能使用分布</p>
-            <div className="mt-3 space-y-3">
-              {[
-                { label: "單張塔羅", key: "single_tarot", color: "bg-aurora" },
-                { label: "三張牌訊息", key: "three_card", color: "bg-lavender" },
-              ].map(({ label, key, color }) => {
-                const count = featureUsage[key] ?? 0;
-                const pct = totalRequests > 0 ? Math.round((count / totalRequests) * 100) : 0;
-                return (
-                  <div key={key}>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-moon/72">{label}</span>
-                      <span className="font-semibold text-moon">
-                        {count} 次 <span className="text-moon/44 font-normal">({pct}%)</span>
-                      </span>
-                    </div>
-                    <div className="mt-1.5 h-1.5 w-full rounded-full bg-white/8">
-                      <div
-                        className={`h-full rounded-full ${color} opacity-70`}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
+            <p className="text-sm text-moon/44">尚無通行碼紀錄。</p>
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-2xl border border-white/10 bg-midnight/50">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-white/8 text-left">
+                    {["通行碼", "方案", "剩餘/總次", "狀態", "來源", "到期日", "購買Email", "MerchantNo", "Email", "使用次數", "測試"].map((h) => (
+                      <th key={h} className="whitespace-nowrap px-4 py-3 font-medium uppercase tracking-wider text-moon/44">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {codes.map((c, i) => {
+                    const expiry = toDate(c.expiresAt);
+                    return (
+                      <tr key={c.code} className={i < codes.length - 1 ? "border-b border-white/6" : ""}>
+                        <td className="px-4 py-3 font-mono tracking-[0.12em] text-moon/90">{c.code}</td>
+                        <td className="px-4 py-3 text-moon/70">{c.displayName}</td>
+                        <td className="px-4 py-3">
+                          <span className="font-semibold text-moon">{c.remainingUses}</span>
+                          <span className="text-moon/40">/{c.totalUses}</span>
+                        </td>
+                        <td className="px-4 py-3"><RedeemStatusBadge status={c.status} /></td>
+                        <td className="px-4 py-3"><SourceBadge source={c.source} /></td>
+                        <td className="whitespace-nowrap px-4 py-3 text-moon/50">
+                          {expiry ? expiry.toLocaleDateString("zh-TW") : "—"}
+                        </td>
+                        <td className="max-w-[120px] truncate px-4 py-3 text-moon/60">
+                          {c.buyerEmail ?? "—"}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-moon/40">{c.merchantTradeNo ?? "—"}</td>
+                        <td className="px-4 py-3">
+                          {c.emailSent ? (
+                            <span className="rounded-full bg-aurora/12 px-2 py-0.5 text-aurora">已寄</span>
+                          ) : (
+                            <span className="text-moon/30">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-moon/60">{(c.usedLogs ?? []).length} 筆</td>
+                        <td className="px-4 py-3">
+                          {c.isTest ? (
+                            <span className="rounded-full bg-lavender/12 px-2 py-0.5 text-lavender">測試</span>
+                          ) : (
+                            <span className="text-moon/30">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
-          <div className="rounded-2xl border border-white/10 bg-midnight/50 p-5">
-            <p className="text-xs uppercase tracking-[0.24em] text-moon/48">用戶類型分布</p>
-            <div className="mt-3 space-y-3">
-              {[
-                {
-                  label: "LINE 登入用戶",
-                  count: Object.values(lineUsage).reduce((a, b) => a + b, 0),
-                  color: "bg-[#06C755]",
-                },
-                {
-                  label: "未登入用戶",
-                  count: Object.values(ipUsage).reduce((a, b) => a + b, 0),
-                  color: "bg-moon",
-                },
-              ].map(({ label, count, color }) => {
-                const pct = totalRequests > 0 ? Math.round((count / totalRequests) * 100) : 0;
-                return (
-                  <div key={label}>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-moon/72">{label}</span>
-                      <span className="font-semibold text-moon">
-                        {count} 次 <span className="text-moon/44 font-normal">({pct}%)</span>
-                      </span>
-                    </div>
-                    <div className="mt-1.5 h-1.5 w-full rounded-full bg-white/8">
-                      <div
-                        className={`h-full rounded-full ${color} opacity-70`}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+function FortuneTab({
+  today,
+  generatedSigns,
+  fortuneStats,
+}: {
+  today: string;
+  generatedSigns: string[];
+  fortuneStats: Partial<FortuneStatsDoc>;
+}) {
+  const allSigns = [...ZODIAC_SIGNS];
+  const missingSigns = allSigns.filter((s) => !generatedSigns.includes(s));
+  const fortuneCoverage = generatedSigns.length;
+  const allGenerated = fortuneCoverage === allSigns.length;
+
+  return (
+    <div className="space-y-6">
+      {/* 統計卡片 */}
+      <div className="grid gap-4 sm:grid-cols-4">
+        <StatCard label="AI 生成次數" value={fortuneStats.ai_generations ?? 0} sub="今日 AI API 呼叫" />
+        <StatCard label="快取命中" value={fortuneStats.cache_hits ?? 0} sub="直接讀快取" />
+        <StatCard
+          label="星座覆蓋"
+          value={`${fortuneCoverage} / ${allSigns.length}`}
+          sub={allGenerated ? "✓ 全部完成" : `缺 ${missingSigns.length} 個`}
+        />
+        <StatCard label="生成狀態" value={allGenerated ? "完成" : "部分"} sub={today} />
+      </div>
+
+      {/* 互動操作 */}
+      <FortuneManagementClient
+        missingSigns={missingSigns}
+        generatedSigns={generatedSigns}
+        totalSigns={allSigns.length}
+      />
+
+      {/* 12 星座狀態格 */}
+      <div className="overflow-hidden rounded-2xl border border-white/10 bg-midnight/50">
+        <div className="border-b border-white/8 px-5 py-4">
+          <p className="text-sm font-semibold text-moon">今日 12 星座快取狀態</p>
+          <p className="mt-0.5 text-xs text-moon/44">
+            綠色＝已生成 · 橘色＝缺少 · 資料來源：fortune_stats › {today}
+          </p>
         </div>
-
-        {/* 排行榜 */}
-        <div className="mt-6 space-y-6">
-          <UsageTable
-            title="IP 使用排行（前 20）"
-            keyLabel="IP 位址"
-            rows={ipRanking}
-            limit={UNAUTH_DAILY_LIMIT}
-          />
-          <UsageTable
-            title="匿名識別碼使用排行（前 20）"
-            keyLabel="Anonymous ID"
-            rows={anonRanking}
-            limit={UNAUTH_DAILY_LIMIT}
-          />
-          <UsageTable
-            title="LINE 用戶使用排行（前 20）"
-            keyLabel="LINE User ID"
-            rows={lineRanking}
-            limit={LINE_DAILY_LIMIT}
-          />
-        </div>
-
-        {/* 今日運勢快取統計 */}
-        <div className="mt-10">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-xs uppercase tracking-[0.32em] text-lavender/80">daily fortune</p>
-              <h2 className="mt-1 text-xl font-semibold text-moon">今日運勢快取統計</h2>
-            </div>
-            <form action="/api/daily-fortune/prefill" method="POST">
-              <button
-                type="submit"
-                className="rounded-full border border-lavender/30 bg-lavender/12 px-5 py-2.5 text-sm text-moon transition hover:bg-lavender/22"
+        <div className="flex flex-wrap gap-2 p-5">
+          {allSigns.map((sign) => {
+            const hasCache = generatedSigns.includes(sign);
+            return (
+              <span
+                key={sign}
+                className={`rounded-full px-3 py-1.5 text-xs font-medium ${
+                  hasCache
+                    ? "bg-aurora/18 text-aurora"
+                    : "bg-amber-400/14 text-amber-300 ring-1 ring-amber-400/30"
+                }`}
               >
-                ✦ 立即預生成 12 星座
-              </button>
-            </form>
+                {hasCache ? "✓ " : "✗ "}{sign}
+              </span>
+            );
+          })}
+        </div>
+        {missingSigns.length > 0 && (
+          <div className="border-t border-white/8 px-5 py-3">
+            <p className="text-xs text-moon/50">
+              缺少：<span className="text-amber-300">{missingSigns.join("、")}</span>
+            </p>
           </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard
-              label="AI 實際生成次數"
-              value={fortuneAiGenerations}
-              sub="今日呼叫 AI API"
-            />
-            <StatCard
-              label="Cache Hit 次數"
-              value={fortuneCacheHits}
-              sub="直接讀取快取，未呼叫 AI"
-            />
-            <StatCard
-              label="節省 AI 呼叫"
-              value={fortuneSaved}
-              sub="Cache 命中＝節省 1 次 API"
-            />
-            <StatCard
-              label="星座快取覆蓋"
-              value={`${fortuneCoverage} / ${ZODIAC_SIGNS.length}`}
-              sub="今日已生成星座數"
-            />
-          </div>
+function AntiAbuseTab({
+  ipRanking,
+  anonRanking,
+  lineRanking,
+  usageData,
+}: {
+  ipRanking: { display: string; count: number }[];
+  anonRanking: { display: string; count: number }[];
+  lineRanking: { display: string; count: number }[];
+  usageData: Partial<DailyUsageDoc>;
+}) {
+  const blockRate =
+    (usageData.total_requests ?? 0) + (usageData.total_blocked ?? 0) > 0
+      ? Math.round(
+          ((usageData.total_blocked ?? 0) /
+            ((usageData.total_requests ?? 0) + (usageData.total_blocked ?? 0))) *
+            100
+        )
+      : 0;
 
-          {/* 已生成星座列表 */}
-          <div className="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-midnight/50">
-            <div className="border-b border-white/8 px-5 py-4">
-              <p className="text-sm font-semibold text-moon">今日星座快取狀態</p>
-              <p className="mt-0.5 text-xs text-moon/44">綠色＝已有快取（含 AI 或 seeded），灰色＝尚未生成</p>
-            </div>
-            <div className="flex flex-wrap gap-2 p-5">
-              {ZODIAC_SIGNS.map((sign) => {
-                const hasCache = fortuneGeneratedZodiacs.includes(sign);
-                return (
-                  <span
-                    key={sign}
-                    className={`rounded-full px-3 py-1 text-xs font-medium ${
-                      hasCache
-                        ? "bg-aurora/18 text-aurora"
-                        : "bg-white/6 text-moon/36"
-                    }`}
-                  >
-                    {sign}
-                  </span>
-                );
-              })}
-            </div>
+  return (
+    <div className="space-y-6">
+      <div className="rounded-2xl border border-lavender/18 bg-lavender/8 p-4 text-sm leading-7 text-moon/72">
+        <span className="font-semibold text-lavender">限制規則：</span>
+        未登入：每日 {UNAUTH_DAILY_LIMIT} 次（IP＋anonymousId 雙重）&nbsp;·&nbsp;
+        LINE 用戶：每日 {LINE_DAILY_LIMIT} 次&nbsp;·&nbsp;
+        管理員：無限制
+        <span className="ml-4 rounded-full bg-white/8 px-2 py-0.5 text-xs">
+          今日阻擋率 {blockRate}%
+        </span>
+      </div>
+
+      <UsageTable title="IP 使用排行（前 20）" keyLabel="IP 位址" rows={ipRanking} limit={UNAUTH_DAILY_LIMIT} />
+      <UsageTable title="匿名識別碼使用排行（前 20）" keyLabel="Anonymous ID" rows={anonRanking} limit={UNAUTH_DAILY_LIMIT} />
+      <UsageTable title="LINE 用戶使用排行（前 20）" keyLabel="LINE User ID" rows={lineRanking} limit={LINE_DAILY_LIMIT} />
+    </div>
+  );
+}
+
+// ── 主頁面 ────────────────────────────────────────────────────────────────────
+
+export default async function AdminUsagePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
+  // ── 驗證管理員 ──────────────────────────────────────────────────────────────
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+  const isGoogleAdmin = await verifyAdminSessionCookie(sessionCookie);
+  const lineUserId = cookieStore.get("line_user_id")?.value ?? null;
+  const isLineAdmin = Boolean(lineUserId && getAdminUserIds().includes(lineUserId));
+
+  if (!isGoogleAdmin && !isLineAdmin) {
+    redirect("/");
+  }
+
+  // ── Tab 解析 ────────────────────────────────────────────────────────────────
+  const params = await searchParams;
+  const tab = (params.tab ?? "overview") as AdminTab;
+  const validTabs = TABS.map((t) => t.id);
+  const currentTab: AdminTab = validTabs.includes(tab) ? tab : "overview";
+
+  const today = getTaipeiDate();
+
+  // ── 資料抓取（依 tab 條件載入） ──────────────────────────────────────────────
+  let usageData: Partial<DailyUsageDoc> = {};
+  let fortuneStats: Partial<FortuneStatsDoc> = {};
+  let codes: RedeemCodeData[] = [];
+  let orders: PaymentOrderData[] = [];
+  let redeemStats = { total: 0, active: 0, usedUp: 0, test: 0 };
+  let orderStats = { total: 0, paid: 0, failed: 0, todayRevenue: 0 };
+  let fetchError = false;
+
+  try {
+    const db = getAdminDb();
+
+    if (currentTab === "overview" || currentTab === "antiabuse") {
+      const [usageSnap, fortuneSnap] = await Promise.all([
+        db.collection("rate_limits").doc(today).get(),
+        db.collection("fortune_stats").doc(today).get(),
+      ]);
+      usageData = (usageSnap.data() as Partial<DailyUsageDoc>) ?? {};
+      fortuneStats = (fortuneSnap.data() as Partial<FortuneStatsDoc>) ?? {};
+    }
+
+    if (currentTab === "overview") {
+      // 通行碼彙總
+      const codeSnap = await db.collection(REDEEM_CODES_COLLECTION).get();
+      codeSnap.docs.forEach((d) => {
+        const c = d.data() as RedeemCodeData;
+        redeemStats.total++;
+        if (c.status === "active") redeemStats.active++;
+        if (c.status === "used_up") redeemStats.usedUp++;
+        if (c.isTest) redeemStats.test++;
+      });
+
+      // 付款訂單彙總
+      try {
+        const orderSnap = await db.collection(PAYMENT_ORDERS_COLLECTION).get();
+        orderSnap.docs.forEach((d) => {
+          const o = d.data() as PaymentOrderData;
+          orderStats.total++;
+          if (o.status === "paid") {
+            orderStats.paid++;
+            const paidAt = toDate(o.paidAt);
+            if (paidAt && paidAt.toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" }) === today) {
+              orderStats.todayRevenue += o.amount ?? 0;
+            }
+          }
+          if (o.status === "failed") orderStats.failed++;
+        });
+      } catch { /* paymentOrders 不存在時忽略 */ }
+    }
+
+    if (currentTab === "orders") {
+      try {
+        const orderSnap = await db
+          .collection(PAYMENT_ORDERS_COLLECTION)
+          .orderBy("createdAt", "desc")
+          .limit(100)
+          .get();
+        orders = orderSnap.docs.map((d) => ({ id: d.id, ...d.data() } as PaymentOrderData));
+      } catch { /* empty */ }
+    }
+
+    if (currentTab === "redeem") {
+      const snap = await db
+        .collection(REDEEM_CODES_COLLECTION)
+        .orderBy("createdAt", "desc")
+        .limit(50)
+        .get();
+      codes = snap.docs.map((d) => d.data() as RedeemCodeData);
+    }
+
+    if (currentTab === "fortune") {
+      const fortuneSnap = await db.collection("fortune_stats").doc(today).get();
+      fortuneStats = (fortuneSnap.data() as Partial<FortuneStatsDoc>) ?? {};
+    }
+
+  } catch {
+    fetchError = true;
+  }
+
+  const ipUsage = usageData.ip_usage ?? {};
+  const ipDisplay = usageData.ip_display ?? {};
+  const anonUsage = usageData.anon_usage ?? {};
+  const lineUsage = usageData.line_usage ?? {};
+
+  const ipRanking = sortedEntries(ipUsage).slice(0, 20).map(({ key, count }) => ({
+    display: ipDisplay[key] ?? key,
+    count,
+  }));
+  const anonRanking = sortedEntries(anonUsage).slice(0, 20).map(({ key, count }) => ({
+    display: key,
+    count,
+  }));
+  const lineRanking = sortedEntries(lineUsage).slice(0, 20).map(({ key, count }) => ({
+    display: key,
+    count,
+  }));
+
+  const generatedSigns = fortuneStats.generated_zodiacs ?? [];
+
+  // ── Render ───────────────────────────────────────────────────────────────────
+  return (
+    <AppShell>
+      <section className="mx-auto w-full max-w-6xl py-8 sm:py-12">
+
+        {/* Header */}
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.32em] text-aurora/80">admin · 營運後台</p>
+            <h1 className="mt-2 text-3xl font-semibold text-moon sm:text-4xl">管理後台</h1>
+            <p className="mt-1.5 text-sm text-moon/50">統計日期：{today}（Asia/Taipei）</p>
           </div>
+          <Link
+            href={`/admin/usage?tab=${currentTab}`}
+            className="mt-1 rounded-full border border-white/12 bg-white/8 px-5 py-2.5 text-sm text-moon transition hover:bg-white/14"
+          >
+            ↻ 重新整理
+          </Link>
         </div>
 
-        <p className="mt-8 text-center text-xs text-moon/30">
-          資料來源：Firestore › rate_limits › {today} · fortune_stats › {today}
+        {/* Tab 導覽 */}
+        <div className="mt-6 flex flex-wrap gap-1 rounded-2xl border border-white/10 bg-midnight/50 p-1.5">
+          {TABS.map((t) => (
+            <Link
+              key={t.id}
+              href={`/admin/usage?tab=${t.id}`}
+              className={[
+                "rounded-xl px-4 py-2 text-sm font-medium transition",
+                currentTab === t.id
+                  ? "bg-lavender/20 text-lavender"
+                  : "text-moon/60 hover:bg-white/6 hover:text-moon",
+              ].join(" ")}
+            >
+              {t.label}
+            </Link>
+          ))}
+        </div>
+
+        {/* Tab 內容 */}
+        <div className="mt-8">
+          {currentTab === "overview" && (
+            <OverviewTab
+              today={today}
+              usageData={usageData}
+              fortuneStats={fortuneStats}
+              redeemStats={redeemStats}
+              orderStats={orderStats}
+              fetchError={fetchError}
+            />
+          )}
+
+          {currentTab === "orders" && <OrdersTab orders={orders} />}
+
+          {currentTab === "redeem" && <RedeemTab codes={codes} />}
+
+          {currentTab === "fortune" && (
+            <FortuneTab
+              today={today}
+              generatedSigns={generatedSigns}
+              fortuneStats={fortuneStats}
+            />
+          )}
+
+          {currentTab === "antiabuse" && (
+            <AntiAbuseTab
+              ipRanking={ipRanking}
+              anonRanking={anonRanking}
+              lineRanking={lineRanking}
+              usageData={usageData}
+            />
+          )}
+
+          {currentTab === "cleanup" && <CleanupClient />}
+        </div>
+
+        <p className="mt-10 text-center text-xs text-moon/28">
+          宇宙偷偷話 · 管理後台 · {today}
         </p>
       </section>
     </AppShell>
