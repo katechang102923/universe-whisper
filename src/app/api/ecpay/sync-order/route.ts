@@ -23,7 +23,7 @@ export const runtime = "nodejs";
 
 const ECPAY_QUERY_URL_PROD  = "https://payment.ecpay.com.tw/Cashier/QueryTradeInfo/V5";
 const ECPAY_QUERY_URL_STAGE = "https://payment-stage.ecpay.com.tw/Cashier/QueryTradeInfo/V5";
-const MAX_SYNC_CALLS        = 10;
+const MAX_SYNC_CALLS        = 20;
 
 // ── ECPay 查詢 CheckMacValue ───────────────────────────────────────────────────
 
@@ -106,26 +106,27 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // ── forceGenerate：後台手動補產生（已 paid 但無碼） ──────────────────────
-  if (forceGenerate && orderData.status === "paid" && !orderData.redeemCode) {
-    console.log("[ECPay Sync] forceGenerate 模式，直接補產通行碼", { merchantTradeNo });
+  // ── 訂單已 paid 但無碼（含 forceGenerate）：直接補產，不需再查綠界 ──────
+  if (orderData.status === "paid" && !orderData.redeemCode) {
+    const mode = forceGenerate ? "admin_force_generate" : "sync_paid_no_code";
+    console.log("[ECPay Sync] paid 但無碼，直接補產通行碼", { merchantTradeNo, mode });
     try {
       const result = await fulfillPaidOrder({
         merchantTradeNo,
         providerPayload: {},
-        source:          "admin_force_generate",
+        source:          mode,
       });
-      console.log("[ECPay Sync] redeem code fulfilled (force)", { merchantTradeNo, code: result.redeemCode });
+      console.log("[ECPay Sync] redeem code fulfilled", { merchantTradeNo, code: result.redeemCode });
       return NextResponse.json({
         ok:         true,
         status:     "paid",
         redeemCode: result.redeemCode,
         emailSent:  result.emailSent,
         emailError: result.emailError ?? null,
-        message:    "force_generated",
+        message:    forceGenerate ? "force_generated" : "code_generated",
       });
     } catch (err) {
-      console.error("[ECPay Sync] forceGenerate 失敗", err);
+      console.error("[ECPay Sync] 補產通行碼失敗", err);
       return NextResponse.json(
         { ok: false, error: "GENERATE_FAILED", message: "補產通行碼失敗，請稍後再試。" },
         { status: 500 },

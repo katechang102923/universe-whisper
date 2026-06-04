@@ -33,9 +33,10 @@ interface OrderResult {
 
 // ── 輪詢參數 ──────────────────────────────────────────────────────────────────
 
-const POLL_INTERVAL_MS = 2000;
-const MAX_POLLS        = 30;  // 60 秒
-const PHASE_2_POLLS    = 5;   // 10 秒後進 phase 2 文案
+// 依序在 0、2、5 秒查詢，共 3 次，最多等 5 秒即顯示結果畫面
+const POLL_DELAYS_MS   = [0, 2000, 5000];
+const MAX_POLLS        = POLL_DELAYS_MS.length;
+const PHASE_2_POLLS    = 2;   // 第 2 次後進 phase 2 文案
 
 // ── 元件 ──────────────────────────────────────────────────────────────────────
 
@@ -116,23 +117,24 @@ export default function PaymentResultClient() {
     }
 
     let cancelled = false;
-    void fetchOrder();
+    const timers: ReturnType<typeof setTimeout>[] = [];
 
-    const interval = setInterval(() => {
-      if (cancelled) return;
-      setPollCount((c) => {
-        const next = c + 1;
-        if (next >= MAX_POLLS) {
-          clearInterval(interval);
+    POLL_DELAYS_MS.forEach((delay, i) => {
+      const t = setTimeout(async () => {
+        if (cancelled) return;
+        setPollCount(i + 1);
+        await fetchOrder();
+        if (i === POLL_DELAYS_MS.length - 1) {
           setPollStopped(true);
-        } else {
-          void fetchOrder();
         }
-        return next;
-      });
-    }, POLL_INTERVAL_MS);
+      }, delay);
+      timers.push(t);
+    });
 
-    return () => { cancelled = true; clearInterval(interval); };
+    return () => {
+      cancelled = true;
+      timers.forEach(clearTimeout);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [merchantTradeNo]);
 
@@ -149,14 +151,14 @@ export default function PaymentResultClient() {
     if (order.emailSent) codeSavedRef.current = true;
   }, [order.emailSent]);
 
-  // paid 但沒有 redeemCode → 自動呼叫 sync-order 一次
+  // 輪詢結束後仍沒有通行碼 → 自動呼叫 sync-order 一次
   useEffect(() => {
-    if (order.status === "paid" && !order.redeemCode && !autoSyncedRef.current) {
+    if (pollStopped && !order.redeemCode && !autoSyncedRef.current) {
       autoSyncedRef.current = true;
       void handleSync();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [order.status, order.redeemCode]);
+  }, [pollStopped, order.redeemCode]);
 
   // ── 主動同步 sync-order ───────────────────────────────────────────────────
 
@@ -181,7 +183,14 @@ export default function PaymentResultClient() {
 
       if (data.ok && data.status === "paid" && data.redeemCode) {
         setSyncStatus("synced");
-        // 更新 order 以顯示成功畫面（再拉一次 order-status 取完整資料）
+        // 先把 redeemCode 直接寫進 state，立即顯示成功畫面
+        setOrder((prev) => ({
+          ...prev,
+          status:     "paid",
+          redeemCode: data.redeemCode ?? prev.redeemCode,
+          codeDetail: data.codeDetail ?? prev.codeDetail,
+        }));
+        // 再拉一次取完整資料（email 狀態等）
         await fetchOrder();
       } else if (data.ok && data.status === "pending") {
         setSyncStatus("still_pending");
