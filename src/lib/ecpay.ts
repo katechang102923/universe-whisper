@@ -21,8 +21,14 @@ export function getEcpayCheckoutUrl(): string {
 
 /**
  * 依 ECPAY_STAGE 回傳對應的 credentials。
- * Stage=true：優先使用環境變數，若未設定則 fallback 到公開測試值。
- * Stage=false：直接使用環境變數（若缺失回傳 undefined）。
+ *
+ * Stage=true：
+ *   永遠使用 ECPay 官方公開測試帳號（hardcode）。
+ *   完全不讀取 ECPAY_MERCHANT_ID / ECPAY_HASH_KEY / ECPAY_HASH_IV 環境變數，
+ *   防止 Vercel 同時存在正式帳號設定時混用，造成 CheckMacValue Error。
+ *
+ * Stage=false：
+ *   使用正式環境變數（若缺失回傳 undefined，呼叫端自行錯誤處理）。
  */
 export function getEcpayCredentials(): {
   merchantId: string | undefined;
@@ -33,21 +39,20 @@ export function getEcpayCredentials(): {
   const isStage = process.env.ECPAY_STAGE === "true";
 
   if (isStage) {
-    const merchantId = process.env.ECPAY_MERCHANT_ID ?? ECPAY_TEST_MERCHANT_ID;
-    const hashKey    = process.env.ECPAY_HASH_KEY    ?? ECPAY_TEST_HASH_KEY;
-    const hashIV     = process.env.ECPAY_HASH_IV     ?? ECPAY_TEST_HASH_IV;
-
-    // 偵測 stage 模式卻帶入正式商家 ID，可能造成 CheckMacValue 錯誤
-    if (merchantId !== ECPAY_TEST_MERCHANT_ID) {
-      console.warn(
-        "[ECPay] ⚠ ECPAY_STAGE=true 但 ECPAY_MERCHANT_ID 不是測試帳號 3002607，" +
-        "可能會導致 CheckMacValue Error。請確認 Vercel 環境變數。",
-      );
-    }
-
-    return { merchantId, hashKey, hashIV, isStage: true };
+    // ⚠ 測試模式：永遠使用硬編碼的官方測試帳號，絕對不讀取正式環境變數
+    console.log(
+      "[ECPay] Stage 模式 — 使用官方測試帳號 MerchantID=3002607，" +
+      "URL=payment-stage.ecpay.com.tw",
+    );
+    return {
+      merchantId: ECPAY_TEST_MERCHANT_ID,  // "3002607"
+      hashKey:    ECPAY_TEST_HASH_KEY,      // "pwFHCqoQZGmho4w6"
+      hashIV:     ECPAY_TEST_HASH_IV,       // "EkRm7iFT261dpevs"
+      isStage:    true,
+    };
   }
 
+  // 正式模式：讀取正式環境變數
   return {
     merchantId: process.env.ECPAY_MERCHANT_ID,
     hashKey:    process.env.ECPAY_HASH_KEY,

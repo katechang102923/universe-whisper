@@ -287,32 +287,39 @@ export default function PaymentResultClient() {
         <section className="mx-auto w-full max-w-md py-20 text-center">
           <div className="mx-auto mb-6 h-10 w-10 animate-spin rounded-full border-2 border-lavender/30 border-t-lavender" />
           <h1 className="text-xl font-semibold text-moon">
-            {isPhase2 ? "系統正在準備通行碼" : "付款確認中"}
+            付款確認中
           </h1>
           <p className="mt-3 text-sm leading-7 text-moon/55">
             {isPhase2
-              ? "付款已完成，系統正在準備通行碼，請稍候。"
-              : "付款確認中，正在產生通行碼。"}
+              ? "正在向綠界確認付款結果，請稍候…"
+              : "付款結果確認中，請稍候。"}
           </p>
         </section>
       </AppShell>
     );
   }
 
-  // ── 60 秒後 pending / paid 無碼 超時：補救畫面 ───────────────────────────
+  // ── polling 結束 / paid 無碼：補救畫面 ──────────────────────────────────
+  // 注意：status=pending 代表後端尚未確認付款，不可顯示「付款已完成」。
+  // 只有 status=paid（後端已收 RtnCode=1 並更新 Firestore）才可顯示付款確認。
 
   if ((order.status === "loading" || order.status === "pending" || isPaidNoCode) && pollStopped) {
+    const isPaid = isPaidNoCode; // true = 後端已確認 paid，false = 仍 pending/loading
+
     return (
       <AppShell>
         <section className="mx-auto w-full max-w-md py-12">
           <div className="text-center">
-            <p className="text-4xl">⏳</p>
+            <p className="text-4xl">{isPaid ? "✅" : "⏳"}</p>
             <h1 className="mt-4 text-xl font-semibold text-moon">
-              付款已完成，但通行碼尚未產生
+              {isPaid
+                ? "付款已確認，通行碼產生中"
+                : "確認付款狀態中"}
             </h1>
             <p className="mt-3 text-sm leading-7 text-moon/60">
-              你的付款可能已成功，但系統尚未收到綠界通知。<br />
-              請點下方按鈕重新同步付款狀態，若仍未成功，請聯繫客服協助補發。
+              {isPaid
+                ? <>系統已收到付款，正在產生通行碼。<br />請點下方按鈕立即同步。</>
+                : <>系統尚未收到付款確認，可能是網路延遲。<br />請點下方按鈕查詢付款狀態，若已完成刷卡，通常幾秒內可完成。</>}
             </p>
           </div>
 

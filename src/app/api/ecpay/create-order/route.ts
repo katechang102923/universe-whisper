@@ -87,64 +87,73 @@ export async function POST(req: NextRequest) {
       isTest,
     });
 
-    // ── 組 ECPay AioCheckOut 參數 ─────────────────────────────────────────────
+    // ── 組 ECPay AioCheckOut 參數（用於簽章的 params 與 form submit 的完全一致）──
+    // ① 先組好所有欄位（不含 CheckMacValue）
+    // ② 計算 CheckMacValue
+    // ③ 把 CheckMacValue 加入（這之後不再修改任何欄位）
+    // ④ 回傳給前端 hidden form submit
+    //
     // OrderResultURL 必須是 API route（支援 POST），不可直接指向 Next.js page。
     // 使用者刷卡後，綠界會 POST 到 OrderResultURL，我們再 303 redirect 到 /payment/result。
-    const ecpayParams: Record<string, string> = {
+    const paramsForSign: Record<string, string> = {
       MerchantID:        merchantId,
       MerchantTradeNo:   merchantTradeNo,
       MerchantTradeDate: tradeDate,
       PaymentType:       "aio",
-      TotalAmount:       String(plan.price),
-      TradeDesc:         "Universe Whisper Pass",       // ASCII only，避免編碼不一致
+      TotalAmount:       String(plan.price),   // 整數字串，無小數
+      TradeDesc:         "Universe Whisper Pass",       // ASCII only
       ItemName:          `${plan.displayName} x1`,
-      ReturnURL:         `${siteUrl}/api/ecpay/return`, // server-to-server 通知
-      OrderResultURL:    `${siteUrl}/api/ecpay/order-result`, // 使用者瀏覽器付款後 POST 到這裡
+      ReturnURL:         `${siteUrl}/api/ecpay/return`,
+      OrderResultURL:    `${siteUrl}/api/ecpay/order-result`,
       ClientBackURL:     `${siteUrl}/payment/result?merchantTradeNo=${merchantTradeNo}`,
       ChoosePayment:     "Credit",
-      EncryptType:       "1",
+      EncryptType:       "1",   // SHA-256，必須參與 CheckMacValue 計算
       NeedExtraPaidInfo: "Y",
     };
 
-    // CheckMacValue 在 server 端產生，不回傳給前端
-    const checkMacValue = generateCheckMacValue(ecpayParams, hashKey, hashIV);
-    ecpayParams.CheckMacValue = checkMacValue;
+    // ② 計算簽章（CheckMacValue 本身不參與計算）
+    const checkMacValue = generateCheckMacValue(paramsForSign, hashKey, hashIV);
+
+    // ③ 把 CheckMacValue 加入 — 之後不再修改任何欄位
+    const ecpayParams: Record<string, string> = {
+      ...paramsForSign,
+      CheckMacValue: checkMacValue,
+    };
 
     const actionUrl = getEcpayCheckoutUrl();
 
-    // ── 安全除錯 log（不印 HashKey / HashIV）─────────────────────────────────
+    // ── 安全除錯 log（絕對不印 HashKey / HashIV 明文）────────────────────────
     console.log("[ECPay create-order]", {
       stage:          isStage,
       actionUrl,
       merchantId,
       merchantTradeNo,
-      totalAmount:    ecpayParams.TotalAmount,
-      choosePayment:  ecpayParams.ChoosePayment,
-      itemName:       ecpayParams.ItemName,
-      tradeDesc:      ecpayParams.TradeDesc,
+      totalAmount:    paramsForSign.TotalAmount,
+      itemName:       paramsForSign.ItemName,
+      tradeDesc:      paramsForSign.TradeDesc,
       hasHashKey:     Boolean(hashKey),
       hasHashIV:      Boolean(hashIV),
+      // 列出所有送出的 key（含 CheckMacValue），方便核對是否有多餘/缺少欄位
       paramKeys:      Object.keys(ecpayParams).sort(),
     });
 
-    // 開發環境或啟用 ECPAY_DEBUG 時，印出遮罩後的簽章字串輔助除錯
-    if (process.env.NODE_ENV === "development" || process.env.ECPAY_DEBUG === "true") {
-      // 用 *** 遮罩 HashKey / HashIV，只顯示前 4 碼
-      const maskedKey = hashKey.slice(0, 4) + "***";
-      const maskedIV  = hashIV.slice(0, 4)  + "***";
-      const { CheckMacValue: _cmv, ...debugParams } = ecpayParams;
-      const sorted = Object.keys(debugParams)
+    // ECPAY_DEBUG=true 時額外印出遮罩後的簽章原文，方便與綠界 log 比對
+    if (process.env.ECPAY_DEBUG === "true") {
+      const maskedKey = hashKey.slice(0, 4) + "****";
+      const maskedIV  = hashIV.slice(0, 4)  + "****";
+      const sortedPairs = Object.keys(paramsForSign)
         .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
-        .map((k) => `${k}=${debugParams[k]}`)
+        .map((k) => `${k}=${paramsForSign[k]}`)
         .join("&");
-      const rawMasked = `HashKey=${maskedKey}&${sorted}&HashIV=${maskedIV}`;
-      console.log("[ECPay create-order debug] raw (masked):", rawMasked.slice(0, 300) + "…");
+      const rawMasked = `HashKey=${maskedKey}&${sortedPairs}&HashIV=${maskedIV}`;
+      console.log("[ECPay create-order ECPAY_DEBUG] raw string (masked):", rawMasked.slice(0, 400));
+      console.log("[ECPay create-order ECPAY_DEBUG] checkMacValue:", checkMacValue);
     }
 
     return NextResponse.json({
       ok:               true,
       actionUrl,
-      params:           ecpayParams,
+      params:           ecpayParams,   // ④ 前端 hidden form 原封不動 submit 這些欄位
       merchantTradeNo,
     });
   } catch (err) {
