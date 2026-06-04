@@ -534,24 +534,31 @@ export function DailyFortuneClient() {
           14 px inset padding  → image doesn't touch the rounded border.
           Always rendered      → no layout shift when a sign is first picked.
           ─────────────────────────────────────────────────────────────────── */}
+        {/*
+          Zodiac image card — outer wrapper is a fixed-size frame.
+          Background is transparent so no grey/dark fill bleeds around the image.
+          Inner image uses inset + contain so it never touches the border edge.
+        */}
         <div
           className="mx-auto"
           style={{
-            width: "min(92vw, 320px)",
-            aspectRatio: "2 / 3",          // 320 × 480 px on desktop
+            width: "min(92vw, 300px)",
+            aspectRatio: "2 / 3",
             marginTop: 24,
             borderRadius: 28,
             overflow: "hidden",
-            position: "relative",           // anchor for absolute children
+            position: "relative",
             flexShrink: 0,
-            background: "linear-gradient(135deg,#1a0e2e 0%,#0a1028 100%)",
-            border: "1px solid rgba(255,255,255,0.14)",
-            boxShadow: selectedSlug ? "0 0 20px rgba(0,0,0,0.28)" : "none",
+            background: "transparent",
+            border: "1px solid rgba(255,255,255,0.12)",
+            boxShadow: selectedSlug
+              ? "0 0 28px rgba(109,77,242,0.18), 0 0 12px rgba(216,189,112,0.10)"
+              : "none",
             transition: "box-shadow 0.25s ease",
           }}
         >
           {!selectedSlug ? (
-            /* Empty state: same-size placeholder with a faint star */
+            /* Empty state */
             <div className="absolute inset-0 flex items-center justify-center" aria-hidden="true">
               <span className="text-5xl text-moon/10">✦</span>
             </div>
@@ -562,6 +569,7 @@ export function DailyFortuneClient() {
                 <div
                   className="absolute inset-0 animate-pulse"
                   style={{
+                    borderRadius: 26,
                     background:
                       "linear-gradient(135deg,rgba(203,184,255,0.06) 0%,rgba(216,189,112,0.08) 50%,rgba(203,184,255,0.06) 100%)",
                   }}
@@ -570,9 +578,9 @@ export function DailyFortuneClient() {
               )}
 
               {/*
-                Image: 14 px from every edge (position absolute with inset).
-                object-fit: contain  → always fully visible, centred, no crop.
-                border-radius: 20px  → soft corners matching the frame.
+                Image: 10 px inset from every edge so the picture never
+                touches the rounded border. object-fit:contain keeps the full
+                artwork visible without cropping or grey letterbox from cover.
               */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
@@ -589,15 +597,16 @@ export function DailyFortuneClient() {
                 style={{
                   display: "block",
                   position: "absolute",
-                  top: 0,
-                  right: 0,
-                  bottom: 0,
-                  left: 0,
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "cover",
-                  objectPosition: "center top",
-                  borderRadius: 28,
+                  top: 10,
+                  right: 10,
+                  bottom: 10,
+                  left: 10,
+                  width: "calc(100% - 20px)",
+                  height: "calc(100% - 20px)",
+                  objectFit: "contain",
+                  objectPosition: "center center",
+                  background: "transparent",
+                  borderRadius: 20,
                   opacity: loadedSlugs.has(selectedSlug) ? 1 : 0,
                   transition: "opacity 0.28s ease",
                 }}
