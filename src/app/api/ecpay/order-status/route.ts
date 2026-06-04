@@ -105,8 +105,10 @@ export async function GET(req: NextRequest) {
       rtnCode:          data.rtnCode ?? null,
       rtnMsg:           data.rtnMsg ?? null,
       tradeAmt:         data.tradeAmt ?? null,
-      // Email 相關（遮罩 Email 位址）
+      // Email 相關
+      // buyerEmail 遮罩後僅供顯示；實際寄送由 server API 從 Firestore 取真實 email
       buyerEmail:       maskEmail(data.buyerEmail),
+      hasBuyerEmail:    Boolean(data.buyerEmail),
       emailSent:        data.emailSent ?? false,
       emailSentAt:      toIso(data.emailSentAt),
       emailError:       data.emailError ?? null,

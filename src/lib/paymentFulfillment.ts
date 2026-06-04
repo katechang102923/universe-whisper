@@ -22,6 +22,7 @@ import {
   generateRedeemCode,
   type RedeemPlan,
 } from "@/lib/redeemCodes";
+import { sendRedeemCodeEmail } from "@/lib/sendRedeemCodeEmail";
 
 // ── 型別 ──────────────────────────────────────────────────────────────────────
 
@@ -54,12 +55,6 @@ const PLAN_NAME_MAP: Record<string, RedeemPlan> = {
   "宇宙通行碼 十次": "ten_pack",
 };
 
-const SITE_URL = (
-  process.env.NEXT_PUBLIC_SITE_URL ||
-  process.env.NEXT_PUBLIC_APP_URL ||
-  "https://universe-whisper.vercel.app"
-).replace(/\/$/, "");
-
 // ── 工具函式 ──────────────────────────────────────────────────────────────────
 
 function resolvePlanName(planId?: string, planName?: string): RedeemPlan {
@@ -80,135 +75,29 @@ function resolveTimestamp(v: unknown): Date | null {
   return null;
 }
 
-// ── Email 直接呼叫 Resend API（不透過自我 HTTP，避免 Vercel 冷啟動延遲） ─────
+// ── Email 寄送（使用共用工具函式） ───────────────────────────────────────────
 
 async function sendRedeemEmailDirect(opts: {
-  email:        string;
-  code:         string;
-  planName:     RedeemPlan;
-  displayName:  string;
-  totalUses:    number;
+  email:         string;
+  code:          string;
+  planName:      RedeemPlan;
+  displayName:   string;
+  totalUses:     number;
   remainingUses: number;
-  expiresAt:    Date;
+  expiresAt:     Date;
 }): Promise<{ emailSent: boolean; emailError?: string }> {
-  const apiKey   = process.env.RESEND_API_KEY;
-  const fromAddr = process.env.EMAIL_FROM || "宇宙偷偷話 <noreply@universewhisper.com>";
-
-  if (!apiKey) {
-    return { emailSent: false, emailError: "RESEND_API_KEY 未設定" };
-  }
-
-  const expiryStr = opts.expiresAt.toLocaleDateString("zh-TW", {
-    year: "numeric", month: "long", day: "numeric",
+  const result = await sendRedeemCodeEmail({
+    to:            opts.email,
+    code:          opts.code,
+    displayName:   opts.displayName,
+    totalUses:     opts.totalUses,
+    remainingUses: opts.remainingUses,
+    expiresAt:     opts.expiresAt,
   });
-
-  const html = `<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>你的宇宙通行碼</title>
-</head>
-<body style="background:#0d0d1a;color:#e8e0f0;font-family:'Helvetica Neue',Arial,sans-serif;margin:0;padding:0;">
-  <div style="max-width:600px;margin:0 auto;padding:40px 24px;">
-    <p style="font-size:11px;letter-spacing:0.3em;color:#9b8fd4;text-transform:uppercase;margin:0 0 28px;">
-      宇宙偷偷話 · Universe Whisper
-    </p>
-    <h1 style="font-size:26px;font-weight:600;color:#f0eaff;margin:0 0 6px;">購買成功！你的宇宙通行碼</h1>
-    <p style="font-size:13px;color:#7a6fa0;margin:0 0 36px;">請妥善保存此通行碼，不綁帳號，可自行使用或分享。</p>
-
-    <div style="background:rgba(216,189,112,0.08);border:1.5px solid rgba(216,189,112,0.35);border-radius:16px;padding:28px 24px;text-align:center;margin-bottom:28px;">
-      <p style="font-size:11px;letter-spacing:0.3em;color:#d8bd70;text-transform:uppercase;margin:0 0 12px;">宇宙通行碼</p>
-      <p style="font-family:monospace;font-size:28px;font-weight:700;letter-spacing:0.18em;color:#d8bd70;margin:0 0 20px;">${opts.code}</p>
-      <table style="width:100%;border-collapse:collapse;text-align:left;">
-        <tr><td style="padding:5px 0;font-size:13px;color:#9b8fd4;width:45%;">方案</td><td style="padding:5px 0;font-size:13px;color:#e8e0f0;">${opts.displayName}</td></tr>
-        <tr><td style="padding:5px 0;font-size:13px;color:#9b8fd4;">可用次數</td><td style="padding:5px 0;font-size:13px;color:#e8e0f0;">${opts.totalUses} 次</td></tr>
-        <tr><td style="padding:5px 0;font-size:13px;color:#9b8fd4;">有效期限</td><td style="padding:5px 0;font-size:13px;color:#e8e0f0;">${expiryStr} 前</td></tr>
-      </table>
-    </div>
-
-    <div style="background:rgba(155,143,212,0.07);border:1px solid rgba(155,143,212,0.16);border-radius:14px;padding:20px 22px;margin-bottom:24px;">
-      <p style="font-size:11px;letter-spacing:0.22em;color:#9b8fd4;margin:0 0 10px;text-transform:uppercase;">使用方式</p>
-      <ol style="font-size:14px;line-height:1.9;color:#e8e0f0;margin:0;padding-left:20px;">
-        <li>回到宇宙偷偷話網站</li>
-        <li>進入塔羅抽牌頁</li>
-        <li>在「已有宇宙通行碼？」欄位輸入此通行碼</li>
-        <li>啟用後即可抽牌，每次扣除 1 次</li>
-      </ol>
-    </div>
-
-    <div style="text-align:center;margin:28px 0;">
-      <a href="${SITE_URL}/redeem/check?code=${encodeURIComponent(opts.code)}"
-         style="display:inline-block;background:#d8bd70;color:#1a0e2e;text-decoration:none;padding:13px 32px;border-radius:100px;font-size:14px;font-weight:600;">
-        查詢剩餘次數
-      </a>
-    </div>
-
-    <div style="border-top:1px solid rgba(255,255,255,0.08);padding-top:20px;">
-      <p style="font-size:12px;color:#6a5f88;line-height:1.9;margin:0;">
-        · 此通行碼不綁帳號，可自行使用，也可分享給朋友。<br/>
-        · 如有問題，請聯繫 <a href="mailto:ciut0000@gmail.com" style="color:#9b8fd4;">ciut0000@gmail.com</a>
-      </p>
-    </div>
-    <p style="margin-top:32px;font-size:12px;color:#4a4265;text-align:center;">
-      宇宙偷偷話 · Universe Whisper<br/>此信件由系統自動發送。
-    </p>
-  </div>
-</body>
-</html>`;
-
-  const text = [
-    "宇宙偷偷話｜你的宇宙通行碼",
-    "",
-    "購買成功！",
-    `你的宇宙通行碼：${opts.code}`,
-    "",
-    `方案：${opts.displayName}`,
-    `可用次數：${opts.totalUses} 次`,
-    `有效期限：${expiryStr} 前`,
-    "",
-    "【使用方式】",
-    "1. 回到宇宙偷偷話網站",
-    "2. 進入塔羅抽牌頁",
-    "3. 在「已有宇宙通行碼？」欄位輸入此通行碼",
-    "4. 啟用後即可抽牌，每次扣除 1 次",
-    "",
-    `查詢剩餘次數：${SITE_URL}/redeem/check?code=${encodeURIComponent(opts.code)}`,
-    "",
-    "· 此通行碼不綁帳號，可自行使用，也可分享給朋友。",
-    "· 如有問題，請聯繫 ciut0000@gmail.com",
-  ].join("\n");
-
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method:  "POST",
-      headers: {
-        Authorization:  `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from:    fromAddr,
-        to:      [opts.email],
-        subject: "宇宙偷偷話｜你的宇宙通行碼",
-        html,
-        text,
-      }),
-    });
-
-    if (!res.ok) {
-      const errText = await res.text().catch(() => "");
-      const msg = `Resend HTTP ${res.status}: ${errText.slice(0, 200)}`;
-      console.error("[ECPay Fulfillment] email failed", msg);
-      return { emailSent: false, emailError: msg };
-    }
-
-    console.log("[ECPay Fulfillment] email sent", { email: opts.email, code: opts.code });
-    return { emailSent: true };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error("[ECPay Fulfillment] email exception", msg);
-    return { emailSent: false, emailError: msg.slice(0, 200) };
-  }
+  return {
+    emailSent:  result.ok,
+    emailError: result.ok ? undefined : result.errorMsg,
+  };
 }
 
 // ── 主函式 ────────────────────────────────────────────────────────────────────

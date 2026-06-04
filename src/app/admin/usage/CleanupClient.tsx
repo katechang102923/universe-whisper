@@ -2,96 +2,165 @@
 
 import { useState } from "react";
 
+// ── 測試清理 ──────────────────────────────────────────────────────────────────
+
 type CleanupType = "test_codes" | "test_orders" | "admin_codes";
 
 interface CleanupTask {
-  type: CleanupType;
-  label: string;
+  type:        CleanupType;
+  label:       string;
   description: string;
   confirmText: string;
-  safeNote: string;
+  safeNote:    string;
 }
 
 const TASKS: CleanupTask[] = [
   {
-    type: "admin_codes",
-    label: "刪除後台建立的測試通行碼",
+    type:        "admin_codes",
+    label:       "刪除後台建立的測試通行碼",
     description: "刪除所有 source = manual_admin 且沒有正式付款資料的通行碼",
     confirmText: "你確定要刪除後台建立的測試通行碼嗎？",
-    safeNote: "此操作不會刪除綠界付款產生的正式通行碼（有 MerchantTradeNo / buyerEmail 的資料會被保留）。",
+    safeNote:    "此操作不會刪除綠界付款產生的正式通行碼（有 MerchantTradeNo / buyerEmail 的資料會被保留）。",
   },
   {
-    type: "test_codes",
-    label: "刪除測試通行碼（isTest）",
+    type:        "test_codes",
+    label:       "刪除測試通行碼（isTest）",
     description: "刪除所有 isTest = true 的通行碼資料",
     confirmText: "確定刪除所有 isTest = true 的通行碼？",
-    safeNote: "此操作只會刪除標記為測試的資料，刪除後無法復原。",
+    safeNote:    "此操作只會刪除標記為測試的資料，刪除後無法復原。",
   },
   {
-    type: "test_orders",
-    label: "刪除測試付款訂單",
+    type:        "test_orders",
+    label:       "刪除測試付款訂單",
     description: "刪除所有 isTest = true 的付款訂單資料",
     confirmText: "確定刪除所有 isTest = true 的付款訂單？",
-    safeNote: "此操作只會刪除標記為測試的訂單資料，正式付款訂單不受影響。",
+    safeNote:    "此操作只會刪除標記為測試的訂單資料，正式付款訂單不受影響。",
   },
 ];
 
 interface TaskState {
   confirming: boolean;
-  loading: boolean;
-  result: { deleted: number } | null;
-  error: string | null;
+  loading:    boolean;
+  result:     { deleted: number } | null;
+  error:      string | null;
 }
+
+// ── 測試 Email 元件 ───────────────────────────────────────────────────────────
+
+function TestEmailSection() {
+  const [testEmail,  setTestEmail]  = useState("");
+  const [testStatus, setTestStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [testMsg,    setTestMsg]    = useState("");
+
+  async function sendTestEmail() {
+    if (testStatus === "sending") return;
+    const trimmed = testEmail.trim();
+    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      setTestMsg("請輸入正確的 Email 格式。");
+      return;
+    }
+    setTestStatus("sending");
+    setTestMsg("");
+    try {
+      const res  = await fetch("/api/admin/test-email", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ email: trimmed }),
+      });
+      const data = (await res.json()) as { ok: boolean; message?: string; errorCode?: string };
+      if (data.ok) {
+        setTestStatus("sent");
+        setTestMsg(data.message ?? `測試信已寄出到 ${trimmed}，請到信箱確認。`);
+      } else {
+        setTestStatus("error");
+        setTestMsg(data.message ?? "寄送失敗，請查看 Vercel Logs。");
+      }
+    } catch {
+      setTestStatus("error");
+      setTestMsg("網路錯誤，請稍後再試。");
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-lavender/20 bg-lavender/6 p-5">
+      <p className="font-medium text-moon">📧 測試 Email 寄送</p>
+      <p className="mt-0.5 text-xs text-moon/50">
+        確認 RESEND_API_KEY 與 EMAIL_FROM 設定是否正確，寄一封測試通行碼信。
+      </p>
+
+      <div className="mt-4 space-y-2">
+        <input
+          type="email"
+          value={testEmail}
+          onChange={(e) => { setTestEmail(e.target.value); setTestMsg(""); }}
+          onKeyDown={(e) => e.key === "Enter" && void sendTestEmail()}
+          placeholder="請輸入你的 Email"
+          className="w-full rounded-xl border border-white/14 bg-white/6 px-4 py-2.5 text-sm text-moon placeholder-moon/30 outline-none transition focus:border-lavender/40"
+          disabled={testStatus === "sending"}
+        />
+
+        <button
+          onClick={() => void sendTestEmail()}
+          disabled={testStatus === "sending" || !testEmail.trim()}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-lavender/20 px-4 py-2.5 text-sm font-medium text-lavender transition hover:bg-lavender/30 disabled:opacity-50"
+        >
+          {testStatus === "sending" ? (
+            <><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-lavender/40 border-t-lavender"/>寄送中…</>
+          ) : "寄送測試 Email"}
+        </button>
+
+        {testMsg && (
+          <p className={`text-xs ${testStatus === "error" ? "text-red-300/80" : "text-aurora"}`}>
+            {testStatus === "sent" ? "✓ " : testStatus === "error" ? "✕ " : ""}{testMsg}
+          </p>
+        )}
+      </div>
+
+      <div className="mt-3 rounded-xl border border-white/8 bg-white/4 px-3 py-2 text-xs text-moon/40 space-y-1">
+        <p>寄送失敗請到 Vercel Dashboard → Logs 查看以下關鍵字：</p>
+        <p className="font-mono text-moon/55">[Email] Missing env / [Email] resend failed</p>
+        <p>確認 <span className="font-mono">RESEND_API_KEY</span> 已設定，且 <span className="font-mono">EMAIL_FROM</span> 網域已在 Resend 驗證。</p>
+      </div>
+    </div>
+  );
+}
+
+// ── 主元件 ────────────────────────────────────────────────────────────────────
 
 export function CleanupClient() {
   const [states, setStates] = useState<Record<CleanupType, TaskState>>({
     admin_codes: { confirming: false, loading: false, result: null, error: null },
-    test_codes: { confirming: false, loading: false, result: null, error: null },
+    test_codes:  { confirming: false, loading: false, result: null, error: null },
     test_orders: { confirming: false, loading: false, result: null, error: null },
   });
 
   function startConfirm(type: CleanupType) {
-    setStates((prev) => ({
-      ...prev,
-      [type]: { ...prev[type], confirming: true, result: null, error: null },
-    }));
+    setStates((prev) => ({ ...prev, [type]: { ...prev[type], confirming: true, result: null, error: null } }));
   }
-
   function cancelConfirm(type: CleanupType) {
-    setStates((prev) => ({
-      ...prev,
-      [type]: { ...prev[type], confirming: false },
-    }));
+    setStates((prev) => ({ ...prev, [type]: { ...prev[type], confirming: false } }));
   }
 
   async function doDelete(type: CleanupType) {
-    setStates((prev) => ({
-      ...prev,
-      [type]: { ...prev[type], loading: true, confirming: false, error: null },
-    }));
-
+    setStates((prev) => ({ ...prev, [type]: { ...prev[type], loading: true, confirming: false, error: null } }));
     try {
-      const res = await fetch(`/api/admin/cleanup?type=${type}`, { method: "DELETE" });
+      const res  = await fetch(`/api/admin/cleanup?type=${type}`, { method: "DELETE" });
       const data = (await res.json()) as { ok: boolean; deleted?: number; error?: string };
       if (!data.ok) throw new Error(data.error ?? "刪除失敗");
-      setStates((prev) => ({
-        ...prev,
-        [type]: { ...prev[type], loading: false, result: { deleted: data.deleted ?? 0 } },
-      }));
+      setStates((prev) => ({ ...prev, [type]: { ...prev[type], loading: false, result: { deleted: data.deleted ?? 0 } } }));
     } catch (err) {
       setStates((prev) => ({
         ...prev,
-        [type]: {
-          ...prev[type],
-          loading: false,
-          error: err instanceof Error ? err.message : "刪除失敗",
-        },
+        [type]: { ...prev[type], loading: false, error: err instanceof Error ? err.message : "刪除失敗" },
       }));
     }
   }
 
   return (
     <div className="space-y-4">
+      {/* 測試 Email 功能 */}
+      <TestEmailSection />
+
       {/* 警告說明 */}
       <div className="rounded-2xl border border-amber-400/20 bg-amber-400/6 p-4 text-sm text-amber-200/80">
         <span className="font-semibold text-amber-300">注意：</span>
@@ -101,64 +170,39 @@ export function CleanupClient() {
       {TASKS.map((task) => {
         const s = states[task.type];
         return (
-          <div
-            key={task.type}
-            className="rounded-2xl border border-white/10 bg-midnight/50 p-5"
-          >
+          <div key={task.type} className="rounded-2xl border border-white/10 bg-midnight/50 p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="font-medium text-moon">{task.label}</p>
                 <p className="mt-0.5 text-xs text-moon/50">{task.description}</p>
               </div>
-
-              {/* 狀態顯示 */}
               {s.result && (
-                <span className="rounded-full bg-aurora/14 px-3 py-1 text-xs text-aurora">
-                  已刪除 {s.result.deleted} 筆
-                </span>
+                <span className="rounded-full bg-aurora/14 px-3 py-1 text-xs text-aurora">已刪除 {s.result.deleted} 筆</span>
               )}
               {s.error && (
-                <span className="rounded-full bg-red-500/14 px-3 py-1 text-xs text-red-300">
-                  {s.error}
-                </span>
+                <span className="rounded-full bg-red-500/14 px-3 py-1 text-xs text-red-300">{s.error}</span>
               )}
-
-              {/* 按鈕區 */}
               {!s.confirming && !s.loading && (
-                <button
-                  type="button"
-                  onClick={() => startConfirm(task.type)}
-                  className="rounded-full border border-red-500/30 bg-red-500/8 px-4 py-2 text-xs text-red-300 transition hover:bg-red-500/16"
-                >
+                <button type="button" onClick={() => startConfirm(task.type)}
+                  className="rounded-full border border-red-500/30 bg-red-500/8 px-4 py-2 text-xs text-red-300 transition hover:bg-red-500/16">
                   刪除測試資料
                 </button>
               )}
-
               {s.loading && (
-                <span className="rounded-full border border-white/12 bg-white/6 px-4 py-2 text-xs text-moon/50">
-                  刪除中…
-                </span>
+                <span className="rounded-full border border-white/12 bg-white/6 px-4 py-2 text-xs text-moon/50">刪除中…</span>
               )}
             </div>
-
-            {/* 確認框 */}
             {s.confirming && (
               <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/6 p-4">
                 <p className="text-sm font-semibold text-red-300">{task.confirmText}</p>
                 <p className="mt-1 text-xs text-moon/60">{task.safeNote}</p>
                 <div className="mt-3 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => cancelConfirm(task.type)}
-                    className="rounded-full border border-white/12 bg-white/6 px-4 py-1.5 text-xs text-moon/70 transition hover:bg-white/10"
-                  >
+                  <button type="button" onClick={() => cancelConfirm(task.type)}
+                    className="rounded-full border border-white/12 bg-white/6 px-4 py-1.5 text-xs text-moon/70 transition hover:bg-white/10">
                     取消
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => void doDelete(task.type)}
-                    className="rounded-full bg-red-500/80 px-4 py-1.5 text-xs text-white transition hover:bg-red-500"
-                  >
+                  <button type="button" onClick={() => void doDelete(task.type)}
+                    className="rounded-full bg-red-500/80 px-4 py-1.5 text-xs text-white transition hover:bg-red-500">
                     確定刪除
                   </button>
                 </div>
