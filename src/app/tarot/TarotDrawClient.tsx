@@ -30,6 +30,17 @@ const ANON_ID_STORAGE_KEY = "cosmic_anon_id";
 const FB_SHARE_UNLOCK_STORAGE_KEY = "cosmic_fb_unlock_date";
 const LINE_CONNECT_MESSAGE_KEY = "line-connect-message-payload";
 const PAID_RESULT_STORAGE_KEY = "universeWhisper:lastPaidTarotResult";
+const TAROT_PENDING_PAYMENT_KEY = "tarotPendingPayment";
+
+type TarotPendingPayment = {
+  question: string;
+  topic: TarotTopicOption;
+  mode: string;
+  resultId?: string;
+  cards?: TarotCardFaceData[];
+  paymentPurpose: "tarot_single_draw" | "tarot_unlock_full";
+  createdAt: number;
+};
 const LINE_OA_ID = process.env.NEXT_PUBLIC_LINE_OA_ID ?? "453gfmok";
 /** LINE App deep link — 手機有安裝 LINE 時直接跳 App */
 const LINE_DEEP_LINK = "line://ti/p/@453gfmok";
@@ -2036,6 +2047,78 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
     } catch { /* ignore */ }
   }, []);
 
+  // 付款成功返回時，自動還原單次方案的抽牌暫存資料
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const codeParam = params.get("code");
+      if (!codeParam) return;
+
+      const raw = window.localStorage.getItem(TAROT_PENDING_PAYMENT_KEY);
+      if (!raw) return;
+
+      const pending = JSON.parse(raw) as TarotPendingPayment;
+      // 超過 2 小時視為失效
+      if (Date.now() - pending.createdAt > 2 * 60 * 60 * 1000) {
+        window.localStorage.removeItem(TAROT_PENDING_PAYMENT_KEY);
+        return;
+      }
+
+      // 還原問題、分類、模式
+      if (pending.question) setQuestion(pending.question);
+      if (pending.topic) setTopic(pending.topic);
+      if (pending.mode === "three_card" || pending.mode === "single_tarot") {
+        setMode(pending.mode as (typeof modes)[number]["key"]);
+      }
+
+      if (pending.paymentPurpose === "tarot_unlock_full" && pending.resultId) {
+        // 已有結果需解鎖：還原牌組、設定狀態，自動觸發解鎖
+        if (pending.cards?.length) setCards(pending.cards);
+        setLineResultId(pending.resultId);
+        setStatus("revealed");
+        setReadingStatus("loading");
+        // 自動呼叫 validate API 解鎖完整解讀
+        void (async () => {
+          try {
+            const res = await fetch("/api/redeem/validate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                code: codeParam.trim().toUpperCase(),
+                resultId: pending.resultId,
+              }),
+            });
+            const data = (await res.json()) as {
+              ok: boolean;
+              remainingUses?: number;
+              fullText?: string;
+              errorCode?: string;
+            };
+            if (data.ok && data.fullText) {
+              setFullReading(data.fullText);
+              setPaidUnlocked(true);
+              setReadingStatus("done");
+            } else {
+              // 解鎖失敗，讓使用者手動輸入通行碼
+              setReadingStatus("done");
+              setPreDrawCode(codeParam);
+            }
+          } catch {
+            setReadingStatus("done");
+            setPreDrawCode(codeParam);
+          }
+        })();
+      } else {
+        // 尚未抽牌：預填通行碼，使用者選牌後即可抽牌
+        setPreDrawCode(codeParam);
+        preDrawCodeRef.current = codeParam;
+      }
+
+      window.localStorage.removeItem(TAROT_PENDING_PAYMENT_KEY);
+    } catch { /* ignore */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // 付費完成且解讀完成後，自動儲存至 localStorage
   useEffect(() => {
     if (!paidUnlocked || readingStatus !== "done" || !fullReading || !cards.length) return;
@@ -2948,6 +3031,22 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
       });
 
       document.body.appendChild(form);
+
+      // 單次方案：付款前儲存抽牌暫存資料，付款成功後自動接續
+      if (planKey === "single") {
+        try {
+          const pending: TarotPendingPayment = {
+            question,
+            topic,
+            mode,
+            ...(lineResultId ? { resultId: lineResultId, cards } : {}),
+            paymentPurpose: lineResultId ? "tarot_unlock_full" : "tarot_single_draw",
+            createdAt: Date.now(),
+          };
+          window.localStorage.setItem(TAROT_PENDING_PAYMENT_KEY, JSON.stringify(pending));
+        } catch { /* localStorage 不可用，靜默跳過 */ }
+      }
+
       form.submit();
       // form 送出後頁面會跳轉，不需要 cleanup
     } catch {

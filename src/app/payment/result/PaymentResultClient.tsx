@@ -97,6 +97,12 @@ export default function PaymentResultClient() {
   const [codeSaved,   setCodeSaved]   = useState(false);
   const [showUnsaved, setShowUnsaved] = useState(false);
 
+  // 單次付款塔羅接續流程
+  const [pendingTarot, setPendingTarot] = useState<{
+    paymentPurpose: "tarot_single_draw" | "tarot_unlock_full";
+    mode?: string;
+  } | null>(null);
+
   // 同步
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
   const [syncMsg,    setSyncMsg]    = useState("");
@@ -187,6 +193,21 @@ export default function PaymentResultClient() {
   useEffect(() => {
     if (order.emailSent) setCodeSaved(true);
   }, [order.emailSent]);
+
+  // 讀取塔羅抽牌暫存（單次付款接續流程用）
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("tarotPendingPayment");
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as {
+        paymentPurpose: "tarot_single_draw" | "tarot_unlock_full";
+        mode?: string;
+        createdAt?: number;
+      };
+      if (parsed.createdAt && Date.now() - parsed.createdAt > 2 * 60 * 60 * 1000) return;
+      setPendingTarot(parsed);
+    } catch { /* ignore */ }
+  }, []);
 
   useEffect(() => {
     const code = order.redeemCode ?? order.redeemCodeId ?? null;
@@ -595,16 +616,47 @@ export default function PaymentResultClient() {
         </div>
 
         {/* 行動 CTA */}
-        <div className="mt-6 space-y-3">
-          <Link href="/tarot" onClick={handleGoDrawClick}
-            className="flex w-full items-center justify-center rounded-full bg-moon px-5 py-3.5 font-semibold text-midnight transition hover:bg-white">
-            我已保存通行碼，立即抽牌
-          </Link>
-          <Link href={`/redeem/check?code=${encodeURIComponent(displayRedeemCode ?? "")}`}
-            className="flex w-full items-center justify-center rounded-full border border-white/20 px-5 py-3.5 text-sm text-moon/70 transition hover:bg-white/8">
-            查詢剩餘次數
-          </Link>
-        </div>
+        {(() => {
+          const isSinglePlan = (order.codeDetail?.totalUses ?? 0) === 1;
+          const hasPendingTarot = isSinglePlan && Boolean(pendingTarot) && Boolean(displayRedeemCode);
+          const tarotReturnHref = displayRedeemCode
+            ? `/tarot?code=${encodeURIComponent(displayRedeemCode)}${pendingTarot?.mode === "three_card" ? "&spread=three" : ""}`
+            : "/tarot";
+
+          if (hasPendingTarot) {
+            return (
+              <div className="mt-6 space-y-3">
+                <Link href={tarotReturnHref}
+                  className="flex w-full items-center justify-center rounded-full bg-moon px-5 py-3.5 font-semibold text-midnight transition hover:bg-white">
+                  {pendingTarot!.paymentPurpose === "tarot_unlock_full"
+                    ? "立即查看完整解讀"
+                    : "立即使用此通行碼抽牌"}
+                </Link>
+                <button onClick={handleCopyCode}
+                  className="flex w-full items-center justify-center gap-2 rounded-full border border-white/20 px-5 py-3.5 text-sm text-moon/70 transition hover:bg-white/8">
+                  {codeCopied ? "✓ 已複製通行碼" : "複製通行碼"}
+                </button>
+                <Link href={`/redeem/check?code=${encodeURIComponent(displayRedeemCode ?? "")}`}
+                  className="flex w-full items-center justify-center rounded-full border border-white/10 px-5 py-3 text-sm text-moon/50 transition hover:bg-white/6">
+                  查詢剩餘次數
+                </Link>
+              </div>
+            );
+          }
+
+          return (
+            <div className="mt-6 space-y-3">
+              <Link href="/tarot" onClick={handleGoDrawClick}
+                className="flex w-full items-center justify-center rounded-full bg-moon px-5 py-3.5 font-semibold text-midnight transition hover:bg-white">
+                我已保存通行碼，立即抽牌
+              </Link>
+              <Link href={`/redeem/check?code=${encodeURIComponent(displayRedeemCode ?? "")}`}
+                className="flex w-full items-center justify-center rounded-full border border-white/20 px-5 py-3.5 text-sm text-moon/70 transition hover:bg-white/8">
+                查詢剩餘次數
+              </Link>
+            </div>
+          );
+        })()}
 
         <p className="mt-8 text-center text-xs text-moon/30">
           通行碼可用來查詢剩餘次數與再次抽牌。<br/>
