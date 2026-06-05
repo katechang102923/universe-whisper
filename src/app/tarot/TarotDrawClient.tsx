@@ -3688,8 +3688,8 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
                         <CopyCodeButton
                           text={lineUnlockCode}
                           label="⎘ 複製解鎖碼"
-                          copiedLabel={}
-                          feedbackText={}
+                          copiedLabel="已複製解鎖碼"
+                          feedbackText="解鎖碼已複製，請到 LINE 官方帳號貼上後送出。"
                         />
                       </div>
                     </div>
