@@ -237,9 +237,6 @@ export function SiteNav() {
 
   return (
     <div className="relative flex items-center gap-2">
-      {/* Google Auth — 桌機 */}
-      <GoogleAuthDesktop />
-
       {/* Nav links — 桌機 */}
       <nav className="hidden items-center gap-1 text-sm text-moon/76 md:flex">
         {/* 主 CTA：立即抽牌 → /tarot#tarot-mode-select */}
@@ -374,8 +371,6 @@ export function SiteNav() {
             塔羅牌介紹
           </Link>
 
-          <div className="my-1 border-t border-white/8" />
-          <GoogleAuthMobile onClose={() => setOpen(false)} />
         </nav>
       )}
     </div>
