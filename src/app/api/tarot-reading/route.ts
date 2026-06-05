@@ -181,18 +181,64 @@ function normalizeCards(cards: unknown): TarotReadingCard[] | null {
 
 // ── 投資理財問題專用關鍵字（細分判斷）────────────────────────────────────────
 const INVESTMENT_KEYWORDS = [
-  "台股", "美股", "大盤", "股市", "股票還", "指數",
-  "0050", "00878", "00940", "00948", "00929", "00919",
+  // 市場名稱
+  "台股", "美股", "大盤", "股市", "指數", "加權指數", "加權",
+  // 股票 / ETF 通用
+  "股票", "ETF", "基金", "投資標的",
+  // 常見ETF代碼
+  "0050", "00878", "00940", "00948", "00929", "00919", "006208", "00646",
+  // 漲跌問法
   "還會漲", "還會跌", "會漲嗎", "會跌嗎", "繼續漲", "繼續跌",
-  "波段", "進場", "出場", "停損", "停利", "多頭", "空頭",
+  "會不會漲", "會不會跌", "還能漲", "還能跌",
+  // 買賣操作
+  "進場", "出場", "要不要買", "要不要賣", "可不可以買", "可以買嗎",
+  "適合買", "適合賣", "現在買", "現在賣", "買進", "賣出", "能不能買",
+  "該買", "該賣", "要賣", "要買",
+  // 技術操作
+  "停損", "停利", "加碼", "減碼", "持倉", "空手", "定期定額",
+  "波段", "多頭", "空頭",
+  // 技術分析
   "籌碼", "技術線", "支撐", "壓力", "回檔", "反彈",
-  "加碼", "減碼", "持倉", "空手", "定期定額",
+  // 加密貨幣
+  "加密貨幣", "比特幣", "以太幣", "BTC", "ETH", "幣圈", "加密",
+  // 投資風險問法
+  "適合進場", "適合出場",
 ];
 
 /** 判斷是否為投資/股市問題（finance 的子類別，需要市場導向解讀） */
 function isInvestmentQuestion(question: string): boolean {
   if (!question) return false;
   return INVESTMENT_KEYWORDS.some((k) => question.includes(k));
+}
+
+// ── 是非題 / 達標題關鍵字 ─────────────────────────────────────────────────────
+const YES_NO_KEYWORDS = [
+  // 達標類
+  "達標", "達到目標", "達成目標", "完成目標", "業績目標",
+  "業績達", "業績會", "業績能", "業績是否", "業績可以",
+  // 成功類
+  "會成功", "能成功", "成功嗎", "成功嘛", "是否成功", "可以成功", "有沒有機會成功",
+  "會不會成功", "能不能成功",
+  // 成交類
+  "會成交", "能成交", "成交嗎", "成交嘛", "是否成交", "可以成交",
+  "會不會成交", "案子能", "合約會", "合約能", "訂單會", "訂單能",
+  // 有沒有結果 / 有沒有機會
+  "有沒有結果", "有結果嗎", "會有結果", "有沒有機會", "有機會嗎",
+  "會有機會", "是否有機會", "有希望嗎", "有沒有希望",
+  // 對方回覆 / 主動類
+  "會回覆嗎", "會回嗎", "會主動嗎", "會主動聯絡", "會找我嗎", "會有消息嗎", "有消息嗎",
+  "會有消息", "他會主動", "對方會主動", "會不會主動",
+  // 考試 / 面試 / 申請類
+  "考上嗎", "錄取嗎", "上嗎", "通過嗎", "過嗎",
+  "面試會過", "面試能過", "面試通過", "會被錄取",
+  // 一般性達成問
+  "能達到", "可以達到", "做得到嗎", "做得成嗎",
+];
+
+/** 判斷是否為是非題 / 達標題（需要先給明確傾向判斷） */
+function isYesNoQuestion(question: string): boolean {
+  if (!question) return false;
+  return YES_NO_KEYWORDS.some((k) => question.includes(k));
 }
 
 const FOCUS_KEYWORDS: Record<Exclude<QuestionFocusPrimary, "general">, string[]> = {
@@ -260,34 +306,95 @@ function getTopicGuidance(topic: TarotReadingTopic, focus: QuestionFocus, questi
     case "finance":
       // ── 投資/股市問題：使用市場導向解讀 ───────────────────────────────────
       if (isInvestmentQuestion(question)) {
-        return `【投資理財強制聚焦 — 最高優先】
-使用者問的是投資/股市問題，請用「市場直觀解讀」，不要用「心靈療癒」。
+        return `【股票/投資/市場走勢 — 最高優先強制規則】
+使用者問的是股票/投資/市場問題，請用「市場直觀解讀」。
+這不是業績達標題，股市不是使用者靠行動就能直接改變的事情。
 
-解讀框架（每張牌都必須套用）：
-1. 市場情緒：這張牌代表市場情緒是樂觀、恐慌、猶豫還是轉折？
-2. 風險訊號：正位牌偏向機會，逆位牌偏向警示、風險或需等待。
-3. 操作建議：給一個具體建議（觀察、減碼、持倉、等待訊號、設停損等）。
+【第一句必須給牌面傾向判斷 — 必須使用以下詞彙之一】
+正位偏多：「牌面偏漲」「短線有支撐」「動能仍在」「市場情緒偏樂觀」
+正位偏觀望：「牌面偏觀望」「漲勢趨緩」「需等量能確認」
+逆位偏空：「牌面偏弱」「續漲力道不足」「短線容易震盪」「壓力升高」
+逆位風險：「目前不適合追高」「這張牌不支持盲目進場」「不是沒機會，但風險正在升高」
 
-overallSummary 必須直接回答使用者問題（例：台股還會繼續漲嗎？）：
-✓ 「目前市場情緒還沒完全穩定，短線有波動風險，建議先不要加碼，等訊號更明確再決定。」
-✓ 「這組牌顯示市場正在修復期，短線仍有機會，但需控制倉位，避免單押。」
+【解讀框架 — 每個欄位都必須套用】
+1. oneLineConclusion / overallSummary「整體答案」：
+   第一句必須是「牌面偏漲/偏弱/偏觀望」+ 一句具體說明
+   ✓「牌面偏弱，短線容易震盪，目前不適合追高。」
+   ✓「牌面偏觀望，漲勢趨緩，需等量能放大再確認方向。」
+   ✓「牌面偏漲，但動能不強，控制倉位比追高更重要。」
+   ✗ 不能說「停下來看清方向」「多觀察」「保持耐心」（這些是空話，不是傾向判斷）
+
+2. questionAnswer / 對你的問題代表：
+   先給傾向（偏漲/偏弱/偏觀望），再說這張牌的市場含義，再給操作參考。
+
+3. 操作建議聚焦在：
+   ✓ 不追高 / 控制部位 / 分批觀察 / 設停損停利 / 看支撐壓力 / 避免情緒交易
+   ✗ 絕對禁止業績邏輯：「主動追單」「聯絡客戶」「提高行動力」「積極開發」「努力衝刺」
+   ✗ 不給絕對承諾：「一定會漲」「一定會跌」「可以放心買」「保證獲利」「馬上賣掉」
+
+4. safetyNote 欄位必須填入以下固定文字（字完全一樣，不要改）：
+   「以上為塔羅牌面參考，不構成投資建議，實際操作仍請自行評估風險。」
 
 絕對禁止出現以下內容（整個解讀不得出現）：
 ✗ 放下執著　✗ 核心課題　✗ 內在成長　✗ 靈魂功課　✗ 宇宙安排
 ✗ 整理自己　✗ 先把心收回來　✗ 你需要好好休息　✗ 身心能量
-✗ 你現在的狀態　✗ 內在轉變　✗ 放慢腳步
+✗ 你現在的狀態　✗ 內在轉變　✗ 放慢腳步　✗ 努力就會有結果
 
-提醒文字（這張牌提醒你）必須是操作層面提醒，例如：
-✓ 「這段時間先觀察量能變化，等大盤突破壓力再考慮加碼。」
-✓ 「逆位出現代表操作上需要謹慎，先確認停損位置再進場。」`;
+【聖杯四正位在股票題的解讀示範】
+若使用者問「台股還會繼續漲嗎」且抽到聖杯四正位：
+正確示範：「這張牌給的答案偏保留。聖杯四正位不像強勢續漲的牌，代表市場熱度轉冷、追價意願下降，短線容易進入觀望或漲不太動的狀態。若問『還會不會一路漲』，這張牌偏向提醒：續漲力道不足，不適合盲目追高。」
+錯誤示範：「停下來沉澱，看清方向後再行動」（這是業績邏輯，不是股市邏輯）`;
       }
       // ── 一般財運問題 ───────────────────────────────────────────────────────
       return `【財運強制聚焦】至少 70% 內容圍繞：收入狀態、支出壓力、理財方向、投資機會/風險、現金流、財務瓶頸。
 第一個回應欄位必須直接說明近期財運走向，不可用「宇宙照顧你」「你值得被愛」取代財務分析。`;
     case "career":
+      if (isYesNoQuestion(question)) {
+        return `【工作達標/成功/成交題 — 最高優先】
+使用者問的是「會不會達標 / 成功 / 成交 / 有沒有結果」這類是非題。
+
+強制格式：
+1. oneLineConclusion 第一句必須給出明確傾向判斷，例如：
+   ✓「照目前狀態，業績達標機率偏低。」
+   ✓「這張牌給的答案偏保留：照現在這種被動等的節奏，達標機率不高。」
+   ✓「不是完全沒機會，但照目前節奏繼續，會很吃力。」
+   ✗ 不能說「停下來看清方向比繼續衝更重要」（這是迴避問題）
+   ✗ 不能說「這段時間適合沉澱」（這不是回答「會不會達標」）
+
+2. questionAnswer 必須：
+   - 先說這張牌對問題的判斷（達標機率高/中/偏低/低），直接說清楚
+   - 再說明為什麼（根據牌義：主動/被動、有方向/失焦、機會已有/尚未出現）
+   - 最後說：如果要改變這個結果，使用者需要做什麼
+
+3. 對於「被動/倦怠/錯失機會型」的牌（例如聖杯四、倒掛人、力量逆位等）在達標題出現時：
+   - 必須說明「照目前狀態機率偏低」
+   - 補充「問題不是沒機會，而是使用者對已出現的機會反應太慢」
+   - 行動建議要聚焦「整理既有名單/機會，主動跟進」而非「廣撒網衝刺」
+
+4. todayAction / actionSteps 的重點：
+   - 先整理出 3～5 個最接近成交/達標的機會，優先追進
+   - 不是叫使用者盲目衝，而是「把已有的機會接住」
+   - 避免說「更努力衝業績」這種無方向建議
+
+5. gentleReminder 要點：
+   - 不要說「休息一下很重要」（這會和判斷「需主動追」打架）
+   - 應說：你嘴上想達標，但行動上有點失焦——找回那幾個有機會的案子比廣撒網有效
+
+6. 至少 70% 內容圍繞：業績達標、成交機率、客戶跟進、具體追單行動。`;
+      }
       return `【工作強制聚焦】至少 70% 內容圍繞：工作發展機會、職場環境、離職/轉職/升遷判斷、與主管同事互動、具體行動建議。
 情緒療癒不超過 30%，不要大量討論感情。`;
     case "love":
+      if (isYesNoQuestion(question)) {
+        return `【感情是非題 — 必須先給明確傾向】
+使用者問的是「對方會不會回/主動/有沒有機會復合/會不會在一起」這類是非題。
+oneLineConclusion 第一句必須給出明確傾向，例如：
+✓「照目前狀況，對方主動回來的機率偏低。」
+✓「這張牌給的答案偏保留：對方目前沒有要主動靠近的跡象。」
+✓「有機會，但不能靠等的，需要你先給一個明確訊號。」
+不能只說「先沉澱」「觀察」「宇宙在安排」而不給判斷。
+至少 70% 內容圍繞：對方態度、關係走向、復合機率/曖昧進展、溝通問題、是否值得繼續投入。`;
+      }
       return `【感情強制聚焦】至少 70% 內容圍繞：對方態度、關係走向、復合機率/曖昧進展、溝通問題、是否值得繼續投入。
 避免整篇都是自我療癒，不回應關係問題。`;
     case "relationship":
@@ -665,7 +772,10 @@ function formatSingleCardReading(r: SingleCardReading): string {
     `🌌 給你的溫柔提醒\n\n${r.gentleReminder}`,
     `💫 一句專屬祝福\n\n${r.blessing}`,
   );
-  if (r.safetyNote) parts.push(`⚠️ 健康提醒\n\n${r.safetyNote}`);
+  if (r.safetyNote) {
+    const isInvestDisclaimer = r.safetyNote.includes("不構成投資建議");
+    parts.push(`⚠️ ${isInvestDisclaimer ? "投資聲明" : "健康提醒"}\n\n${r.safetyNote}`);
+  }
   return parts.join("\n\n");
 }
 
@@ -724,7 +834,10 @@ function formatThreeCardReading(r: ThreeCardReading): string {
   parts.push(`🌌 給你的溫柔提醒\n\n${safe.gentleReminder}`);
   parts.push(`💫 一句專屬祝福\n\n${safe.blessing}`);
 
-  if (r.safetyNote) parts.push(`⚠️ 健康提醒\n\n${r.safetyNote}`);
+  if (r.safetyNote) {
+    const isInvestDisclaimer = r.safetyNote.includes("不構成投資建議");
+    parts.push(`⚠️ ${isInvestDisclaimer ? "投資聲明" : "健康提醒"}\n\n${r.safetyNote}`);
+  }
 
   return parts.join("\n\n");
 }
@@ -764,6 +877,13 @@ function getFallbackTodayAction(focus: QuestionFocus): string {
 function getFallbackNext3To7Days(focus: QuestionFocus): string {
   switch (focus.primary) {
     case "finance":
+      if (isInvestmentQuestion(question)) {
+        return [
+          "Day 1～2｜確認停損點\n把目前持有部位的停損設好，或確認你能承受的最大損失範圍，這比預測漲跌更重要。",
+          "Day 3～4｜控制倉位\n檢視目前持倉比例，若單一標的超過總資金三到四成，考慮分批減碼到安全比例。",
+          "Day 5～7｜等量能訊號\n不要在這幾天倉促加碼或全出，先觀察成交量和大盤方向，等訊號更清楚再決定下一步。",
+        ].join("\n\n");
+      }
       return [
         "Day 1～2｜釐清收支\n把近期收支記下來，找出最大的支出項目，看清楚錢去哪裡。",
         "Day 3～4｜尋找機會\n留意有沒有可跟進的收入機會，或之前拖著沒做的財務決定（申請、詢價、整理資產）。",
@@ -806,7 +926,7 @@ function getFallbackGentleReminder(focus: QuestionFocus, question = ""): string 
   switch (focus.primary) {
     case "finance":
       if (isInvestmentQuestion(question)) {
-        return `投資市場的波動是常態，沒有人能每次都在最低點買、最高點賣。這段時間重要的是：不要讓情緒推動你的操作決定，先設好停損點，讓紀律保護你。`;
+        return `市場走勢沒有人能精準預測，塔羅給的是這個時間點的牌面傾向，不是保證。這段時間最重要的事：控制倉位，不讓單一判斷影響整體資金。情緒進場和出場是散戶最常見的虧損來源，先把停損點設好，讓紀律替你做決定。`;
       }
       return `這段時間先讓錢的流向變清楚，比急著賺更多重要。當你開始知道錢去哪裡，財務才會慢慢穩下來。財務問題很少需要大動作才能改善，有時候從一件小事開始整理，反而最有效。`;
     case "career":
@@ -837,9 +957,17 @@ function getFallbackBlessing(focus: QuestionFocus, question = ""): string {
   }
 }
 
-function getHealthSafetyNote(focus: QuestionFocus): string {
-  if (focus.primary !== "health") return "";
-  return "如果症狀持續、惡化，或已經影響生活，建議尋求皮膚科或專業醫療協助。";
+const INVESTMENT_DISCLAIMER = "以上為塔羅牌面參考，不構成投資建議，實際操作仍請自行評估風險。";
+
+function getSafetyNote(focus: QuestionFocus, question = ""): string {
+  if (focus.primary === "health") return "如果症狀持續、惡化，或已經影響生活，建議尋求皮膚科或專業醫療協助。";
+  if (focus.primary === "finance" && isInvestmentQuestion(question)) return INVESTMENT_DISCLAIMER;
+  return "";
+}
+
+/** @deprecated 請改用 getSafetyNote(focus, question) */
+function getHealthSafetyNote(focus: QuestionFocus, question = ""): string {
+  return getSafetyNote(focus, question);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -916,7 +1044,7 @@ function buildSingleCardFallback(
     todayAction:       getFallbackTodayAction(focus),
     gentleReminder:    getFallbackGentleReminder(focus, question),
     blessing:          getFallbackBlessing(focus, question),
-    safetyNote:        getHealthSafetyNote(focus),
+    safetyNote:        getSafetyNote(focus, question),
   });
 }
 
@@ -1394,7 +1522,9 @@ function buildFreeReading(
   // 第一段依焦點給出直接回應（非通用療癒）
   const directAnswer: Record<QuestionFocusPrimary, string> = {
     finance:      `這次牌面落在${topicLabel}的主題裡：${cardLine}。\n近期財運有機會，先把收支整理清楚，才能知道哪裡可以動。`,
-    career:       `這次牌面落在${topicLabel}的主題裡：${cardLine}。\n工作上的走向，這組牌提示你：方向比速度重要，先把真正想走的路確認清楚，再決定要衝還是等。`,
+    career:       isYesNoQuestion(question)
+      ? `這次牌面落在${topicLabel}的主題裡：${cardLine}。\n這組牌對你問的問題給出了答案，但完整的判斷需要解鎖才能看到——包含目前達標機率的傾向、你現在最容易錯失的是什麼，以及接下來應該先接住哪些機會。`
+      : `這次牌面落在${topicLabel}的主題裡：${cardLine}。\n工作上的走向，這組牌提示你：方向比速度重要，先把真正想走的路確認清楚，再決定要衝還是等。`,
     love:         `這次牌面落在${topicLabel}的主題裡：${cardLine}。\n感情的走向，這組牌看見的是：雙方之間還有空間，但需要更清楚的溝通，而不是繼續等待。`,
     relationship: `這次牌面落在${topicLabel}的主題裡：${cardLine}。\n人際關係的問題，這組牌提示你：先釐清誤解的來源，溝通會比沉默更有效。`,
     health:       `這次牌面落在${topicLabel}的主題裡：${cardLine}。\n身心狀態需要被照顧，這組牌提醒你：先把休息補回來，再談其他事。`,
@@ -1451,6 +1581,51 @@ function buildSingleCardPrompt(
     ? `\n【短問題提示】此問題字數少（「${question}」），請先推測使用者最想確認的核心，在 questionFocus 和 oneLineConclusion 直接給出結論性回答，不要輸出通用療癒內容。`
     : "";
 
+  // 是非題 / 達標題：強制先給明確傾向判斷
+  const yesNoHint = isYesNoQuestion(question)
+    ? `\n【是非題強制規則 — 最高優先】
+使用者問的是「${question}」，這是一個需要明確答案的問題。
+
+必須遵守：
+1. oneLineConclusion 第一句必須是傾向判斷，格式如下其中一種：
+   ・「照目前狀態下去，[達標/成功/成交/有回音]的機率偏低。」
+   ・「這張牌給的答案偏保留，[結果/機會]不會自己送上門。」
+   ・「目前傾向是可以[成/達標]，但不能靠等的。」
+   ・「有機會，但照現在這種節奏繼續，[業績/這件事]會很吃力。」
+   ✗ 絕對不能用「停下來看清方向比繼續衝更重要」這類繞過問題的句子。
+
+2. questionAnswer 第一句也必須是傾向判斷：
+   先說「這張牌（${card.name}）對你的問題判斷偏向……」
+   再說為什麼（根據牌義：主動/被動、有方向/失焦、機會出現了/還沒有）
+   最後說：如果要改變這個結果，使用者需要做什麼具體行動。
+
+3. 如果這張牌的牌義屬於「被動、倦怠、失焦、錯失機會、等待」類型：
+   必須明確說「照目前狀態，[達標/成功/成交]機率偏低」
+   補充說明「問題不是沒機會，而是你對已出現的機會反應太慢」
+   行動建議是「整理既有名單/機會，主動接住那些已出現的機會」而非「廣撒網」。`
+    : "";
+
+  // 股票/投資題：強制給牌面傾向詞彙
+  const investmentHint = (focus.primary === "finance" && isInvestmentQuestion(question))
+    ? `\n【股票/投資強制規則 — 與是非題規則並列最高優先】
+使用者問的是「${question}」，這是股票/市場問題，不是業績問題。
+
+必須遵守：
+1. oneLineConclusion 第一句必須使用以下詞彙之一：
+   「牌面偏漲」「牌面偏弱」「牌面偏觀望」「續漲力道不足」「短線容易震盪」
+   「目前不適合追高」「這張牌不支持盲目進場」「不是沒機會，但風險正在升高」
+   ✗ 不能說「停下來看清方向」「多觀察即可」「保持耐心」（這是空話）
+
+2. questionAnswer 第一句也必須是牌面傾向判斷（「牌面偏漲/偏弱/偏觀望」），
+   再說市場含義，再給操作參考（控倉/設停損/分批觀察）。
+
+3. 操作建議聚焦風險控管，絕對禁止業績語氣：
+   ✗ 主動追單 / 聯絡客戶 / 提高行動力 / 積極開發 / 努力衝刺
+   ✓ 控制倉位 / 分批觀察 / 設停損 / 等量能確認 / 避免追高
+
+4. safetyNote 必須填入：「以上為塔羅牌面參考，不構成投資建議，實際操作仍請自行評估風險。」`
+    : "";
+
   const isUpright = card.position === "upright";
   const directionHint = (() => {
     if (focus.primary === "love") return isUpright
@@ -1459,6 +1634,9 @@ function buildSingleCardPrompt(
     if (focus.primary === "career") return isUpright
       ? "（正向牌：可以主動爭取、提出想法，適合讓別人看見你的能力）"
       : "（逆向牌：先整理資源與備案，不要衝動離職或硬碰硬，再做決定）";
+    if (focus.primary === "finance" && isInvestmentQuestion(question)) return isUpright
+      ? "（股票正位：給牌面傾向＋控倉建議，不給絕對進場承諾）"
+      : "（股票逆位：給牌面偏弱/不支持進場判斷＋風險提示）";
     if (focus.primary === "finance") return isUpright
       ? "（正向牌：可以小幅嘗試，但保留安全預算）"
       : "（逆向牌：不適合衝動投資或大額花費，先守住現金流）";
@@ -1499,6 +1677,8 @@ function buildSingleCardPrompt(
 ${TAROT_READING_STYLE_RULES}
 ${topicGuidance}
 ${shortHint}
+${yesNoHint}
+${investmentHint}
 ${antiSimilarityHint}
 
 【各欄位職責 — 嚴格遵守，不能越界】
@@ -1553,7 +1733,7 @@ ${antiSimilarityHint}
   "todayAction": "（${depthSpec.todayAction}）",
   "gentleReminder": "（${depthSpec.gentleReminder}）",
   "blessing": "（20～40字祝福語，每次不同）",
-  "safetyNote": "（若問題涉及身體健康：如果症狀持續、惡化，或已經影響生活，建議尋求皮膚科或專業醫療協助。否則為空字串）"
+  "safetyNote": "（依問題類型填入：身體健康問題→「如果症狀持續、惡化，或已經影響生活，建議尋求皮膚科或專業醫療協助。」；股票/投資/市場問題→「以上為塔羅牌面參考，不構成投資建議，實際操作仍請自行評估風險。」；其他問題→空字串）"
 }`;
 }
 
@@ -1587,6 +1767,44 @@ function buildThreeCardPrompt(
 
   const shortHint = question && question.length < 10
     ? `\n【短問題提示】此問題字數少（「${question}」），請先推測使用者最想確認的核心，在 questionFocus 和 overallSummary 直接給出結論性回答，不要輸出通用療癒內容。`
+    : "";
+
+  // 是非題 / 達標題：強制先給明確傾向判斷（三張牌版）
+  const threeCardYesNoHint = isYesNoQuestion(question)
+    ? `\n【是非題強制規則 — 最高優先】
+使用者問的是「${question}」，這是一個需要明確答案的問題。
+
+必須遵守：
+1. overallSummary 的「整體答案：」第一句必須是傾向判斷：
+   ✓「照目前這三張牌的走向，[達標/成功/成交/有回音]的機率偏低。」
+   ✓「這組牌給的答案偏保留：[結果]不會自然發生。」
+   ✓「有機會，但照現在這個節奏繼續，[業績/這件事]會很吃力。」
+   ✗ 不能只說「先整理方向」「觀察一下」「宇宙在安排」
+
+2. 每張牌的「對你的問題代表」也要先給判斷，再說為什麼：
+   先說：「這張牌（在[位置]）對你問的[達標/成交]問題，傾向……」
+   再說：根據牌義（主動/被動、有方向/失焦）說明判斷原因。
+
+3. 如果其中一張牌的牌義屬於「被動/倦怠/失焦/等待/錯失機會」類型：
+   必須說明「這張牌拉低了整體機率」
+   不能把它解讀成「需要休息」或「先沉澱」
+   而是「對已出現的機會反應太慢，這是影響結果的主因」`
+    : "";
+
+  // 股票/投資題：強制給牌面傾向詞彙（三張牌版）
+  const threeCardInvestmentHint = (focus.primary === "finance" && isInvestmentQuestion(question))
+    ? `\n【股票/投資強制規則 — 最高優先】
+使用者問的是「${question}」，這是股票/市場問題，不是業績問題。
+
+overallSummary 的「整體答案：」第一句必須使用以下詞彙之一：
+「牌面偏漲」「牌面偏弱」「牌面偏觀望」「續漲力道不足」「短線容易震盪」「目前不適合追高」
+
+每張牌的「對你的問題代表」也要先給牌面傾向詞彙，再說市場含義，再給操作參考。
+
+操作建議只能是：控制倉位/分批觀察/設停損/等量能確認/避免追高
+絕對禁止業績語氣：主動追單/聯絡客戶/提高行動力/積極開發/努力衝刺
+
+safetyNote 必須填入：「以上為塔羅牌面參考，不構成投資建議，實際操作仍請自行評估風險。」`
     : "";
 
   // 根據深度設定字數規格（已縮短：每張牌三小段合計最多 320 字）
@@ -1627,6 +1845,8 @@ ${cardDescriptions}
 ${TAROT_READING_STYLE_RULES}
 ${topicGuidance}
 ${shortHint}
+${threeCardYesNoHint}
+${threeCardInvestmentHint}
 ${antiSimilarityHint}
 
 【解讀品質規範 — 嚴格遵守】
@@ -1726,7 +1946,7 @@ ${positionSchema}
   ],
   "gentleReminder": "（${remindSpec}，療癒但要呼應本次牌陣，不能用「先整理自己」「宇宙提醒你」等通用語）",
   "blessing": "（20～40字祝福語，每次不同）",
-  "safetyNote": "（若問題涉及身體健康：如果症狀持續、惡化，或已經影響生活，建議尋求皮膚科或專業醫療協助。否則為空字串）"
+  "safetyNote": "（依問題類型填入：身體健康問題→「如果症狀持續、惡化，或已經影響生活，建議尋求皮膚科或專業醫療協助。」；股票/投資/市場問題→「以上為塔羅牌面參考，不構成投資建議，實際操作仍請自行評估風險。」；其他問題→空字串）"
 }`;
 }
 
