@@ -234,6 +234,112 @@ function isCareerChangeQuestion(question: string): boolean {
   return CAREER_CHANGE_KEYWORDS.some((k) => question.includes(k));
 }
 
+// ── 日常運勢關鍵字 ────────────────────────────────────────────────────────────
+const DAILY_FORTUNE_KEYWORDS = [
+  "今天", "今日", "明天", "最近狀態", "最近運勢", "這幾天", "運勢如何",
+  "宇宙今天", "今天適合", "明天適合", "今天運", "明天運",
+];
+
+function isDailyFortuneQuestion(question: string): boolean {
+  if (!question) return false;
+  return DAILY_FORTUNE_KEYWORDS.some((k) => question.includes(k));
+}
+
+// ── 主題分類器 ────────────────────────────────────────────────────────────────
+
+type QuestionTopic =
+  | "businessTarget"  // 業績/成交/追單
+  | "careerChange"    // 轉職/離職/職涯困境
+  | "investment"      // 股票/投資/市場
+  | "love"            // 感情/關係
+  | "daily"           // 日常運勢
+  | "general";        // 其他綜合
+
+const QUESTION_TOPIC_LABELS: Record<QuestionTopic, string> = {
+  businessTarget: "業績／工作目標類",
+  careerChange:   "職涯困境／職場人際類",
+  investment:     "投資／股票／市場類",
+  love:           "情感／關係類",
+  daily:          "日常運勢／短期提醒類",
+  general:        "綜合運勢類",
+};
+
+/**
+ * 根據使用者原始問題判斷主題，優先順序：
+ * 投資 > 業績 > 轉職 > 感情 > 日常 > 綜合
+ */
+function detectQuestionTopic(question: string, focus: QuestionFocus): QuestionTopic {
+  if (!question) return "general";
+  if (isInvestmentQuestion(question))                                    return "investment";
+  if (isBusinessTargetQuestion(question) && !isCareerChangeQuestion(question)) return "businessTarget";
+  if (isCareerChangeQuestion(question))                                  return "careerChange";
+  if (focus.primary === "love")                                          return "love";
+  if (isDailyFortuneQuestion(question))                                  return "daily";
+  return "general";
+}
+
+/**
+ * 根據問題主題產生術語邊界規則，注入到 prompt 最前面作為最高強制約束。
+ */
+function getTopicBoundaryRules(topic: QuestionTopic, question: string): string {
+  const q = question || "（使用者未填寫問題）";
+  const topicLabel = QUESTION_TOPIC_LABELS[topic];
+
+  const header = `【⚠️ 核心主題分類器 — 最高強制規則，優先於一切其他指示】
+本次使用者問題：「${q}」
+本次問題主題分類：${topicLabel}
+本次解讀必須 100% 回答使用者原始問題，不得自行延伸成其他主題，不得使用不屬於本分類的術語。
+每個欄位（牌面重點、對你的問題代表、這張牌提醒你、整體答案、為什麼會這樣、接下來方向、3～7 天建議、心靈收束）都必須符合本分類。`;
+
+  switch (topic) {
+    case "businessTarget":
+      return `${header}
+
+✅ 本次允許討論：業績、目標、成交、客戶、追單、報價、簽約、訂單、KPI、工作績效、執行力、行動效率、競爭狀態、小單累積、舊客回訪、名單整理、成交節奏
+❌ 本次嚴禁提及（整個解讀不得出現以下任何字詞）：轉職、離職、換工作、跳槽、履歷、投履歷、面試、裸辭、換公司、新工作、感情、復合、股票、投資操作
+
+【牌義轉譯強制原則】
+若牌義出現「改變、離開、重新開始、轉型」意象，必須轉譯為業績情境：
+✓ 調整客戶名單 / 改變追單方式 / 放掉低機率案子 / 重新整理報價策略 / 找回成交節奏
+✗ 不得轉譯為：轉職、換環境、離職、更新履歷
+
+解讀結尾（接下來的方向、3～7 天建議）必須圍繞：業績追回策略、名單整理、精準追單行動。`;
+
+    case "careerChange":
+      return `${header}
+
+✅ 本次允許討論：職涯方向、工作環境、主管、同事、職場人際、是否留下、是否轉職、面試、履歷、離職規劃
+❌ 本次嚴禁：把主題轉成業績達標、股票操作或感情問題`;
+
+    case "investment":
+      return `${header}
+
+✅ 本次允許討論：牌面偏漲、牌面偏弱、續漲力道、短線震盪、追高風險、觀望、支撐、壓力、部位控制、分批、停損、停利、風險控管、市場情緒
+❌ 本次嚴禁業績語氣：主動追單、聯絡客戶、提高行動力、努力衝刺、拜訪客戶、報價、成交
+❌ 本次嚴禁絕對承諾：一定會漲、一定會跌、可以放心買、保證獲利、馬上歐印、快點加碼
+
+【必填免責聲明】safetyNote 必須填入：「以上為塔羅牌面參考，不構成投資建議，實際操作仍請自行評估風險。」`;
+
+    case "love":
+      return `${header}
+
+✅ 本次允許討論：情感連結、心理投射、溝通落差、相處氛圍、安全感、依戀、距離感、關係節奏、復合可能、雙方狀態
+❌ 本次嚴禁：業績、客戶、報價、追單、履歷、轉職、股票、投資操作
+❌ 本次嚴禁絕對斷言：一定會結婚、一定會分手、一定會復合、對方一定愛你`;
+
+    case "daily":
+      return `${header}
+
+✅ 本次允許討論：當天能量、短期氛圍、心態提醒、注意事項、人際互動、行動節奏、情緒狀態
+❌ 本次嚴禁延伸成重大決策：離職、分手、投資買賣、業績達標（除非使用者問題明確提及）`;
+
+    default:
+      return `${header}
+
+不得自行加入股票操作建議、業績追單建議或轉職建議，除非使用者問題明確提及。`;
+  }
+}
+
 // ── 是非題 / 達標題關鍵字 ─────────────────────────────────────────────────────
 const YES_NO_KEYWORDS = [
   // 達標類
@@ -1631,9 +1737,11 @@ function buildSingleCardPrompt(
   depth: "standard" | "deep",
   antiSimilarityHint = ""
 ): string {
-  const focus         = detectQuestionFocus(question);
-  const focusLabel    = getFocusLabel(focus);
-  const topicGuidance = getTopicGuidance(topic, focus, question);
+  const focus              = detectQuestionFocus(question);
+  const questionTopic      = detectQuestionTopic(question, focus);
+  const topicBoundaryRules = getTopicBoundaryRules(questionTopic, question);
+  const focusLabel         = getFocusLabel(focus);
+  const topicGuidance      = getTopicGuidance(topic, focus, question);
   const ori           = card.position === "upright" ? "正位" : "逆位";
   const kw            = card.keywords?.length ? `關鍵字：${card.keywords.join("、")}` : "";
   const base          = card.baseMeaning  ? `牌面核心：${card.baseMeaning}`  : "";
@@ -1736,6 +1844,8 @@ function buildSingleCardPrompt(
 
 【重要提示】這是使用者分享 Facebook 後才能解鎖的完整版，內容必須有真正的解鎖價值。
 
+${topicBoundaryRules}
+
 【抽牌模式】單張牌完整解讀
 【問題】${question || "（未填寫問題）"}
 【問題焦點】${focusLabel}
@@ -1789,7 +1899,8 @@ ${antiSimilarityHint}
 2. oneLineConclusion 第一句直接回答使用者問題，不從牌義背景說起。
 3. questionAnswer 必須給明確方向：正位牌 → 可以怎麼做；逆位牌 → 要注意什麼、什麼不建議做。
 4. 全文避免報告型句子（「整體而言」「這意味著你」）、命令式語氣（「你需要」→「可以先」）、心靈雞湯（「你值得更好的未來」「宇宙會帶你去對的地方」）。
-5. 依主題給具體方向：感情→對方有沒有行動；工作→適合準備還是行動，是否要投履歷；財運→進攻還是守，守現金流/整理支出。
+5. 依本次主題分類給具體方向（請嚴格參照上方【核心主題分類器】的術語邊界）：
+   感情→對方有沒有行動；業績/成交→達標機率與追單方向；轉職→是否留下或換工作；財運→進攻還是守；投資→控倉/停損/觀察量能。
 
 【輸出 JSON 格式】
 {
@@ -1816,10 +1927,12 @@ function buildThreeCardPrompt(
   depth: "standard" | "deep",
   antiSimilarityHint = ""
 ): string {
-  const focus         = detectQuestionFocus(question);
-  const focusLabel    = getFocusLabel(focus);
-  const topicGuidance = getTopicGuidance(topic, focus, question);
-  const spreadLabels  = getSpreadLabels();
+  const focus              = detectQuestionFocus(question);
+  const questionTopic      = detectQuestionTopic(question, focus);
+  const topicBoundaryRules = getTopicBoundaryRules(questionTopic, question);
+  const focusLabel         = getFocusLabel(focus);
+  const topicGuidance      = getTopicGuidance(topic, focus, question);
+  const spreadLabels       = getSpreadLabels();
 
   const defaultPositions = ["目前狀態", "阻礙或盲點", "接下來的建議"];
   const cardDescriptions  = cards.map((card, i) => {
@@ -1906,6 +2019,8 @@ safetyNote 必須填入：「以上為塔羅牌面參考，不構成投資建議
 使用者想知道方向，不是來學牌義的。每段必須白話、清楚、有答案。
 格式嚴格遵守：牌面重點1句≤60字、對你的問題代表2句≤140字、這張牌提醒你2句≤120字、為什麼會這樣只要2句。
 
+${topicBoundaryRules}
+
 【抽牌模式】三張牌陣完整解讀
 【問題】${question || "（未填寫問題）"}
 【問題焦點】${focusLabel}
@@ -1929,13 +2044,15 @@ ${antiSimilarityHint}
 2. overallSummary（格式固定為三段）：
    「整體答案：」→ 3～4句，直接回答使用者的問題，說清楚這件事能不能走、該不該繼續、適不適合行動。
      範例（愛情）：「這段感情還有可能，但先不要急著做最終決定。接下來先觀察對方有沒有實際行動，如果對方一直讓你猜，就先把重心收回自己。」
-     範例（工作）：「轉職可以考慮，但這段時間適合準備，不建議衝動裸辭。先把履歷和你想要的工作條件整理好，再去投遞幾個職缺看看市場反應。」
+     範例（業績/追單）：「有機會，但照目前節奏繼續達標會偏吃力。現在最重要的是把最有機會成交的名單整理出來，優先追進這幾個案子，不要繼續廣撒網。」
+     範例（轉職）：「轉職可以考慮，但這段時間適合準備，不建議衝動裸辭。先把你想要的工作條件整理清楚，再觀察市場反應。」
      範例（財運）：「近期適合守，先把支出整理清楚，確認現金流穩定。可以小幅試探新收入，但大額投資這段時間先暫緩。」
    「為什麼會這樣：」→ 【嚴格限制只要2句】，簡單說明三張牌（${cardNamesForHint}）串起來的原因，不要長篇分析每張牌。
      範例：「第一張牌顯示你曾有過動力或基礎，第二張牌說明目前讓你卡住的是什麼。第三張牌提示真正讓你猶豫的，可能是信心還沒完全回來。」
    「接下來的方向：」→ 2～3句，給一個明確具體的行動建議。
      感情：說靠近/觀察/溝通還是拉距離，對方有沒有行動比感覺更重要。
-     工作：說更新履歷/投遞/面試，是否先不要裸辭，現在適合準備還是行動。
+     業績/成交：說達標機率傾向、哪些機會還能追、具體追單方向（禁止提轉職/履歷）。
+     轉職/職涯：說是否適合留下或換工作、現在適合準備還是行動。
      財運：說守現金流/整理支出/先不要大額投資，或可小幅試探。
      人際：說要不要主動溝通，是否需要停止討好，是否先拉開距離。
    禁止模板句：「答案不是單一原因」「需要從三個面向一起看」「把它轉成更有行動感的新版本」「形成新的敘事」「校準你的內在狀態」「整體而言」「綜合來看」
