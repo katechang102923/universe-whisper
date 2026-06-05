@@ -1885,6 +1885,12 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
   >("idle");
   const [lineClaimCode, setLineClaimCode] = useState("");
   const [lineClaimError, setLineClaimError] = useState("");
+  // LINE unlock claim flow（解鎖用，與 post-unlock 的傳送結果流程分開）
+  const [lineUnlockStatus, setLineUnlockStatus] = useState<
+    "idle" | "loading" | "ready" | "checking" | "verified" | "error"
+  >("idle");
+  const [lineUnlockCode, setLineUnlockCode] = useState("");
+  const [lineUnlockError, setLineUnlockError] = useState("");
   // Misc state
   const [drawsRemaining, setDrawsRemaining] = useState<number | null>(null);
   const [storyDownloadStatus, setStoryDownloadStatus] = useState<
@@ -2113,6 +2119,9 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
     setLineClaimStatus("idle");
     setLineClaimCode("");
     setLineClaimError("");
+    setLineUnlockStatus("idle");
+    setLineUnlockCode("");
+    setLineUnlockError("");
     setStoryDownloadStatus("idle");
     setStoryError("");
     // 三張牌限動圖：清除 blob URL 並重置狀態
@@ -2794,6 +2803,56 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
     setFbSharePending(false);
     // 清除快取 resultId，讓下次 createOrGetLineResult() 重新建立帶 unlocked:true 的結果
     setLineResultId("");
+  }
+
+  // ── LINE 解鎖流程（免費，需加入官方帳號並輸入解鎖碼）
+  async function openLineUnlockFlow() {
+    if (lineUnlockStatus === "loading") return;
+    setLineUnlockStatus("loading");
+    setLineUnlockError("");
+    try {
+      const resultId = await createOrGetLineResult();
+      const r = await fetch("/api/line/claim/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resultId, visitorId: getOrCreateAnonId() }),
+      });
+      const data = (await r.json().catch(() => ({}))) as {
+        ok?: boolean; claimCode?: string; error?: string;
+      };
+      if (!r.ok || !data.ok || !data.claimCode) {
+        throw new Error(data.error || "無法產生解鎖碼，請稍後再試。");
+      }
+      setLineUnlockCode(data.claimCode);
+      setLineUnlockStatus("ready");
+    } catch (err) {
+      setLineUnlockError(err instanceof Error ? err.message : "無法產生解鎖碼，請稍後再試。");
+      setLineUnlockStatus("error");
+    }
+  }
+
+  async function checkLineUnlockVerification() {
+    if (!lineResultId || lineUnlockStatus === "checking") return;
+    setLineUnlockStatus("checking");
+    setLineUnlockError("");
+    try {
+      const r = await fetch(
+        `/api/line/unlock/check?resultId=${encodeURIComponent(lineResultId)}`,
+      );
+      const data = (await r.json().catch(() => ({}))) as {
+        ok?: boolean; unlockStatus?: string;
+      };
+      if (data.unlockStatus === "line_verified") {
+        setLineUnlockStatus("verified");
+        setFbShareUnlocked(true);
+      } else {
+        setLineUnlockStatus("ready");
+        setLineUnlockError("還沒有收到 LINE 驗證，請確認你已加入官方帳號並輸入解鎖碼。");
+      }
+    } catch {
+      setLineUnlockStatus("ready");
+      setLineUnlockError("無法確認狀態，請稍後再試。");
+    }
   }
 
   // ??? Paid flow ????????????????????????????????????????????????????????????
@@ -3541,27 +3600,29 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
             <div className="cosmic-reading-card rounded-[1.75rem] border border-[#d8bd70]/24 bg-midnight/58 p-5 shadow-glow sm:p-6">
 
               {/* 標題 */}
-              <p className="text-sm tracking-[0.22em] text-[#d8bd70]/78">解鎖完整解讀</p>
+              <p className="text-sm tracking-[0.22em] text-[#d8bd70]/78">解鎖完整牌陣解讀</p>
               <h3 className="mt-2 text-2xl font-semibold text-moon">
-                {isSingleResult ? "解鎖完整解讀" : "解鎖完整牌陣解讀"}
+                解鎖完整牌陣解讀
               </h3>
 
               {/* 完整解讀包含內容條列 */}
-              <p className="mt-4 text-sm font-semibold text-moon/80">完整解讀將包含：</p>
+              <p className="mt-4 text-sm font-semibold text-moon/80">完整解讀包含：</p>
               <ul className="mt-2 space-y-2">
                 {(isSingleResult
                   ? [
-                      "這張牌真正指向的核心訊息",
-                      "你目前最該避開的風險",
+                      "這張牌真正指向的核心原因",
+                      "你現在最需要看清的盲點",
+                      "這段關係 / 工作 / 生活接下來的走向",
                       "是否適合立刻行動",
-                      "接下來 3～7 天的具體建議",
+                      "接下來 3～7 天的具體提醒",
                       "宇宙給你的收束祝福",
                     ]
                   : [
-                      "這三張牌真正指向的原因",
-                      "你目前最該避開的風險",
+                      "這三張牌真正指向的核心原因",
+                      "你現在最需要看清的盲點",
+                      "這段關係 / 工作 / 生活接下來的走向",
                       "是否適合立刻行動",
-                      "接下來 3～7 天的具體建議",
+                      "接下來 3～7 天的具體提醒",
                       "宇宙給你的收束祝福",
                     ]
                 ).map((item) => (
@@ -3574,50 +3635,98 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
 
               {/* 每日免費一次說明 */}
               <p className="mt-5 rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-3 text-sm leading-7 text-moon/60">
-                每日可免費查看一次基礎內容；若想查看完整解讀，可分享 Facebook 免費解鎖，或直接付費 NT$49 解鎖。
+                每日可免費查看一次基礎內容；若想查看完整解讀，請加入 LINE 官方帳號免費解鎖，或直接使用通行碼解鎖。
               </p>
 
-              {/* 主要按鈕：FB 分享免費解鎖 */}
+              {/* 主要按鈕：LINE 免費解鎖 */}
               <div className="mt-5">
-                {fbSharePending ? (
-                  <div className="flex flex-col items-center gap-3">
-                    <p className="text-sm text-moon/72">
-                      完成 Facebook 分享後，請回到這裡確認解鎖。
-                    </p>
+                {lineUnlockStatus === "verified" ? (
+                  <p className="flex items-center gap-2 text-sm font-medium text-aurora">
+                    <span>✅</span> LINE 驗證成功，完整版已解鎖！
+                  </p>
+                ) : lineUnlockStatus === "idle" ? (
+                  <button
+                    type="button"
+                    onClick={() => void openLineUnlockFlow()}
+                    className="w-full rounded-full bg-[#06C755] px-6 py-4 text-base font-semibold text-white shadow-[0_0_28px_rgba(6,199,85,0.28)] transition hover:opacity-90 active:scale-95 sm:w-auto sm:min-w-[280px]"
+                  >
+                    加入 LINE 免費解鎖完整版
+                  </button>
+                ) : lineUnlockStatus === "loading" ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="w-full rounded-full bg-[#06C755]/60 px-6 py-4 text-base font-semibold text-white sm:w-auto sm:min-w-[280px] cursor-wait"
+                  >
+                    正在產生解鎖碼…
+                  </button>
+                ) : lineUnlockStatus === "error" ? (
+                  <div className="space-y-2">
+                    <p className="text-sm text-[#ffb4b4]">{lineUnlockError}</p>
                     <button
                       type="button"
-                      onClick={() => void confirmFbShareUnlock()}
-                      className="w-full rounded-full bg-[#d8bd70] px-6 py-4 text-base font-semibold text-midnight shadow-[0_0_28px_rgba(216,189,112,0.28)] transition hover:bg-moon active:scale-95 sm:w-auto sm:min-w-[280px]"
-                    >
-                      我已分享到 Facebook，解鎖完整版
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void openFbShare()}
+                      onClick={() => { setLineUnlockStatus("idle"); setLineUnlockError(""); }}
                       className="text-sm text-moon/50 underline underline-offset-2 transition hover:text-moon/80"
                     >
-                      重新開啟 Facebook 分享
+                      重新申請解鎖碼
                     </button>
                   </div>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => void openFbShare()}
-                    className="w-full rounded-full bg-[#d8bd70] px-6 py-4 text-base font-semibold text-midnight shadow-[0_0_28px_rgba(216,189,112,0.28)] transition hover:bg-moon active:scale-95 sm:w-auto sm:min-w-[280px]"
-                  >
-                    分享 Facebook 免費解鎖
-                  </button>
+                  /* ready | checking：顯示解鎖碼 + 驗證按鈕 */
+                  <div className="space-y-4">
+                    <p className="text-sm leading-7 text-moon/70">
+                      請加入 LINE 官方帳號後，輸入以下解鎖碼，即可解鎖完整版。
+                    </p>
+                    {/* 解鎖碼卡片 */}
+                    <div className="rounded-2xl border border-[#06C755]/35 bg-midnight/70 px-5 py-4 text-center">
+                      <p className="text-xs tracking-[0.22em] text-moon/45 mb-2">LINE 解鎖碼（1 小時有效）</p>
+                      <p className="text-3xl font-bold tracking-[0.28em] text-[#06C755] select-all">
+                        {lineUnlockCode}
+                      </p>
+                      <p className="mt-1 text-xs text-moon/35">開啟 LINE 官方帳號，輸入此碼後送出。</p>
+                      <div className="mt-3 flex justify-center">
+                        <CopyCodeButton
+                          text={lineUnlockCode}
+                          label="⎘ 複製解鎖碼"
+                          copiedLabel={}
+                          feedbackText={}
+                        />
+                      </div>
+                    </div>
+                    {/* 主要按鈕：開啟 LINE */}
+                    <a
+                      href={LINE_OFFICIAL_ACCOUNT_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold text-white shadow-[0_0_20px_rgba(6,199,85,0.28)] transition hover:opacity-90 active:scale-95 sm:w-auto sm:min-w-[240px]"
+                      style={{ background: "#06C755" }}
+                    >
+                      加入 LINE 免費解鎖
+                    </a>
+                    {/* 確認按鈕 */}
+                    <button
+                      type="button"
+                      onClick={() => void checkLineUnlockVerification()}
+                      disabled={lineUnlockStatus === "checking"}
+                      className="w-full rounded-full border border-[#06C755]/40 px-5 py-3 text-sm font-semibold text-[#06C755] transition hover:border-[#06C755]/70 hover:bg-white/6 active:scale-95 disabled:cursor-wait disabled:opacity-60 sm:w-auto sm:min-w-[280px]"
+                    >
+                      {lineUnlockStatus === "checking" ? "確認中…" : "我已完成 LINE 驗證，解鎖完整版"}
+                    </button>
+                    {lineUnlockError ? (
+                      <p className="text-xs text-[#ffb4b4]">{lineUnlockError}</p>
+                    ) : null}
+                  </div>
                 )}
               </div>
 
-              {/* 次要按鈕：NT$49 直接付費解鎖（不需分享，始終顯示） */}
+              {/* 付費解鎖（次要，不比 LINE 免費解鎖醒目）*/}
               <div className="mt-3">
                 <button
                   type="button"
                   onClick={() => { setSelectedPlan(PASS_PLANS[0]); openPaidDrawModal(); }}
-                  className="w-full rounded-full border border-[#d8bd70]/40 px-6 py-3 text-sm font-semibold text-[#d8bd70] transition hover:border-[#d8bd70]/70 hover:bg-white/6 active:scale-95 sm:w-auto sm:min-w-[280px]"
+                  className="w-full rounded-full border border-white/20 px-6 py-3 text-sm font-medium text-moon/55 transition hover:border-white/32 hover:text-moon/75 active:scale-95 sm:w-auto sm:min-w-[280px]"
                 >
-                  🔓 NT$49 解鎖完整宇宙訊息
+                  使用付費通行碼解鎖（NT$49）
                 </button>
                 <p className="mt-2 text-xs leading-6 text-moon/40">
                   本服務為即時產生之數位內容，付款完成並成功產出、顯示或發送結果後，恕不接受退費。若付款成功但未收到內容，請於 24 小時內聯繫
@@ -3625,7 +3734,7 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
                 </p>
               </div>
 
-              {/* 兌換碼區塊 */}
+              {/* 通行碼解鎖區塊（次要）*/}
               {lineResultId ? (
                 <div className="mt-5 border-t border-white/8 pt-5">
                   <RedeemCodeBlock

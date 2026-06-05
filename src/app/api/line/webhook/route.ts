@@ -172,7 +172,7 @@ async function handleClaimCode(
   const result = resultSnap.data() as LineResultData;
   const message = buildLineResultMessage(result, resultId, SITE_URL);
 
-  // 3. 回覆結果 + 更新 claim 狀態（並行執行）
+  // 3. 回覆結果 + 更新 claim 狀態 + 標記 LINE 解鎖（並行執行）
   await Promise.all([
     replyWithText(replyToken, message),
     claimRef.update({
@@ -180,6 +180,16 @@ async function handleClaimCode(
       lineUserId,
       claimedAt: FieldValue.serverTimestamp(),
     }),
+    // 標記此次抽牌結果為「LINE 已驗證解鎖」，供前端輪詢確認
+    db.collection(LINE_RESULTS_COLLECTION).doc(resultId).set(
+      {
+        unlockStatus: "line_verified",
+        unlockedBy: "line",
+        unlockedAt: FieldValue.serverTimestamp(),
+        lineUserId,
+      },
+      { merge: true },
+    ),
   ]);
 
   console.info("[webhook/claim] Claim redeemed", { claimCode, resultId, lineUserId });
