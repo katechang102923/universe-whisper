@@ -3,8 +3,9 @@
 /**
  * A deliberately low-key footer link for admin sign-in.
  * Renders as a small, muted text button so regular visitors won't notice it.
- * Shows "管理員 · 登出" when already signed in as admin.
+ * Shows "管理後台 · 登出" when already signed in as admin.
  */
+import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 
 export function AdminFooterLink() {
@@ -14,14 +15,24 @@ export function AdminFooterLink() {
 
   if (user && isAdmin) {
     return (
-      <button
-        type="button"
-        onClick={() => void signOut()}
-        className="mt-1 text-xs text-moon/30 transition hover:text-moon/55"
-        title="管理員登出"
-      >
-        管理員 · 登出
-      </button>
+      <div className="mt-1 flex items-center gap-2">
+        <Link
+          href="/admin/usage"
+          className="text-xs text-moon/30 transition hover:text-moon/55"
+          title="進入管理後台"
+        >
+          管理後台
+        </Link>
+        <span className="text-xs text-moon/20">·</span>
+        <button
+          type="button"
+          onClick={() => void signOut()}
+          className="text-xs text-moon/30 transition hover:text-moon/55"
+          title="管理員登出"
+        >
+          登出
+        </button>
+      </div>
     );
   }
 
