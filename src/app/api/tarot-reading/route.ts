@@ -211,6 +211,29 @@ function isInvestmentQuestion(question: string): boolean {
   return INVESTMENT_KEYWORDS.some((k) => question.includes(k));
 }
 
+// ── 業績/成交/追單問題關鍵字 ──────────────────────────────────────────────────
+const BUSINESS_TARGET_KEYWORDS = [
+  "業績", "達標", "成交", "簽約", "報價", "追單", "訂單", "獎金",
+  "KPI", "業務", "銷售", "客戶", "本月業績", "本週業績", "工作績效",
+];
+
+/** 判斷是否為業績/成交/追單問題（career 的子類別，需要業務導向解讀） */
+function isBusinessTargetQuestion(question: string): boolean {
+  if (!question) return false;
+  return BUSINESS_TARGET_KEYWORDS.some((k) => question.includes(k));
+}
+
+// ── 轉職/離職問題關鍵字 ───────────────────────────────────────────────────────
+const CAREER_CHANGE_KEYWORDS = [
+  "離職", "轉職", "換工作", "跳槽", "面試", "履歷", "裸辭", "換公司", "新工作",
+];
+
+/** 判斷是否為轉職/離職問題（必須明確提到才算） */
+function isCareerChangeQuestion(question: string): boolean {
+  if (!question) return false;
+  return CAREER_CHANGE_KEYWORDS.some((k) => question.includes(k));
+}
+
 // ── 是非題 / 達標題關鍵字 ─────────────────────────────────────────────────────
 const YES_NO_KEYWORDS = [
   // 達標類
@@ -349,6 +372,40 @@ function getTopicGuidance(topic: TarotReadingTopic, focus: QuestionFocus, questi
       return `【財運強制聚焦】至少 70% 內容圍繞：收入狀態、支出壓力、理財方向、投資機會/風險、現金流、財務瓶頸。
 第一個回應欄位必須直接說明近期財運走向，不可用「宇宙照顧你」「你值得被愛」取代財務分析。`;
     case "career":
+      // ── 業績/成交/追單問題：禁止轉職內容 ────────────────────────────────────
+      if (isBusinessTargetQuestion(question) && !isCareerChangeQuestion(question)) {
+        return `【業績/成交/目標達標 — 最高優先強制規則】
+使用者問的是「${question}」，這是業績、成交或目標達標問題，不是轉職問題。
+
+【嚴格禁止（整個解讀不得出現以下任何字詞）】
+✗ 轉職　✗ 離職　✗ 換工作　✗ 跳槽　✗ 更新履歷　✗ 投履歷　✗ 面試　✗ 裸辭　✗ 換環境　✗ 找工作　✗ 新公司
+
+【牌義轉譯原則】
+如果牌義出現「改變、離開、重新開始」意象，必須轉譯成業績情境，例如：
+✓ 調整客戶名單　✓ 改變追單方式　✓ 換一批更有機會成交的客戶
+✓ 放掉低機率案子　✓ 重新整理報價與成交節奏
+
+【解讀必須包含的核心內容】
+1. 目前達標機率傾向（高/中/偏低）
+2. 卡點在哪裡（客戶猶豫/競爭激烈/追單節奏失焦/內耗）
+3. 哪些機會還能追回來
+4. 未來 3～7 天具體追單行動
+5. 結論要回到「業績是否有機會達標」
+
+【可用語氣】
+✓「有機會，但過程不輕鬆。」
+✓「照目前節奏，達標會偏吃力。」
+✓「不是完全沒機會，但不能靠等客戶主動。」
+✓「這組牌顯示業績有追回空間，但需要靠小單累積與精準追單。」
+✓「如果繼續分心或內耗，達標機率會下降。」
+
+【不可使用】
+✗「你該思考是否換工作。」
+✗「可以開始更新履歷。」
+✗「適合尋找新環境。」
+
+至少 80% 內容圍繞：業績達標、成交機率、客戶跟進、報價策略、具體追單行動。`;
+      }
       if (isYesNoQuestion(question)) {
         return `【工作達標/成功/成交題 — 最高優先】
 使用者問的是「會不會達標 / 成功 / 成交 / 有沒有結果」這類是非題。
@@ -890,10 +947,17 @@ function getFallbackNext3To7Days(focus: QuestionFocus, question = ""): string {
         "Day 5～7｜執行一件事\n選一件具體的財務行動：刪除一個訂閱、增加一筆小收入、或研究一個感興趣的理財方法。",
       ].join("\n\n");
     case "career":
+      if (isBusinessTargetQuestion(question) && !isCareerChangeQuestion(question)) {
+        return [
+          "Day 1～2｜整理名單\n把目前最有機會成交的客戶列出來，每個都確認一下目前卡在哪個環節，優先排程跟進。",
+          "Day 3～4｜精準追單\n針對已報價但還沒回覆的客戶，發一封具體詢問信或簡訊，不要等對方主動，先接住這幾個還在考慮的案子。",
+          "Day 5～7｜累積小單\n若大案短期難拿下，先把小額但確定性高的單接起來，用累積方式補齊業績缺口。",
+        ].join("\n\n");
+      }
       return [
         "Day 1～2｜確認方向\n用 10 分鐘寫下「我真正想要的工作狀態是什麼」，要寫真正讓你有動力的，不是「應該」想要的。",
-        "Day 3～4｜盤點落差\n找出你現在工作最大的落差在哪。落差很大就開始更新履歷；只是卡關就找人聊一次。",
-        "Day 5～7｜推進一步\n選一個小行動：傳一封信、約一次對話、或投遞一個觀望已久的職缺，不要等到「準備好了」才動。",
+        "Day 3～4｜盤點落差\n找出你現在工作最大的落差在哪。落差很大就考慮評估下一步；只是卡關就找人聊一次。",
+        "Day 5～7｜推進一步\n選一個小行動：傳一封信、約一次對話、或把觀望已久的事做一個決定，不要等到「準備好了」才動。",
       ].join("\n\n");
     case "love":
       return [
@@ -1631,9 +1695,16 @@ function buildSingleCardPrompt(
     if (focus.primary === "love") return isUpright
       ? "（正向牌：可以給一次機會，但觀察對方行動，不要把全部期待壓上去）"
       : "（逆向牌：先觀察對方是否真的有靠近行動；若持續讓你消耗，放手或拉開距離會更輕鬆）";
-    if (focus.primary === "career") return isUpright
-      ? "（正向牌：可以主動爭取、提出想法，適合讓別人看見你的能力）"
-      : "（逆向牌：先整理資源與備案，不要衝動離職或硬碰硬，再做決定）";
+    if (focus.primary === "career") {
+      if (isBusinessTargetQuestion(question) && !isCareerChangeQuestion(question)) {
+        return isUpright
+          ? "（業績/成交問題正位牌：說明達標機率傾向，給具體追單/接單/客戶跟進建議，禁止提轉職）"
+          : "（業績/成交問題逆位牌：說明目前達標壓力來源，建議調整追單重心，禁止提轉職或離職）";
+      }
+      return isUpright
+        ? "（正向牌：可以主動爭取、提出想法，適合讓別人看見你的能力）"
+        : "（逆向牌：先整理資源與備案，不要衝動離職或硬碰硬，再做決定）";
+    }
     if (focus.primary === "finance" && isInvestmentQuestion(question)) return isUpright
       ? "（股票正位：給牌面傾向＋控倉建議，不給絕對進場承諾）"
       : "（股票逆位：給牌面偏弱/不支持進場判斷＋風險提示）";
