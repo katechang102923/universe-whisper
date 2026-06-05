@@ -874,7 +874,7 @@ function getFallbackTodayAction(focus: QuestionFocus): string {
   }
 }
 
-function getFallbackNext3To7Days(focus: QuestionFocus): string {
+function getFallbackNext3To7Days(focus: QuestionFocus, question = ""): string {
   switch (focus.primary) {
     case "finance":
       if (isInvestmentQuestion(question)) {
@@ -1420,7 +1420,7 @@ function buildThreeCardFallback(
   // combinedReading：依焦點給出有深度的三牌整合
   const combinedReading = getFallbackCombinedReading(focus, cardNamesStr, cards);
 
-  const actionStepsText = getFallbackNext3To7Days(focus);
+  const actionStepsText = getFallbackNext3To7Days(focus, question);
   const actionSteps = actionStepsText.split("\n").map((s) => s.trim()).filter(Boolean);
 
   return formatThreeCardReading({
