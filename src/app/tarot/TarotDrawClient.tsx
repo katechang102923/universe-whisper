@@ -2710,15 +2710,55 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
 
   // ── LINE 訊息用的摘要提取工具 ────────────────────────────────────────────────
 
+  function lineCleanText(value: unknown): string {
+    if (typeof value !== "string") return "";
+    return normalizePlainText(value)
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/?[^>]+>/g, "")
+      .replace(/\b(?:undefined|null)\b/gi, "")
+      .replace(/\r\n/g, "\n")
+      .split("\n")
+      .map((line) => line.replace(/\s+/g, " ").trim())
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  function lineTakeSentences(text: string, count: number, maxChars: number): string {
+    const cleaned = lineCleanText(text);
+    if (!cleaned) return "";
+    const matches = [...cleaned.matchAll(/[\s\S]*?[。！？.!?]/g)];
+    const picked = matches.length
+      ? matches.slice(0, count).map((match) => match[0]).join("").trim()
+      : cleaned;
+    if (picked.length <= maxChars) return picked;
+    const sliced = picked.slice(0, maxChars);
+    const lastStop = Math.max(
+      sliced.lastIndexOf("。"),
+      sliced.lastIndexOf("！"),
+      sliced.lastIndexOf("？"),
+      sliced.lastIndexOf("."),
+      sliced.lastIndexOf("!"),
+      sliced.lastIndexOf("?"),
+    );
+    return lastStop > maxChars * 0.45 ? sliced.slice(0, lastStop + 1).trim() : `${sliced.trim()}...`;
+  }
+
+  function lineCardKeywords(card: TarotCardFaceData): string {
+    const source = card.keywords;
+    if (Array.isArray(source)) return source.filter(Boolean).join("、");
+    return typeof source === "string" ? source : "";
+  }
+
   function lineExtractSection(text: string, emoji: string): string {
     const pattern = new RegExp(`${emoji}[^\n]+\n+([\\s\\S]*?)(?=\n\n[🎯🌙🌟🃏🕯️🌌💫⚠️]|$)`);
-    return text.match(pattern)?.[1]?.trim() ?? "";
+    return lineCleanText(text.match(pattern)?.[1] ?? "");
   }
 
   function lineExtractOverallAnswer(text: string): string {
     const m = text.match(/整體答案[：:]\s*\n?([\s\S]*?)(?:\n\n為什麼|$)/);
-    if (m?.[1]) return m[1].trim().slice(0, 130);
-    return lineExtractSection(text, "🌟").slice(0, 130);
+    if (m?.[1]) return lineTakeSentences(m[1], 2, 180);
+    return lineTakeSentences(lineExtractSection(text, "🌟"), 2, 180);
   }
 
   function lineExtractCardOneLiner(text: string, cardIndex: number): string {
@@ -2726,27 +2766,27 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
     const mCore = text.match(new RegExp(`🃏 第${cardIndex + 1}張牌[\\s\\S]*?牌面重點[：:]\\s*\\n?([^\n]+)`));
     if (mCore?.[1]) {
       const raw = mCore[1].trim();
-      if (!/（(?:正位|逆位)）/.test(raw)) return raw.slice(0, 55);
+      if (!/（(?:正位|逆位)）/.test(raw)) return lineTakeSentences(raw, 1, 80);
     }
     // 再試 shortSummary
     const mSummary = text.match(new RegExp(`🃏 第${cardIndex + 1}張牌[\\s\\S]*?摘要：([^\n]+)`));
-    if (mSummary?.[1]) return mSummary[1].trim().slice(0, 55);
+    if (mSummary?.[1]) return lineTakeSentences(mSummary[1], 1, 80);
     return "";
   }
 
   function lineExtractAction(text: string): string {
     // 取「接下來的方向」或「3-7 天行動建議」第一行
     const mDir = text.match(/接下來的方向[：:]\s*\n?([\s\S]*?)(?:\n\n🃏|🕯|$)/);
-    if (mDir?.[1]) return mDir[1].trim().slice(0, 80);
+    if (mDir?.[1]) return lineTakeSentences(mDir[1], 1, 120);
     const mAct = text.match(/🕯️[^\n]+\n+([\s\S]*?)(?:\n\n🌌|$)/);
     if (!mAct?.[1]) return "";
     const first = mAct[1].trim().split(/\n\n/)[0] ?? "";
-    return first.split("\n")[0]?.trim().slice(0, 80) ?? "";
+    return lineTakeSentences(first.split("\n")[0] ?? "", 1, 120);
   }
 
   function lineExtractBlessing(text: string): string {
     const m = text.match(/💫 一句專屬祝福\s*\n+([\s\S]*?)(?:\n\n|$)/);
-    return m?.[1]?.trim().slice(0, 50) ?? "";
+    return lineTakeSentences(m?.[1] ?? "", 1, 100);
   }
 
   // ── buildLineMessage：緊湊格式（三張牌≤750字，單張牌≤500字）─────────────────
@@ -2769,48 +2809,77 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
 
     // 已解鎖 — 三張牌緊湊版
     if (mode === "three_card" && fullReading) {
-      const overallAnswer = lineExtractOverallAnswer(fullReading);
+      const parsedThree = parseThreeCardSections(fullReading);
+      const parsedSummary = parseOverallSummary(parsedThree.overallSummary);
+      const summaryText =
+        lineTakeSentences(parsedSummary.verdict || parsedSummary.raw || parsedThree.combined || lineExtractOverallAnswer(fullReading) || freeSummary.message, 2, 220) ||
+        "這組牌提醒你先看清目前節奏，再決定下一步。";
+      const closingText =
+        lineTakeSentences([parsedThree.reminder, parsedThree.blessing].filter(Boolean).join("\n\n") || parsedSummary.direction || lineExtractBlessing(fullReading) || freeSummary.reminder, 1, 180) ||
+        "這組牌提醒你，先守住自己的節奏，答案會比急著追趕時更清楚。";
       const cardLines = cards.map((card, i) => {
         const pos  = card.position ?? `第${i + 1}張`;
         const name = card.nameZh ?? card.name ?? "";
         const ori  = card.orientationLabel ? `（${card.orientationLabel}）` : "";
-        const tip  = lineExtractCardOneLiner(fullReading, i) || "這張牌的提示在完整解讀裡。";
-        return `${pos}｜${name}${ori}：\n${tip}`;
+        const keywords = lineCardKeywords(card);
+        const tip = lineTakeSentences(
+          lineExtractCardOneLiner(fullReading, i) || card.cosmicMessage || keywords || "這張牌的提示已收在完整解讀裡。",
+          1,
+          90,
+        );
+        return [`${pos}｜${name}${ori}`, keywords ? `關鍵字：${keywords}` : "", `一句話：${tip}`].filter(Boolean).join("\n");
       });
-      const action  = lineExtractAction(fullReading);
-      const blessing = lineExtractBlessing(fullReading);
 
       const parts: string[] = [
-        "🌙 宇宙偷偷話｜塔羅訊息", "",
-        `你的問題：\n${questionText}`, "",
-        `你抽到的牌：\n${cardList}`,
+        "宇宙聽到了你的聲音，這是為你抽出的牌組。",
       ];
-      if (overallAnswer) parts.push("", `✨ 整體答案\n${overallAnswer}`);
-      if (cardLines.length > 0) parts.push("", `🃏 三張牌提醒你\n${cardLines.join("\n\n")}`);
-      if (action) parts.push("", `🕯️ 接下來 3～7 天\n${action}`);
-      if (blessing) parts.push("", `💫 給你的祝福\n${blessing}`);
-      parts.push("", `🔮 完整解讀請回網站查看：\n${resultSiteUrl}`);
+      if (cardLines.length > 0) parts.push("", cardLines.join("\n\n"));
+      parts.push("", "————————", "✨ 牌陣總結", summaryText);
+      parts.push("", "————————", "🧘 心靈收束", closingText);
+      parts.push("", `📚 收藏版完整排版：\n${resultSiteUrl}`);
 
-      return parts.join("\n");
+      return lineCleanText(parts.join("\n"));
     }
 
     // 已解鎖 — 單張牌緊湊版
     if (mode === "single_tarot" && fullReading) {
-      const cosmic   = lineExtractSection(fullReading, "🌙").slice(0, 100);
-      const action   = fullReading.match(/🐾[^\n]+\n+([\s\S]*?)(?:\n\n[🌌💫]|$)/)?.[1]?.trim().slice(0, 120) ?? "";
-      const blessing = lineExtractBlessing(fullReading);
+      const sections = parseReadingSectionsForDisplay(fullReading);
+      const cosmic =
+        lineTakeSentences(
+          lineExtractSection(fullReading, "🌙") ||
+            sections.find((section) => section.title.includes("宇宙偷偷話") || section.title.includes("一句話結論"))?.body ||
+            freeSummary.message,
+          2,
+          220,
+        ) || "這張牌提醒你先回到自己的感受與節奏。";
+      const action =
+        lineTakeSentences(
+          fullReading.match(/🐾[^\n]+\n+([\s\S]*?)(?:\n\n[🌌💫]|$)/)?.[1] ||
+            sections.find((section) => section.title.includes("今天可以") || section.title.includes("接下來可以"))?.body ||
+            "",
+          2,
+          160,
+        );
+      const closing =
+        lineTakeSentences(
+          lineExtractBlessing(fullReading) ||
+            sections.find((section) => section.title.includes("溫柔提醒") || section.title.includes("祝福") || section.title.includes("心靈收束"))?.body ||
+            freeSummary.reminder,
+          1,
+          160,
+        ) || "請把注意力放回自己身上，穩穩走下一步。";
 
       const parts: string[] = [
-        "🌙 宇宙偷偷話｜塔羅訊息", "",
+        "宇宙聽到了你的聲音，這是本次抽出的牌。", "",
         `你的問題：\n${questionText}`, "",
         `你抽到的牌：\n${cardList}`,
       ];
-      if (cosmic) parts.push("", `✨ 宇宙說\n${cosmic}`);
+      parts.push("", `✨ 解讀總結\n${cosmic}`);
       if (action) parts.push("", `🐾 今天可以\n${action}`);
-      if (blessing) parts.push("", `💫 給你的祝福\n${blessing}`);
-      parts.push("", `🔮 完整解讀請回網站查看：\n${resultSiteUrl}`);
+      parts.push("", `🧘 心靈收束\n${closing}`);
+      parts.push("", `📚 收藏版完整排版：\n${resultSiteUrl}`);
 
-      return parts.join("\n");
+      return lineCleanText(parts.join("\n"));
     }
 
     // fallback

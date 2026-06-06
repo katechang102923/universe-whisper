@@ -314,115 +314,27 @@ function OverviewTab({
   anonRanking: { display: string; count: number }[];
   lineRanking: { display: string; count: number }[];
 }) {
-  const totalRequests   = usageData.total_requests ?? 0;
-  const totalBlocked    = usageData.total_blocked  ?? 0;
   const fortuneCoverage = (fortuneStats.generated_zodiacs ?? []).length;
-  const featureUsage    = usageData.feature_usage ?? {};
 
   return (
-    <div className="space-y-8">
-      {fetchError && (
-        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
-          ⚠ Firestore 資料讀取失敗，請確認 Firebase 環境變數設定。
-        </div>
-      )}
-
-      {/* 今日收入與付款 */}
-      <div>
-        <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.24em] text-moon/50">今日概覽（{today}）</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard
-            label="今日收入"
-            value={orderStats.todayRevenue > 0 ? `NT$${orderStats.todayRevenue.toLocaleString("zh-TW")}` : "—"}
-            sub="付款成功（非測試）"
-            highlight={orderStats.todayRevenue > 0}
-          />
-          <StatCard label="今日成功付款" value={orderStats.todayPaid} sub={`含測試 ${orderStats.todayTest} 筆`} />
-          <StatCard label="Email 未寄出" value={orderStats.emailUnsent} sub="付款成功但未寄" />
-          <StatCard label="通行碼未產生" value={orderStats.noCode} sub="paid 但無 redeemCode" />
-        </div>
-      </div>
-
-      {/* 付款全期概覽 */}
-      <div>
-        <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.24em] text-moon/50">付款概覽（全期）</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="付款訂單總筆數" value={orderStats.total} />
-          <StatCard label="成功付款"        value={orderStats.paid}    sub="status = paid" />
-          <StatCard label="待付款"          value={orderStats.pending} sub="status = pending" />
-          <StatCard label="付款失敗"        value={orderStats.failed}  sub="status = failed" />
-        </div>
-      </div>
-
-      {/* 通行碼概覽 */}
-      <div>
-        <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.24em] text-moon/50">通行碼概覽（全期）</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="通行碼總數" value={redeemStats.total} />
-          <StatCard label="使用中"     value={redeemStats.active} sub="status = active" />
-          <StatCard label="已用完"     value={redeemStats.usedUp} sub="status = used_up" />
-          <StatCard label="測試資料"   value={redeemStats.test}   sub="isTest = true" />
-        </div>
-      </div>
-
-      {/* 分享圖下載統計 */}
-      <div>
-        <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.24em] text-moon/50">分享圖下載（{today}）</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="今日下載次數" value={shareDownloadStats.todayCount} sub="分享圖下載" />
-          <StatCard label="今日下載人數" value={shareDownloadStats.todayUsers} sub="去重計算" />
-          <StatCard label="全期下載次數" value={shareDownloadStats.allCount}   sub="分享圖下載" />
-          <StatCard label="全期下載人數" value={shareDownloadStats.allUsers}   sub="去重計算" />
-        </div>
-      </div>
-
-      {/* 今日免費抽牌 */}
-      <div>
-        <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.24em] text-moon/50">今日免費抽牌（{today}）</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="成功請求" value={totalRequests} sub="AI API 已呼叫" />
-          <StatCard label="阻擋請求" value={totalBlocked}  sub="限流攔截" />
-          <StatCard
-            label="最多使用功能"
-            value={
-              (featureUsage["single_tarot"] ?? 0) >= (featureUsage["three_card"] ?? 0)
-                ? "單張塔羅" : "三張牌訊息"
-            }
-            sub={`單張 ${featureUsage["single_tarot"] ?? 0} · 三張 ${featureUsage["three_card"] ?? 0}`}
-          />
-          <StatCard
-            label="星座快取覆蓋"
-            value={`${fortuneCoverage} / ${ZODIAC_SIGNS.length}`}
-            sub={fortuneCoverage === ZODIAC_SIGNS.length ? "✓ 全部完成" : "今日已生成"}
-          />
-        </div>
-      </div>
-
-      {/* 進階偵錯資料（預設收合） */}
-      <details className="group">
-        <summary className="flex cursor-pointer list-none items-center gap-2 rounded-2xl border border-white/8 bg-midnight/40 px-5 py-4 text-sm font-medium text-moon/50 transition hover:bg-white/5">
-          <span className="transition group-open:rotate-90">▶</span>
-          進階偵錯資料（IP / 匿名 ID / LINE 使用排行）
-        </summary>
-        <div className="mt-4 space-y-6">
-          <div className="rounded-2xl border border-lavender/18 bg-lavender/8 p-4 text-sm leading-7 text-moon/72">
-            <span className="font-semibold text-lavender">限制規則：</span>
-            未登入：每日 {UNAUTH_DAILY_LIMIT} 次 &nbsp;·&nbsp;
-            LINE 用戶：每日 {LINE_DAILY_LIMIT} 次 &nbsp;·&nbsp;
-            管理員：無限制
-          </div>
-          <UsageTable title="IP 使用排行（前 20）"       keyLabel="IP 位址"      rows={ipRanking}   limit={UNAUTH_DAILY_LIMIT} />
-          <UsageTable title="匿名識別碼使用排行（前 20）" keyLabel="Anonymous ID" rows={anonRanking} limit={UNAUTH_DAILY_LIMIT} />
-          <UsageTable title="LINE 用戶使用排行（前 20）"  keyLabel="LINE User ID" rows={lineRanking} limit={LINE_DAILY_LIMIT} />
-          <ShareDownloadRankingTable rows={shareDownloadRanking} />
-        </div>
-      </details>
-
-      <StatsOverviewClient
-        year={Number(today.slice(0, 4))}
-        month={Number(today.slice(5, 7))}
-      />
-    </div>
+    <StatsOverviewClient
+      year={Number(today.slice(0, 4))}
+      month={Number(today.slice(5, 7))}
+      today={today}
+      usageData={usageData}
+      fortuneCoverage={fortuneCoverage}
+      zodiacCount={ZODIAC_SIGNS.length}
+      redeemStats={redeemStats}
+      orderStats={orderStats}
+      shareDownloadStats={shareDownloadStats}
+      shareDownloadRanking={shareDownloadRanking}
+      fetchError={fetchError}
+      ipRanking={ipRanking}
+      anonRanking={anonRanking}
+      lineRanking={lineRanking}
+      lineDailyLimit={LINE_DAILY_LIMIT}
+      unauthDailyLimit={UNAUTH_DAILY_LIMIT}
+    />
   );
 }
 

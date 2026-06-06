@@ -172,6 +172,143 @@ function stripLabelPrefix(text: string, ...labels: string[]): string {
   return s.trim();
 }
 
+const LINE_KNOWN_HEADINGS = [
+  "本次問題焦點",
+  "宇宙偷偷話",
+  "牌陣總結",
+  "三張牌整合訊息",
+  "三張牌提醒",
+  "第1張牌",
+  "第2張牌",
+  "第3張牌",
+  "第一張牌",
+  "第二張牌",
+  "第三張牌",
+  "3～7 天行動建議",
+  "3~7 天行動建議",
+  "行動建議",
+  "給你的溫柔提醒",
+  "溫柔提醒",
+  "心靈收束",
+  "宇宙給你的最後一句話",
+  "一句專屬祝福",
+  "一句祝福",
+  "健康提醒",
+  "投資聲明",
+  "這張牌正在說什麼",
+  "針對你的問題",
+  "今天可以怎麼做",
+  "接下來可以怎麼做",
+  "一句話結論",
+  "解讀總結",
+];
+
+function cleanLineText(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return normalizePlainText(value)
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/?[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/\b(?:undefined|null)\b/gi, "")
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function trimHeadingRemainder(line: string, heading: string): string {
+  const index = line.indexOf(heading);
+  if (index < 0) return "";
+  return line
+    .slice(index + heading.length)
+    .replace(/^[\s:：｜|【】\-\u2014\u2500-]+/, "")
+    .trim();
+}
+
+function lineContainsAny(line: string, headings: string[]) {
+  return headings.some((heading) => line.includes(heading));
+}
+
+function extractSectionByHeadings(text: string, headings: string[], stopHeadings = LINE_KNOWN_HEADINGS): string {
+  const cleaned = cleanLineText(text);
+  if (!cleaned) return "";
+
+  const lines = cleaned.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    const heading = headings.find((candidate) => line.includes(candidate));
+    if (!heading) continue;
+
+    const body: string[] = [];
+    const sameLine = trimHeadingRemainder(line, heading);
+    if (sameLine) body.push(sameLine);
+
+    for (let j = i + 1; j < lines.length; j++) {
+      const nextLine = lines[j] ?? "";
+      if (lineContainsAny(nextLine, stopHeadings)) break;
+      body.push(nextLine);
+    }
+
+    const result = cleanLineText(body.join("\n"));
+    if (result) return result;
+  }
+  return "";
+}
+
+function extractFieldByLabels(text: string, labels: string[], stopLabels: string[]): string {
+  const cleaned = cleanLineText(text);
+  if (!cleaned) return "";
+
+  const lines = cleaned.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    const label = labels.find((candidate) => line.includes(candidate));
+    if (!label) continue;
+
+    const body: string[] = [];
+    const sameLine = trimHeadingRemainder(line, label);
+    if (sameLine) body.push(sameLine);
+
+    for (let j = i + 1; j < lines.length; j++) {
+      const nextLine = lines[j] ?? "";
+      if (lineContainsAny(nextLine, stopLabels)) break;
+      body.push(nextLine);
+    }
+
+    const result = cleanLineText(body.join("\n"));
+    if (result) return stripLabelPrefix(result, ...labels);
+  }
+  return "";
+}
+
+function truncateLineText(text: string, maxChars: number): string {
+  const cleaned = cleanLineText(text);
+  if (cleaned.length <= maxChars) return cleaned;
+  const sliced = cleaned.slice(0, maxChars);
+  const lastStop = Math.max(
+    sliced.lastIndexOf("。"),
+    sliced.lastIndexOf("！"),
+    sliced.lastIndexOf("？"),
+    sliced.lastIndexOf("."),
+    sliced.lastIndexOf("!"),
+    sliced.lastIndexOf("?"),
+  );
+  if (lastStop > maxChars * 0.45) return sliced.slice(0, lastStop + 1).trim();
+  return `${sliced.trim()}...`;
+}
+
+function firstUsefulLine(text: string): string {
+  return (
+    cleanLineText(text)
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => line && !lineContainsAny(line, LINE_KNOWN_HEADINGS)) ?? ""
+  );
+}
+
 // ── 結構化資料提取工具（供 LINE 與 Email 共用） ────────────────────────────────
 
 /**
@@ -181,7 +318,12 @@ export function extractCardSectionText(fullText: string, cardIndex: number): str
   const nums = ["1", "2", "3"];
   const n = nums[cardIndex];
   if (!n) return "";
-  return extractSection(fullText, `第${n}張牌`);
+  const headings = [
+    `第${cardIndex + 1}張牌`,
+    ["第一張牌", "第二張牌", "第三張牌"][cardIndex] ?? "",
+    `第 ${cardIndex + 1} 張牌`,
+  ].filter(Boolean);
+  return extractSectionByHeadings(fullText, headings) || extractSection(fullText, `第${n}張牌`);
 }
 
 /**
@@ -193,16 +335,19 @@ export function parseCardFields(sectionContent: string): {
   questionMeaning: string;
   cardAdvice: string;
 } {
-  const cleaned = sectionContent.replace(/\*\*/g, "").trim();
+  const cleaned = cleanLineText(sectionContent.replace(/\*\*/g, ""));
   if (!cleaned) return { cardPoint: "", questionMeaning: "", cardAdvice: "" };
 
-  const cardPoint = extractSubfield(
-    cleaned, "牌面重點", "對你的問題代表", "在你的問題中代表", "這張牌提醒你",
-  );
+  const cardPoint =
+    extractFieldByLabels(cleaned, ["牌面重點", "摘要", "關鍵字"], ["對你的問題代表", "在你的問題中代表", "這張牌提醒你"]) ||
+    extractSubfield(cleaned, "牌面重點", "對你的問題代表", "在你的問題中代表", "這張牌提醒你");
   const questionMeaning =
+    extractFieldByLabels(cleaned, ["對你的問題代表", "在你的問題中代表"], ["這張牌提醒你"]) ||
     extractSubfield(cleaned, "對你的問題代表", "這張牌提醒你") ||
     extractSubfield(cleaned, "在你的問題中代表", "這張牌提醒你");
-  const cardAdvice = extractSubfield(cleaned, "這張牌提醒你");
+  const cardAdvice =
+    extractFieldByLabels(cleaned, ["這張牌提醒你", "提醒你", "一句話"], ["牌面重點", "對你的問題代表"]) ||
+    extractSubfield(cleaned, "這張牌提醒你");
 
   if (cardPoint || questionMeaning || cardAdvice) {
     return { cardPoint, questionMeaning, cardAdvice };
@@ -227,20 +372,27 @@ export function extractSpreadSummaryFields(fullText: string): {
   actionAdvice: string;
   summaryRaw: string;
 } {
-  const summaryRaw = extractSection(fullText, "牌陣總結", "三張牌整合");
+  const summaryRaw =
+    extractSectionByHeadings(fullText, ["牌陣總結", "三張牌整合訊息", "三張牌整合", "總結"]) ||
+    extractSection(fullText, "牌陣總結", "三張牌整合");
 
   // 逐層 fallback：子欄位 → 核心判斷 → 第一行去標題 → 第一個非空行 → 前兩句
   const firstNonEmptyLine = summaryRaw.split("\n").find((l) => l.trim())?.trim() ?? "";
   const overallAnswer =
+    extractFieldByLabels(summaryRaw, ["整體答案", "核心判斷", "overallAnswer", "summary", "spreadSummary", "finalSummary", "conclusion"], ["為什麼會這樣", "接下來的方向", "行動建議"]) ||
     extractSubfield(summaryRaw, "整體答案", "為什麼會這樣", "接下來的方向") ||
     extractSubfield(summaryRaw, "核心判斷", "為什麼會這樣", "接下來的方向") ||
     stripLabelPrefix(firstNonEmptyLine, "整體答案", "核心判斷") ||
     // 最後 fallback：去掉可能被一起抓進來的 label 前綴，避免 formatter 再加一次造成重複
     stripLabelPrefix(firstTwoSentences(summaryRaw, 200), "整體答案", "核心判斷");
 
-  const whyThisHappens = extractSubfield(summaryRaw, "為什麼會這樣", "接下來的方向");
+  const whyThisHappens =
+    extractFieldByLabels(summaryRaw, ["為什麼會這樣"], ["接下來的方向", "行動建議"]) ||
+    extractSubfield(summaryRaw, "為什麼會這樣", "接下來的方向");
   const actionAdvice =
+    extractFieldByLabels(summaryRaw, ["接下來的方向", "行動建議", "actionAdvice"], ["給你的溫柔提醒", "溫柔提醒", "一句專屬祝福"]) ||
     extractSubfield(summaryRaw, "接下來的方向") ||
+    extractSectionByHeadings(fullText, ["3～7 天行動建議", "3~7 天行動建議", "行動建議"], ["給你的溫柔提醒", "溫柔提醒", "一句專屬祝福", "一句祝福", "健康提醒"]) ||
     extractSection(fullText, "3～7 天行動建議", "行動建議", "溫柔提醒");
   return { overallAnswer, whyThisHappens, actionAdvice, summaryRaw };
 }
@@ -249,9 +401,13 @@ export function extractSpreadSummaryFields(fullText: string): {
  * 從 fullText 提取心靈收束（溫柔提醒 + 一句祝福）
  */
 export function extractSpiritualClosing(fullText: string): string {
-  const gentleReminder = extractSection(fullText, "給你的溫柔提醒", "溫柔提醒");
-  const blessing = extractSection(fullText, "一句專屬祝福", "一句祝福");
-  return [gentleReminder, blessing].filter(Boolean).join("\n\n");
+  const gentleReminder =
+    extractSectionByHeadings(fullText, ["心靈收束", "給你的溫柔提醒", "溫柔提醒", "宇宙給你的最後一句話", "closing", "spiritualClosing"], ["一句專屬祝福", "一句祝福", "健康提醒", "投資聲明"]) ||
+    extractSection(fullText, "給你的溫柔提醒", "溫柔提醒");
+  const blessing =
+    extractSectionByHeadings(fullText, ["一句專屬祝福", "一句祝福", "blessing"], ["健康提醒", "投資聲明"]) ||
+    extractSection(fullText, "一句專屬祝福", "一句祝福");
+  return cleanLineText([gentleReminder, blessing].filter(Boolean).join("\n\n"));
 }
 
 /**
@@ -266,16 +422,23 @@ export function extractSingleCardFields(fullText: string): {
   spiritualClosing: string;
 } {
   const cardPoint =
+    extractSectionByHeadings(fullText, ["這張牌正在說什麼", "牌面重點", "宇宙偷偷話"], ["針對你的問題", "今天可以怎麼做", "接下來可以怎麼做", "給你的溫柔提醒", "溫柔提醒"]) ||
     extractSection(fullText, "這張牌正在說什麼", "針對你的問題") ||
     extractSection(fullText, "宇宙偷偷話", "針對你的問題");
   const questionMeaning =
+    extractSectionByHeadings(fullText, ["針對你的問題", "一句話結論"], ["今天可以怎麼做", "接下來可以怎麼做", "給你的溫柔提醒", "溫柔提醒"]) ||
     extractSection(fullText, "針對你的問題", "今天可以怎麼做", "接下來可以怎麼做") ||
     extractSection(fullText, "一句話結論", "今天可以怎麼做");
-  const cardAdvice = extractSection(fullText, "今天可以怎麼做", "給你的溫柔提醒", "溫柔提醒");
+  const cardAdvice =
+    extractSectionByHeadings(fullText, ["今天可以怎麼做", "接下來可以怎麼做", "行動建議"], ["給你的溫柔提醒", "溫柔提醒", "一句專屬祝福", "一句祝福"]) ||
+    extractSection(fullText, "今天可以怎麼做", "給你的溫柔提醒", "溫柔提醒");
   const overallAnswer =
+    extractSectionByHeadings(fullText, ["一句話結論", "解讀總結", "宇宙偷偷話"], ["這張牌正在說什麼", "針對你的問題", "今天可以怎麼做", "給你的溫柔提醒"]) ||
     extractSection(fullText, "宇宙偷偷話", "這張牌正在說什麼") ||
     extractSection(fullText, "一句話結論", "這張牌正在說什麼");
-  const actionAdvice = extractSection(fullText, "今天可以怎麼做", "給你的溫柔提醒", "溫柔提醒");
+  const actionAdvice =
+    extractSectionByHeadings(fullText, ["今天可以怎麼做", "接下來可以怎麼做", "行動建議"], ["給你的溫柔提醒", "溫柔提醒", "一句專屬祝福", "一句祝福"]) ||
+    extractSection(fullText, "今天可以怎麼做", "給你的溫柔提醒", "溫柔提醒");
   const spiritualClosing = extractSpiritualClosing(fullText);
   return { cardPoint, questionMeaning, cardAdvice, overallAnswer, actionAdvice, spiritualClosing };
 }
@@ -356,31 +519,34 @@ function buildLineThreeCardMessage(
     const { cardPoint, questionMeaning, cardAdvice } = parseCardFields(cardSectionRaw);
 
     parts.push("", `${pos}｜${name}${ori}`);
-    // 每張牌只保留：1 句牌意摘要 + 1 句「這張牌提醒你：...」
-    const summaryLine = takeNSentences(cardPoint || questionMeaning, 1);
-    if (summaryLine) parts.push(summaryLine);
-    const adviceBody = cardAdvice.replace(/^這張牌提醒你[：:]\s*/, "");
-    if (adviceBody)  parts.push(`這張牌提醒你：${takeNSentences(adviceBody, 1)}`);
-    if (!summaryLine && !adviceBody) {
-      const kw = card.keywords || "";
-      if (kw) parts.push(`關鍵字：${kw}`);
-    }
+    const keywordText = cleanLineText(card.keywords || extractKeywordsFromSection(cardSectionRaw));
+    const oneLine = truncateLineText(
+      takeNSentences(cardPoint || questionMeaning || cardAdvice || keywordText || "這張牌提醒你先保留本次牌面的核心訊息。", 1),
+      90,
+    );
+    if (keywordText) parts.push(`關鍵字：${keywordText}`);
+    parts.push(`一句話：${oneLine}`);
   });
 
   // ── 牌陣總結（精簡：整體答案 2 句、建議 1 句）────────────────────────────
-  const { overallAnswer, actionAdvice } = extractSpreadSummaryFields(fullText);
+  const { overallAnswer, actionAdvice, summaryRaw } = extractSpreadSummaryFields(fullText);
+  const summaryText =
+    truncateLineText(takeNSentences(overallAnswer || summaryRaw || actionAdvice || fullText, 2), 220) ||
+    "這組牌的整體訊息已收在完整解讀裡，建議先看清目前節奏，再決定下一步。";
   parts.push("", D, "", "✨ 牌陣總結");
-  if (overallAnswer) parts.push("", takeNSentences(overallAnswer, 2));
-  if (actionAdvice)  parts.push("", `接下來 3～7 天：\n${takeNSentences(actionAdvice, 1)}`);
+  parts.push("", summaryText);
 
   // ── 心靈收束（1 句）──────────────────────────────────────────────────────────
   const spiritualClosing = extractSpiritualClosing(fullText);
+  const closingText =
+    truncateLineText(takeNSentences(spiritualClosing || actionAdvice || overallAnswer || summaryRaw, 1), 180) ||
+    "這組牌提醒你，先守住自己的節奏，答案會比急著追趕時更清楚。";
   parts.push("", D, "", "🧘 心靈收束");
-  if (spiritualClosing) parts.push("", takeNSentences(spiritualClosing, 1));
+  parts.push("", closingText);
 
   parts.push("", D, `📚 收藏版完整排版：\n${resultUrl}`);
 
-  return parts.join("\n");
+  return cleanLineText(parts.join("\n"));
 }
 
 // ── LINE 單張牌訊息（精簡版，詳細版在 share 頁）──────────────────────────────
@@ -411,23 +577,30 @@ function buildLineSingleCardMessage(
     `${cardName}${cardOri}`,
   ];
 
-  // 三段內容直接並排（不顯示欄位標題）
-  if (cardPoint)       parts.push(cardPoint);
-  if (questionMeaning) parts.push(questionMeaning);
-  if (cardAdvice)      parts.push(cardAdvice);
+  const keywordText = cleanLineText(card.keywords);
+  const cardText =
+    truncateLineText(takeNSentences(cardPoint || questionMeaning || cardAdvice || keywordText || fullText, 2), 220) ||
+    "這張牌的核心訊息已收在完整解讀裡，提醒你先回到自己的感受與節奏。";
+  if (keywordText) parts.push(`關鍵字：${keywordText}`);
+  parts.push(`一句話：${cardText}`);
 
   // ── 解讀總結（壓短：整體答案 3 句、建議 2 句）────────────────────────────────
+  const summaryText =
+    truncateLineText(takeNSentences(overallAnswer || questionMeaning || cardPoint || actionAdvice || fullText, 3), 240) ||
+    "這張牌提醒你，本次問題的答案不只在事件本身，也在你如何安放自己的心。";
   parts.push("", D, "", "✨ 解讀總結");
-  if (overallAnswer) parts.push("", takeNSentences(overallAnswer, 3));
-  if (actionAdvice)  parts.push("", `接下來 3～7 天建議：\n${takeNSentences(actionAdvice, 2)}`);
+  parts.push("", summaryText);
 
   // ── 心靈收束（2 句）──────────────────────────────────────────────────────────
+  const closingText =
+    truncateLineText(takeNSentences(spiritualClosing || actionAdvice || overallAnswer || cardAdvice, 2), 180) ||
+    "請把注意力放回自己身上，你不需要急著證明什麼，只要穩穩走下一步。";
   parts.push("", D, "", "🧘 心靈收束");
-  if (spiritualClosing) parts.push("", takeNSentences(spiritualClosing, 2));
+  parts.push("", closingText);
 
   parts.push("", D, `📚 收藏版完整排版：\n${resultUrl}`);
 
-  return parts.join("\n");
+  return cleanLineText(parts.join("\n"));
 }
 
 // ── 主要 formatter ──────────────────────────────────────────────────────────────
