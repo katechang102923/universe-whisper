@@ -1236,25 +1236,18 @@ async function generateThreeCardStoryImage(
   ctx.fillStyle = "rgba(216,189,112,0.55)";
   ctx.fillText("✦", W / 2, PANEL_Y + 34);
 
-  // 從整體答案組出 2～3 行文字（不重新呼叫 AI，優先取前兩句）
-  const rawAnswer = overallAnswer.replace(/\n+/g, " ").trim();
-  const sentences = rawAnswer.match(/[^。！？]+[。！？]/g) ?? [];
-  let quote: string;
-  if (sentences.length >= 2) {
-    const s0 = sentences[0]!.trim();
-    const s1 = sentences[1]!.trim();
-    const combined = s0 + s1;
-    quote = combined.length <= 88 ? combined : s0;
-  } else if (sentences.length === 1) {
-    quote = sentences[0]!.trim();
-  } else {
-    quote = rawAnswer;
-  }
-  if (quote.length > 90) quote = quote.slice(0, 88) + "…";
-
-  ctx.font      = "500 38px " + ff;   // 放大一級（34→38px）
+  // 分段換行再各自 wrap（支援兩句具體摘要結構）
+  ctx.font      = "500 38px " + ff;
   ctx.fillStyle = MOON;
-  const quoteLines = wrapCanvasText(ctx, quote, PANEL_W - 96);
+  const answerSegments = overallAnswer.trim().split("\n").filter(Boolean).map((seg) => seg.trim());
+  const quoteLines: string[] = [];
+  for (const seg of answerSegments) {
+    quoteLines.push(...wrapCanvasText(ctx, seg, PANEL_W - 96));
+    if (quoteLines.length >= 4) break;
+  }
+  if (quoteLines.length === 0) {
+    quoteLines.push(...wrapCanvasText(ctx, overallAnswer.trim().slice(0, 120), PANEL_W - 96));
+  }
   const maxQ      = Math.min(quoteLines.length, 4);
   const LINE_H_Q  = 56;               // 行距一起調整（50→56px）
   const totalQH   = (maxQ - 1) * LINE_H_Q + 38;
@@ -1313,6 +1306,7 @@ async function generateThreeCardStoryImage(
     "讓自己呼吸一下，宇宙的訊息會在你準備好時更清楚。",
   ];
   // 根據答案內容決定性地選一句（同樣答案永遠選同一句）
+  const rawAnswer = overallAnswer.replace(/\n+/g, " ").trim();
   const closingIdx  = rawAnswer.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) % CLOSING_LINES.length;
   const closingLine = CLOSING_LINES[closingIdx]!;
 
@@ -1991,17 +1985,30 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
     });
   }, [cards, fullReading]);
 
-  // ── 三張牌限動圖用：整體答案（最多 80 字）───────────────────────────────────
+  // ── 三張牌限動圖用：整體答案（目前狀態 + 下一步方向，兩句具體摘要）──────────
   const threeCardOverallAnswer = useMemo(() => {
     if (!fullReading || cards.length < 3) {
       const msg = freeSummary.message || "";
-      return msg.length > 80 ? msg.slice(0, 78) + "…" : msg;
+      const m = msg.match(/^[\s\S]*?[。！？]/);
+      return (m ? m[0] : msg).trim().slice(0, 120);
     }
     const s = parseThreeCardSections(fullReading);
     const parsed = parseOverallSummary(s.overallSummary);
-    const raw = (parsed.verdict || parsed.raw || freeSummary.message || "")
+
+    const verdictRaw = (parsed.verdict || parsed.raw || freeSummary.message || "")
       .replace(/\n+/g, " ").trim();
-    return raw.length > 80 ? raw.slice(0, 78) + "…" : raw;
+    const directionRaw = (parsed.direction || "").replace(/\n+/g, " ").trim();
+
+    // 第一句：目前狀態 / 核心提醒
+    const m1 = verdictRaw.match(/^[\s\S]*?[。！？]/);
+    const s1 = (m1 ? m1[0] : verdictRaw).trim();
+
+    // 第二句：下一步方向
+    const m2 = directionRaw.match(/^[\s\S]*?[。！？]/);
+    const s2 = m2 ? m2[0].trim() : "";
+
+    const result = s2 ? `${s1}\n${s2}` : s1;
+    return result.length > 130 ? result.slice(0, 128) + "…" : result;
   }, [cards, fullReading, freeSummary]);
 
   // Cleanup timers

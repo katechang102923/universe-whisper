@@ -356,26 +356,27 @@ function buildLineThreeCardMessage(
     const { cardPoint, questionMeaning, cardAdvice } = parseCardFields(cardSectionRaw);
 
     parts.push("", `${pos}｜${name}${ori}`);
-    if (cardPoint)       parts.push(cardPoint);
-    if (questionMeaning) parts.push(questionMeaning);
-    if (cardAdvice)      parts.push(cardAdvice);
-    if (!cardPoint && !questionMeaning && !cardAdvice) {
+    // 每張牌只保留：1 句牌意摘要 + 1 句「這張牌提醒你：...」
+    const summaryLine = takeNSentences(cardPoint || questionMeaning, 1);
+    if (summaryLine) parts.push(summaryLine);
+    const adviceBody = cardAdvice.replace(/^這張牌提醒你[：:]\s*/, "");
+    if (adviceBody)  parts.push(`這張牌提醒你：${takeNSentences(adviceBody, 1)}`);
+    if (!summaryLine && !adviceBody) {
       const kw = card.keywords || "";
       if (kw) parts.push(`關鍵字：${kw}`);
     }
   });
 
-  // ── 牌陣總結（壓短：整體答案 3 句、為什麼 2 句、建議 2 句）────────────────
-  const { overallAnswer, whyThisHappens, actionAdvice } = extractSpreadSummaryFields(fullText);
+  // ── 牌陣總結（精簡：整體答案 2 句、建議 1 句）────────────────────────────
+  const { overallAnswer, actionAdvice } = extractSpreadSummaryFields(fullText);
   parts.push("", D, "", "✨ 牌陣總結");
-  if (overallAnswer)   parts.push("", takeNSentences(overallAnswer, 3));
-  if (whyThisHappens)  parts.push("", takeNSentences(whyThisHappens, 2));
-  if (actionAdvice)    parts.push("", `接下來 3～7 天建議：\n${takeNSentences(actionAdvice, 2)}`);
+  if (overallAnswer) parts.push("", takeNSentences(overallAnswer, 2));
+  if (actionAdvice)  parts.push("", `接下來 3～7 天：\n${takeNSentences(actionAdvice, 1)}`);
 
-  // ── 心靈收束（2 句）──────────────────────────────────────────────────────────
+  // ── 心靈收束（1 句）──────────────────────────────────────────────────────────
   const spiritualClosing = extractSpiritualClosing(fullText);
   parts.push("", D, "", "🧘 心靈收束");
-  if (spiritualClosing) parts.push("", takeNSentences(spiritualClosing, 2));
+  if (spiritualClosing) parts.push("", takeNSentences(spiritualClosing, 1));
 
   parts.push("", D, `📚 收藏版完整排版：\n${resultUrl}`);
 
