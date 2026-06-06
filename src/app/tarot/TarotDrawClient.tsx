@@ -722,36 +722,75 @@ function getShareTitle(topic: TarotTopicOption, card: TarotCardFaceData | undefi
     (card ? titles[card.name.length % titles.length] : titles[0]);
 }
 
+/** 將文字壓縮為指定字數範圍的完整句子（不截斷句子） */
+function compressToSentences(text: string, minChars: number, maxChars: number): string {
+  const clean = text
+    .replace(/\*\*/g, "")
+    .replace(/\n+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!clean) return "";
+  const parts: string[] = [];
+  let cur = "";
+  for (const ch of clean) {
+    cur += ch;
+    if (ch === "。" || ch === "！" || ch === "？") {
+      parts.push(cur.trim());
+      cur = "";
+    }
+  }
+  if (cur.trim()) parts.push(cur.trim());
+  let result = "";
+  for (const p of parts) {
+    const next = result ? result + p : p;
+    if (next.length > maxChars) break;
+    result = next;
+    if (result.length >= minChars) break;
+  }
+  return result || clean.slice(0, maxChars);
+}
+
 function buildStoryCopy(
   card: TarotCardFaceData | undefined,
   fullReading: string,
   freeSummary: { message: string; reminder: string },
-  topic?: TarotTopicOption,
+  _topic?: TarotTopicOption,
 ) {
-  const SKIP_TITLES = new Set(["本次問題焦點", "一句話結論"]);
   const sections = fullReading.trim()
-    ? parseReadingSectionsForDisplay(fullReading).filter((s) => !SKIP_TITLES.has(s.title))
+    ? parseReadingSectionsForDisplay(fullReading)
     : [];
 
-  // 取「宇宙偷偷話」或「這張牌正在說什麼」段落作為分享主文
-  const mainSection = sections.find((s) =>
-    s.title.includes("宇宙偷偷話") || s.title.includes("這張牌正在說") || s.title.includes("牌陣總結")
+  // 主要文案優先順序：針對你的問題 → 一句話結論 → 給你的溫柔提醒 → 宇宙偷偷話 → fallback
+  const questionAnswerSection = sections.find((s) => s.title.includes("針對你的問題"));
+  const conclusionSection     = sections.find((s) => s.title.includes("一句話結論"));
+  const reminderSection       = sections.find((s) => s.title.includes("給你的溫柔提醒"));
+  const cosmicSection         = sections.find((s) =>
+    s.title.includes("宇宙偷偷話") || s.title.includes("這張牌正在說")
   );
-  const mainText = mainSection?.body || card?.cosmicMessage || freeSummary.message || READING_FALLBACK_TEXT;
+  const blessingSection       = sections.find((s) => s.title.includes("一句專屬祝福"));
 
-  // 使用分類標題 + 吸引力文案作為 resultText（分享圖主標）
-  const categoryLabel = topic ? getTopicShareLabel(topic) : "宇宙訊息";
-  const shareTitle    = getShareTitle(topic ?? "生活", card);
-  const resultText    = `${categoryLabel}\n${shareTitle}`;
+  const mainSource =
+    questionAnswerSection?.body ||
+    conclusionSection?.body ||
+    reminderSection?.body ||
+    cosmicSection?.body ||
+    card?.cosmicMessage ||
+    freeSummary.message ||
+    READING_FALLBACK_TEXT;
 
-  // adviceText 用一句話結論或解鎖引導
-  const conclusionSection = sections.find((s) => s.title.includes("一句話結論"));
-  const teaser = "分享後解鎖完整訊息，看見這張牌真正想提醒你的事。";
-  const adviceText = conclusionSection?.body || mainText.slice(0, 60) + (mainText.length > 60 ? "…" : "") || teaser;
+  // 壓縮為 2～4 句，約 55～95 字
+  const resultText = compressToSentences(mainSource, 55, 95);
+
+  // 下方小字：主文來自「針對你的問題」時，補上溫柔提醒或祝福；否則只用祝福
+  const adviceRaw =
+    questionAnswerSection
+      ? (reminderSection?.body || blessingSection?.body || "")
+      : (blessingSection?.body || "");
+  const adviceText = adviceRaw.length > 85 ? `${adviceRaw.slice(0, 83)}...` : adviceRaw;
 
   return {
     resultText: resultText.length > 130 ? `${resultText.slice(0, 128)}...` : resultText,
-    adviceText: adviceText.length > 85 ? `${adviceText.slice(0, 83)}...` : adviceText,
+    adviceText,
   };
 }
 
@@ -1985,30 +2024,43 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
     });
   }, [cards, fullReading]);
 
-  // ── 三張牌限動圖用：整體答案（目前狀態 + 下一步方向，兩句具體摘要）──────────
+  // ── 三張牌限動圖用：整體答案前 2 句（目前狀態 + 核心提醒）─────────────────────
+  // 來源優先：整體答案（verdict）→ overallSummary raw → freeSummary.message
+  // 策略：從同一段落取前 2 句，確保內容連貫且具體；
+  //       若只有 1 句才嘗試補上「接下來的方向」第 1 句
   const threeCardOverallAnswer = useMemo(() => {
     if (!fullReading || cards.length < 3) {
       const msg = freeSummary.message || "";
-      const m = msg.match(/^[\s\S]*?[。！？]/);
-      return (m ? m[0] : msg).trim().slice(0, 120);
+      const sentMs = [...msg.matchAll(/[\s\S]*?[。！？]/g)];
+      const twoSents = sentMs.slice(0, 2).map((m) => m[0].trim()).join("\n").trim();
+      return (twoSents || msg).slice(0, 130);
     }
     const s = parseThreeCardSections(fullReading);
     const parsed = parseOverallSummary(s.overallSummary);
 
+    // 優先取 整體答案 子段落，fallback 至整個 overallSummary raw
     const verdictRaw = (parsed.verdict || parsed.raw || freeSummary.message || "")
       .replace(/\n+/g, " ").trim();
-    const directionRaw = (parsed.direction || "").replace(/\n+/g, " ").trim();
 
-    // 第一句：目前狀態 / 核心提醒
-    const m1 = verdictRaw.match(/^[\s\S]*?[。！？]/);
-    const s1 = (m1 ? m1[0] : verdictRaw).trim();
+    // 取前 2 句
+    const sentMs = [...verdictRaw.matchAll(/[\s\S]*?[。！？]/g)];
+    const sentences = sentMs.map((m) => m[0].trim()).filter(Boolean);
 
-    // 第二句：下一步方向
-    const m2 = directionRaw.match(/^[\s\S]*?[。！？]/);
-    const s2 = m2 ? m2[0].trim() : "";
+    let result: string;
+    if (sentences.length >= 2) {
+      const combined = `${sentences[0]}\n${sentences[1]}`;
+      result = combined.length <= 130 ? combined : sentences[0];
+    } else if (sentences.length === 1) {
+      // 只有 1 句：補「接下來的方向」第 1 句
+      const directionRaw = (parsed.direction || "").replace(/\n+/g, " ").trim();
+      const dm = directionRaw.match(/^[\s\S]*?[。！？]/);
+      const s2 = dm ? dm[0].trim() : "";
+      result = s2 ? `${sentences[0]}\n${s2}` : sentences[0];
+    } else {
+      result = verdictRaw.slice(0, 80);
+    }
 
-    const result = s2 ? `${s1}\n${s2}` : s1;
-    return result.length > 130 ? result.slice(0, 128) + "…" : result;
+    return result.length > 130 ? `${result.slice(0, 128)}…` : result;
   }, [cards, fullReading, freeSummary]);
 
   // Cleanup timers
