@@ -459,7 +459,11 @@ export async function POST(req: NextRequest) {
     const fullText = (result.fullText || "").replace(/\*\*/g, "").trim();
 
     // ── 只允許已解鎖的結果寄送 ─────────────────────────────────────────────
-    if (!result.unlocked) {
+    // unlocked: 付費/兌換碼解鎖；unlockStatus:"line_verified": LINE 解鎖成功
+    const isUnlocked =
+      result.unlocked ||
+      (result as { unlockStatus?: string }).unlockStatus === "line_verified";
+    if (!isUnlocked) {
       return NextResponse.json({ ok: false, error: "NOT_UNLOCKED" }, { status: 403 });
     }
 

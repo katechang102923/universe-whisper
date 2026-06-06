@@ -70,11 +70,12 @@ function extractSection(text: string, ...keywords: string[]): string {
 
   for (const kw of keywords) {
     const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // 不使用 "m" flag：$  只匹配字串結尾，避免在 multiline 模式下每行行尾都滿足
+    // lookahead，導致 lazy [\s\S]*? 只抓到第一行就停止。
     const pattern = new RegExp(
       `(?:^|\\n)[^\\n]{0,8}${escaped}[^\\n]{0,40}\\n+` +
       `([\\s\\S]*?)` +
       `(?=\\n[^\\n]{0,8}(?:${NEXT_TITLES})|$)`,
-      "m",
     );
     const m = cleaned.match(pattern);
     if (m?.[1]?.trim()) return m[1].trim();
@@ -91,8 +92,9 @@ function extractSubfield(text: string, keyword: string, ...stopKeywords: string[
   const stops = stopKeywords
     .map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
     .join("|");
-  const stopPart = stops ? `(?=\\n{1,2}(?:${stops})|$)` : "";
-  const re = new RegExp(`${escaped}[：:]\\s*\\n?([\\s\\S]*?)${stopPart}`, "m");
+  // 不使用 "m" flag：$ 只匹配字串結尾，確保多行子欄位內容完整抓取。
+  const stopPart = stops ? `(?=\\n{1,2}(?:${stops})|$)` : `(?=$)`;
+  const re = new RegExp(`${escaped}[：:]\\s*\\n?([\\s\\S]*?)${stopPart}`);
   return text.match(re)?.[1]?.trim() || "";
 }
 
@@ -210,7 +212,8 @@ export function extractSpreadSummaryFields(fullText: string): {
     extractSubfield(summaryRaw, "整體答案", "為什麼會這樣", "接下來的方向") ||
     extractSubfield(summaryRaw, "核心判斷", "為什麼會這樣", "接下來的方向") ||
     stripLabelPrefix(firstNonEmptyLine, "整體答案", "核心判斷") ||
-    firstTwoSentences(summaryRaw, 200);
+    // 最後 fallback：去掉可能被一起抓進來的 label 前綴，避免 formatter 再加一次造成重複
+    stripLabelPrefix(firstTwoSentences(summaryRaw, 200), "整體答案", "核心判斷");
 
   const whyThisHappens = extractSubfield(summaryRaw, "為什麼會這樣", "接下來的方向");
   const actionAdvice =

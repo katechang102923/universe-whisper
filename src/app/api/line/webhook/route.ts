@@ -178,9 +178,11 @@ async function handleClaimCode(
         lineUserId,
         claimedAt: FieldValue.serverTimestamp(),
       }),
-      // best-effort：若 resultId 是真實記錄就順便標記 line_verified
+      // best-effort：若 resultId 是真實記錄就順便標記 line_verified 並設 unlocked:true
+      // （unlocked:true 讓 Email API 也認得這是已解鎖的結果）
       db.collection(LINE_RESULTS_COLLECTION).doc(resultId).set(
         {
+          unlocked: true,
           unlockStatus: "line_verified",
           unlockedBy: "line",
           unlockedAt: FieldValue.serverTimestamp(),
