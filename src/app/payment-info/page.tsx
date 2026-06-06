@@ -36,14 +36,20 @@ export default function PaymentInfoPage() {
               </p>
             </div>
             <div>
-              <p className="text-sm font-semibold text-moon/90">付款金額</p>
-              <p className="text-2xl font-semibold text-[#d8bd70]">NT$49 ／次</p>
+              <p className="text-sm font-semibold text-moon/90">付費方案</p>
+              <p className="leading-9">
+                單次完整解鎖：<span className="font-semibold text-[#d8bd70]">NT$49／次</span><br />
+                兌換碼 5 次方案：<span className="font-semibold text-[#d8bd70]">NT$220</span><br />
+                兌換碼 10 次方案：<span className="font-semibold text-[#d8bd70]">NT$350</span>
+              </p>
             </div>
             <div>
               <p className="text-sm font-semibold text-moon/90">交付方式</p>
               <p>
-                付款完成後，完整解讀將於網站結果頁顯示。若因系統異常導致付款成功但內容未正常顯示，使用者可於付款後
-                24 小時內聯繫客服並提供付款紀錄，客服確認後將以 Email 人工協助重新提供本次完整解讀內容；若確認無法重新提供，將協助退款或取消交易。
+                完成 LINE 驗證、付費解鎖或使用兌換碼後，完整解讀將於網站結果頁顯示。使用者也可依頁面提供的功能，將本次結果傳送至 LINE 官方帳號或 Email 收藏。
+              </p>
+              <p className="mt-3">
+                若因系統異常導致付款成功但內容未正常顯示，使用者可於付款後 24 小時內聯繫客服並提供付款紀錄，客服確認後將協助補發本次完整解讀內容；若確認無法補發，將協助退款或取消交易。
               </p>
             </div>
           </div>
@@ -59,11 +65,18 @@ export default function PaymentInfoPage() {
               每位使用者每日可免費進行一次基礎塔羅抽牌，並查看頁面提供的免費內容。免費內容範圍以網站當下顯示為準。
             </p>
             <p>
-              若使用者希望查看本次塔羅的完整解讀，可選擇分享 Facebook 免費解鎖，或直接付費{" "}
-              <span className="font-semibold text-[#d8bd70]">NT$49／次</span> 解鎖。
+              若使用者希望查看本次塔羅的完整解讀，可選擇加入 Universe Whisper LINE 官方帳號，並依頁面指示完成驗證碼傳送，即可解鎖本次完整解讀內容。
             </p>
             <p>
-              付費解鎖後，系統將提供本次抽牌對應的完整塔羅文字解讀內容。
+              若使用者不想透過 LINE 解鎖，或希望額外進行完整解讀，可選擇以下付費方式：
+            </p>
+            <p>
+              ・單次解鎖：<span className="font-semibold text-[#d8bd70]">NT$49／次</span><br />
+              ・兌換碼 5 次方案：<span className="font-semibold text-[#d8bd70]">NT$220</span><br />
+              ・兌換碼 10 次方案：<span className="font-semibold text-[#d8bd70]">NT$350</span>
+            </p>
+            <p>
+              付費或使用兌換碼解鎖後，系統將提供本次抽牌對應的完整塔羅文字解讀內容。兌換碼可依購買方案使用指定次數，實際可使用次數與有效狀態以系統紀錄為準。
             </p>
           </div>
         </div>

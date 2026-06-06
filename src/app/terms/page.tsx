@@ -68,14 +68,21 @@ export default function TermsPage() {
           <h2 className="text-2xl font-semibold text-moon">免費與付費服務</h2>
           <div className="mt-5 space-y-4 leading-8 text-moon/74">
             <p>
-              Universe Whisper 提供每日一次基礎免費抽牌服務。免費內容範圍以網站當下頁面顯示為準。
+              每位使用者每日可免費進行一次基礎塔羅抽牌，並查看頁面提供的免費內容。免費內容範圍以網站當下顯示為準。
             </p>
             <p>
-              若使用者希望查看本次塔羅完整解讀，可透過分享 Facebook 免費解鎖，或依頁面標示金額付費解鎖。完整解讀目前費用為{" "}
-              <span className="font-semibold text-[#d8bd70]">NT$49／次</span>。
+              若使用者希望查看本次塔羅的完整解讀，可選擇加入 Universe Whisper LINE 官方帳號，並依頁面指示完成驗證碼傳送，即可解鎖本次完整解讀內容。
             </p>
             <p>
-              付費完成後，若系統已成功產出、顯示或發送完整解讀內容，該數位內容即視為已完成提供。
+              若使用者不想透過 LINE 解鎖，或希望額外進行完整解讀，可選擇以下付費方式：
+            </p>
+            <p>
+              ・單次解鎖：<span className="font-semibold text-[#d8bd70]">NT$49／次</span><br />
+              ・兌換碼 5 次方案：<span className="font-semibold text-[#d8bd70]">NT$220</span><br />
+              ・兌換碼 10 次方案：<span className="font-semibold text-[#d8bd70]">NT$350</span>
+            </p>
+            <p>
+              付費或使用兌換碼解鎖後，系統將提供本次抽牌對應的完整塔羅文字解讀內容。兌換碼可依購買方案使用指定次數，實際可使用次數與有效狀態以系統紀錄為準。
             </p>
           </div>
         </div>

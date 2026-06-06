@@ -194,22 +194,29 @@ export function parseCardFields(sectionContent: string): {
 
 /**
  * 從 fullText 提取牌陣總結（整體答案 / 為什麼會這樣 / 接下來的方向）
+ * 同時回傳 summaryRaw 供 Email fallback 使用（不影響 LINE 輸出）
  */
 export function extractSpreadSummaryFields(fullText: string): {
   overallAnswer: string;
   whyThisHappens: string;
   actionAdvice: string;
+  summaryRaw: string;
 } {
   const summaryRaw = extractSection(fullText, "牌陣總結", "三張牌整合");
+
+  // 逐層 fallback：子欄位 → 核心判斷 → 第一行去標題 → 第一個非空行 → 前兩句
+  const firstNonEmptyLine = summaryRaw.split("\n").find((l) => l.trim())?.trim() ?? "";
   const overallAnswer =
     extractSubfield(summaryRaw, "整體答案", "為什麼會這樣", "接下來的方向") ||
     extractSubfield(summaryRaw, "核心判斷", "為什麼會這樣", "接下來的方向") ||
-    stripLabelPrefix(summaryRaw.split("\n")[0] ?? "", "整體答案", "核心判斷");
+    stripLabelPrefix(firstNonEmptyLine, "整體答案", "核心判斷") ||
+    firstTwoSentences(summaryRaw, 200);
+
   const whyThisHappens = extractSubfield(summaryRaw, "為什麼會這樣", "接下來的方向");
   const actionAdvice =
     extractSubfield(summaryRaw, "接下來的方向") ||
     extractSection(fullText, "3～7 天行動建議", "行動建議", "溫柔提醒");
-  return { overallAnswer, whyThisHappens, actionAdvice };
+  return { overallAnswer, whyThisHappens, actionAdvice, summaryRaw };
 }
 
 /**

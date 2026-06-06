@@ -8,13 +8,89 @@ import {
   extractSpreadSummaryFields,
   extractSpiritualClosing,
   extractSingleCardFields,
-  validateLineContent,
 } from "@/lib/lineResults";
 
 export const runtime = "nodejs";
 
 function validateEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+// ── Email 專屬內容驗證（以 fullText 完整性為主要判斷）─────────────────────────
+// 不依賴 structured overallAnswer 是否存在；只要 fullText 夠長且有牌段落即可。
+// LINE 驗證（validateLineContent）維持原樣，此函式僅用於 email 流程。
+
+interface EmailValidationResult {
+  valid: boolean;
+  errors: string[];
+  usedFallback: boolean;
+}
+
+function validateEmailContent(
+  result: LineResultData,
+  fullText: string,
+  resultId: string,
+): EmailValidationResult {
+  const errors: string[] = [];
+  let usedFallback = false;
+
+  // ── 基本欄位檢查（與 LINE 驗證相同） ───────────────────────────────────────
+  if (!fullText || fullText.length < 100) {
+    errors.push("fullText 為空或過短");
+  }
+  if (!result.question?.trim()) {
+    errors.push("question 為空");
+  }
+  if (!result.cards || result.cards.length === 0) {
+    errors.push("cards 為空");
+  }
+
+  // ── 三張牌：以 fullText 長度 + 有牌段落為主判斷，不強制要求 overallAnswer ─
+  if (result.cards.length === 3 && fullText.length > 100) {
+    const card1Section = extractCardSectionText(fullText, 0);
+    if (!card1Section) {
+      errors.push("第1張牌段落 為空");
+    }
+    const { overallAnswer, summaryRaw } = extractSpreadSummaryFields(fullText);
+    if (!overallAnswer) {
+      // 允許 fallback：summaryRaw 或 fullText 本身即可
+      if (!summaryRaw && fullText.length < 300) {
+        errors.push("牌陣總結段落完全缺失且 fullText 過短");
+      } else {
+        usedFallback = true;
+      }
+    }
+    const spiritualClosing = extractSpiritualClosing(fullText);
+    if (!spiritualClosing) {
+      // Email fallback：心靈收束空白時用 fullText 結尾，不擋送出
+      if (fullText.length < 300) {
+        errors.push("心靈收束 為空且 fullText 過短");
+      } else {
+        usedFallback = true;
+      }
+    }
+  }
+
+  // ── 單張牌：保持原有邏輯 ───────────────────────────────────────────────────
+  if (result.cards.length === 1 && fullText.length > 100) {
+    const { cardPoint } = extractSingleCardFields(fullText);
+    if (!cardPoint) errors.push("單張牌解讀內容 為空");
+    const spiritualClosing = extractSpiritualClosing(fullText);
+    if (!spiritualClosing && fullText.length < 300) {
+      errors.push("心靈收束 為空且 fullText 過短");
+    } else if (!spiritualClosing) {
+      usedFallback = true;
+    }
+  }
+
+  if (errors.length > 0) {
+    console.error(
+      `[email/send-result] 內容驗證失敗 resultId=${resultId}`,
+      { errors, cardCount: result.cards.length, fullTextLength: fullText.length },
+    );
+  }
+
+  return { valid: errors.length === 0, errors, usedFallback };
 }
 
 // ── 共用樣式常數 ──────────────────────────────────────────────────────────────
@@ -70,8 +146,31 @@ function buildThreeCardEmailHtml(
   dateStr: string,
 ): string {
   const DEFAULT_POSITIONS = ["過去", "現在", "未來"];
-  const { overallAnswer, whyThisHappens, actionAdvice } = extractSpreadSummaryFields(fullText);
-  const spiritualClosing = extractSpiritualClosing(fullText);
+  const { overallAnswer: rawOverallAnswer, whyThisHappens, actionAdvice, summaryRaw } =
+    extractSpreadSummaryFields(fullText);
+  const rawSpiritualClosing = extractSpiritualClosing(fullText);
+
+  // ── Fallback：overallAnswer 空時用 summaryRaw 或 fullText 後段 ───────────────
+  let overallAnswer = rawOverallAnswer;
+  let usedFallback = false;
+  if (!overallAnswer) {
+    overallAnswer =
+      summaryRaw.trim() ||
+      fullText.slice(Math.max(0, fullText.length - 400)).trim();
+    if (overallAnswer) usedFallback = true;
+  }
+
+  // ── Fallback：心靈收束空時用 fullText 最後兩句 ───────────────────────────────
+  let spiritualClosing = rawSpiritualClosing;
+  if (!spiritualClosing && fullText.length > 200) {
+    const lastPart = fullText.slice(Math.max(0, fullText.length - 300)).trim();
+    spiritualClosing = lastPart;
+    usedFallback = true;
+  }
+
+  if (usedFallback) {
+    console.log("[email/send-result] 使用 fallback summary content");
+  }
 
   // ── 問題卡 ────────────────────────────────────────────────────────────────
   const questionCard = result.question
@@ -384,16 +483,18 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── 內容完整性驗證 ────────────────────────────────────────────────────
-    const validation = validateLineContent(result, fullText, resultId);
+    // ── Email 內容完整性驗證（以 fullText 為主要判斷，不強制要求 structured overallAnswer）
+    const validation = validateEmailContent(result, fullText, resultId);
     if (!validation.valid) {
-      console.error(
-        `[email/send-result] 內容驗證失敗 resultId=${resultId}`,
-        { errors: validation.errors },
-      );
       return NextResponse.json(
         { ok: false, error: "CONTENT_INCOMPLETE", detail: validation.errors },
         { status: 422 },
+      );
+    }
+    if (validation.usedFallback) {
+      console.log(
+        `[email/send-result] 使用 fallback summary content resultId=${resultId}`,
+        { cardCount: result.cards.length, fullTextLength: fullText.length },
       );
     }
 

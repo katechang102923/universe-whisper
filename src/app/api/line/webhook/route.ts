@@ -7,7 +7,7 @@ import {
   LINE_RESULTS_COLLECTION,
   type LineResultData,
 } from "@/lib/lineResults";
-import { CLAIM_COLLECTION } from "../claim/create/route";
+import { CLAIM_COLLECTION, type ClaimPurpose } from "../claim/create/route";
 
 // -------------------------------------------------------------------
 // LINE Webhook  —  處理所有來自 LINE 的事件
@@ -135,6 +135,7 @@ async function handleClaimCode(
   const claim = claimSnap.data() as {
     resultId?: string;
     status?: string;
+    purpose?: ClaimPurpose;
     expiresAt?: { toDate?: () => Date };
   };
 
@@ -161,6 +162,38 @@ async function handleClaimCode(
     return;
   }
 
+  const purpose: ClaimPurpose = claim.purpose === "line_unlock" ? "line_unlock" : "send_result";
+
+  // ── LINE 解鎖驗證碼：只認證，不回傳完整結果 ─────────────────────────────
+  if (purpose === "line_unlock") {
+    // 並行：回覆確認訊息 + 標記 claim 已使用
+    // lineResults 寫入是 best-effort（可能是 anon- 前綴的臨時 ID，不一定存在）
+    await Promise.all([
+      replyWithText(
+        replyToken,
+        "✅ 認證成功！\n\n請回到網頁點「我已加入，重新檢查狀態」，即可查看完整解讀。",
+      ),
+      claimRef.update({
+        status: "claimed",
+        lineUserId,
+        claimedAt: FieldValue.serverTimestamp(),
+      }),
+      // best-effort：若 resultId 是真實記錄就順便標記 line_verified
+      db.collection(LINE_RESULTS_COLLECTION).doc(resultId).set(
+        {
+          unlockStatus: "line_verified",
+          unlockedBy: "line",
+          unlockedAt: FieldValue.serverTimestamp(),
+          lineUserId,
+        },
+        { merge: true },
+      ).catch(() => { /* 臨時 resultId 時靜默忽略 */ }),
+    ]);
+    console.info("[webhook/claim] LINE unlock verified", { claimCode, resultId, lineUserId });
+    return;
+  }
+
+  // ── 傳送結果驗證碼（send_result）：回傳完整塔羅內容 ─────────────────────
   // 2. 取得塔羅結果
   const resultSnap = await db.collection(LINE_RESULTS_COLLECTION).doc(resultId).get();
 

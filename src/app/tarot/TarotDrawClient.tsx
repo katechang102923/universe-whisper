@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { ShareStoryCard } from "@/components/ShareStoryCard";
 import { TarotCardBack, TarotCardFace, TarotCardFaceCompact, type TarotCardFaceData } from "@/components/TarotCardFace";
@@ -1640,13 +1640,12 @@ function ThreeCardStoryPortalModal({
   onClose: () => void;
   onDownload: () => void;
 }) {
-  const [mounted, setMounted] = useState(false);
-
-  // SSR guard：只在 client mount 後才啟用 portal
-  useEffect(() => {
-    setMounted(true);
-    return () => setMounted(false);
-  }, []);
+  // SSR guard：client snapshot = true，server snapshot = false，無需 effect
+  const mounted = useSyncExternalStore(
+    (_cb) => () => undefined,
+    () => true,
+    () => false,
+  );
 
   // body scroll lock + ESC close
   useEffect(() => {
@@ -1858,7 +1857,8 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
   const [error, setError] = useState("");
   // FB share unlock state
   const [fbShareUnlocked, setFbShareUnlocked] = useState(false);
-  const [fbShareUnlockUsedToday, setFbShareUnlockUsedToday] = useState(false);
+  // 初始化時從 localStorage 讀取（lazy initializer，避免 effect 內 setState）
+  const [fbShareUnlockUsedToday, setFbShareUnlockUsedToday] = useState(() => hasUsedFbShareUnlockToday());
   const [fbSharePending, setFbSharePending] = useState(false);
   // Paid unlock state
   const [paidUnlocked, setPaidUnlocked] = useState(false);
@@ -1917,7 +1917,17 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
   const [threeCardStoryBlobUrl, setThreeCardStoryBlobUrl] = useState("");
   const [threeCardStoryModalOpen, setThreeCardStoryModalOpen] = useState(false);
   // 最近一次付費結果（從 localStorage 載入；付費完成後存入）
-  const [lastPaidResult, setLastPaidResult] = useState<LastPaidResult | null>(null);
+  // lazy initializer：直接從 localStorage 讀取，避免 mount effect 內 setState
+  const [lastPaidResult, setLastPaidResult] = useState<LastPaidResult | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = window.localStorage.getItem(PAID_RESULT_STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as LastPaidResult;
+      if (parsed.cards?.length && parsed.fullReading) return parsed;
+    } catch { /* ignore */ }
+    return null;
+  });
   const [isRestoredResult, setIsRestoredResult] = useState(false);
   // 免費抽牌存取模式："free" = 已點擊免費抽牌按鈕，"code" = 通行碼啟用
   const [drawAccessMode, setDrawAccessMode] = useState<"free" | "code" | null>(null);
@@ -1999,11 +2009,8 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
     };
   }, []);
 
-  // Sync admin / FB unlock state
-  useEffect(() => {
-    setFbShareUnlocked((cur) => cur || isAdmin);
-    setFbShareUnlockUsedToday(hasUsedFbShareUnlockToday());
-  }, [isAdmin]);
+  // Note: setFbShareUnlocked(cur||isAdmin) 已移除——hasFullAccess = isAdmin||fbShareUnlocked 已直接含 isAdmin
+  // setFbShareUnlockUsedToday 已改用 lazy initializer 初始化，不再需要 effect
 
   // Fetch remaining quota + server-side FB unlock status on mount
   useEffect(() => {
@@ -2036,17 +2043,7 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
 
   // ??? Reset ????????????????????????????????????????????????????????????????
 
-  // 載入最近一次付費結果（mount 時）
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(PAID_RESULT_STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as LastPaidResult;
-      if (parsed.cards?.length && parsed.fullReading) {
-        setLastPaidResult(parsed);
-      }
-    } catch { /* ignore */ }
-  }, []);
+  // 載入最近一次付費結果：已移至 useState lazy initializer（見 lastPaidResult 宣告）
 
   // 付款成功返回時，自動還原單次方案的抽牌暫存資料
   useEffect(() => {
@@ -2065,12 +2062,14 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
         return;
       }
 
-      // 還原問題、分類、模式
+      // 還原問題、分類、模式（付款後跨頁跳轉，必須在 effect 中同步還原多個 state）
+      /* eslint-disable react-hooks/set-state-in-effect */
       if (pending.question) setQuestion(pending.question);
       if (pending.topic) setTopic(pending.topic);
       if (pending.mode === "three_card" || pending.mode === "single_tarot") {
         setMode(pending.mode as (typeof modes)[number]["key"]);
       }
+      /* eslint-enable react-hooks/set-state-in-effect */
 
       if (pending.paymentPurpose === "tarot_unlock_full" && pending.resultId) {
         // 已有結果需解鎖：還原牌組、設定狀態，自動觸發解鎖
@@ -2134,6 +2133,8 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
     };
     try {
       window.localStorage.setItem(PAID_RESULT_STORAGE_KEY, JSON.stringify(result));
+      // result 在 effect 內建構（含 ref guard），無法移到 render 階段；此處 setState 是刻意的
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLastPaidResult(result);
     } catch { /* localStorage 滿了或私密模式，靜默跳過 */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2889,22 +2890,29 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
     setLineResultId("");
   }
 
-  // ── LINE 解鎖流程（免費，需加入官方帳號並輸入解鎖碼）
+  // ── LINE 解鎖流程（免費）
+  // 流程：產生 purpose="line_unlock" 驗證碼 → 使用者複製並在 LINE 傳送 → 回網頁點確認
+  // 此流程不呼叫 /api/results/create，不依賴 fullReading/shortText；
+  // 「傳送結果到 LINE」才用 send_result 驗證碼。
   async function openLineUnlockFlow() {
     if (lineUnlockStatus === "loading") return;
     setLineUnlockStatus("loading");
     setLineUnlockError("");
     try {
-      const resultId = await createOrGetLineResult();
+      // line_unlock 不需要完整 lineResults 記錄；
+      // 使用已有 resultId 或以 anonId 組成臨時識別碼，避免觸發 /api/results/create
+      const anonId = getOrCreateAnonId();
+      const resultId = lineResultId || `anon-${anonId}`;
       const r = await fetch("/api/line/claim/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resultId, visitorId: getOrCreateAnonId() }),
+        body: JSON.stringify({ resultId, visitorId: anonId, purpose: "line_unlock" }),
       });
       const data = (await r.json().catch(() => ({}))) as {
         ok?: boolean; claimCode?: string; error?: string;
       };
       if (!r.ok || !data.ok || !data.claimCode) {
+        console.error("[line unlock] create claim failed", { status: r.status, data });
         throw new Error(data.error || "無法產生解鎖碼，請稍後再試。");
       }
       setLineUnlockCode(data.claimCode);
@@ -2915,23 +2923,57 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
     }
   }
 
+  function copyUnlockCodeAndOpenLine() {
+    if (!lineUnlockCode) return;
+    const code = lineUnlockCode;
+    function fallbackCopy() {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = code;
+        ta.style.cssText = "position:fixed;top:-9999px;left:-9999px;opacity:0;pointer-events:none";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      } catch { /* 靜默失敗 */ }
+    }
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(code).catch(fallbackCopy);
+    } else {
+      fallbackCopy();
+    }
+    // 優先使用 line:// deep link，不走 line.me 網頁（桌機會顯示 QR）
+    window.location.href = LINE_DEEP_LINK;
+  }
+
   async function checkLineUnlockVerification() {
-    if (!lineResultId || lineUnlockStatus === "checking") return;
+    if (lineUnlockStatus === "checking") return;
+    if (!lineUnlockCode) {
+      setLineUnlockError("找不到解鎖碼，請重新申請。");
+      setLineUnlockStatus("error");
+      return;
+    }
     setLineUnlockStatus("checking");
     setLineUnlockError("");
     try {
+      // 查詢 claim 狀態（不依賴 lineResults document）
       const r = await fetch(
-        `/api/line/unlock/check?resultId=${encodeURIComponent(lineResultId)}`,
+        `/api/line/claim/status?claimCode=${encodeURIComponent(lineUnlockCode)}`,
       );
       const data = (await r.json().catch(() => ({}))) as {
-        ok?: boolean; unlockStatus?: string;
+        ok?: boolean; status?: string;
       };
-      if (data.unlockStatus === "line_verified") {
+      if (data.status === "claimed") {
         setLineUnlockStatus("verified");
         setFbShareUnlocked(true);
+      } else if (data.status === "expired" || data.status === "not_found") {
+        setLineUnlockStatus("error");
+        setLineUnlockError("解鎖碼已過期或不存在，請點「重新申請解鎖碼」。");
       } else {
+        // status === "pending"
         setLineUnlockStatus("ready");
-        setLineUnlockError("還沒有收到 LINE 驗證，請確認你已加入官方帳號並輸入解鎖碼。");
+        setLineUnlockError("尚未收到 LINE 驗證碼，請確認你已在 LINE 官方帳號聊天室送出驗證碼。");
       }
     } catch {
       setLineUnlockStatus("ready");
@@ -3741,18 +3783,30 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
               {/* 主要按鈕：LINE 免費解鎖 */}
               <div className="mt-5">
                 {lineUnlockStatus === "verified" ? (
+                  /* ── 已驗證成功 ── */
                   <p className="flex items-center gap-2 text-sm font-medium text-aurora">
                     <span>✅</span> LINE 驗證成功，完整版已解鎖！
                   </p>
                 ) : lineUnlockStatus === "idle" ? (
-                  <button
-                    type="button"
-                    onClick={() => void openLineUnlockFlow()}
-                    className="w-full rounded-full bg-[#06C755] px-6 py-4 text-base font-semibold text-white shadow-[0_0_28px_rgba(6,199,85,0.28)] transition hover:opacity-90 active:scale-95 sm:w-auto sm:min-w-[280px]"
-                  >
-                    加入 LINE 免費解鎖完整版
-                  </button>
+                  /* ── 初始狀態：一顆按鈕開始流程 ── */
+                  <div className="space-y-3">
+                    <button
+                      type="button"
+                      onClick={() => void openLineUnlockFlow()}
+                      className="w-full rounded-full bg-[#06C755] px-6 py-4 text-base font-semibold text-white shadow-[0_0_28px_rgba(6,199,85,0.28)] transition hover:opacity-90 active:scale-95 sm:w-auto sm:min-w-[280px]"
+                    >
+                      加入 LINE 解鎖完整版
+                    </button>
+                    <p className="text-xs text-moon/38">
+                      若無法開啟 LINE，請
+                      <a href={LINE_OFFICIAL_ACCOUNT_URL} target="_blank" rel="noopener noreferrer"
+                        className="ml-1 underline underline-offset-2 hover:text-moon/60">
+                        點此加入 @{LINE_OA_ID}
+                      </a>
+                    </p>
+                  </div>
                 ) : lineUnlockStatus === "loading" ? (
+                  /* ── 產生驗證碼中 ── */
                   <button
                     type="button"
                     disabled
@@ -3761,48 +3815,54 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
                     正在產生解鎖碼…
                   </button>
                 ) : lineUnlockStatus === "error" ? (
-                  <div className="space-y-2">
+                  /* ── 產生失敗，提供重試 ── */
+                  <div className="space-y-3">
                     <p className="text-sm text-[#ffb4b4]">{lineUnlockError}</p>
                     <button
                       type="button"
-                      onClick={() => { setLineUnlockStatus("idle"); setLineUnlockError(""); }}
-                      className="text-sm text-moon/50 underline underline-offset-2 transition hover:text-moon/80"
+                      onClick={() => void openLineUnlockFlow()}
+                      className="w-full rounded-full bg-[#06C755] px-6 py-4 text-base font-semibold text-white shadow-[0_0_28px_rgba(6,199,85,0.28)] transition hover:opacity-90 active:scale-95 sm:w-auto sm:min-w-[280px]"
                     >
-                      重新申請解鎖碼
+                      重新產生解鎖碼
                     </button>
+                    <p className="text-xs text-moon/38">
+                      若無法開啟 LINE，請
+                      <a href={LINE_OFFICIAL_ACCOUNT_URL} target="_blank" rel="noopener noreferrer"
+                        className="ml-1 underline underline-offset-2 hover:text-moon/60">
+                        點此加入 @{LINE_OA_ID}
+                      </a>
+                    </p>
                   </div>
                 ) : (
-                  /* ready | checking：顯示解鎖碼 + 驗證按鈕 */
+                  /* ── ready | checking：顯示 LINE 解鎖驗證碼 ── */
                   <div className="space-y-4">
                     <p className="text-sm leading-7 text-moon/70">
-                      請加入 LINE 官方帳號後，輸入以下解鎖碼，即可解鎖完整版。
+                      請開啟 LINE 官方帳號 <span className="font-medium text-moon/85">@{LINE_OA_ID}</span>，貼上並送出下方驗證碼。完成後回到本頁點「我已加入，重新檢查狀態」。
                     </p>
-                    {/* 解鎖碼卡片 */}
+                    {/* 解鎖驗證碼卡片 */}
                     <div className="rounded-2xl border border-[#06C755]/35 bg-midnight/70 px-5 py-4 text-center">
-                      <p className="text-xs tracking-[0.22em] text-moon/45 mb-2">LINE 解鎖碼（1 小時有效）</p>
+                      <p className="text-xs tracking-[0.22em] text-moon/45 mb-2">LINE 解鎖驗證碼（1 小時有效）</p>
                       <p className="text-3xl font-bold tracking-[0.28em] text-[#06C755] select-all">
                         {lineUnlockCode}
                       </p>
-                      <p className="mt-1 text-xs text-moon/35">開啟 LINE 官方帳號，輸入此碼後送出。</p>
-                      <div className="mt-3 flex justify-center">
-                        <CopyCodeButton
-                          text={lineUnlockCode}
-                          label="⎘ 複製解鎖碼"
-                          copiedLabel="已複製解鎖碼"
-                          feedbackText="解鎖碼已複製，請到 LINE 官方帳號貼上後送出。"
-                        />
-                      </div>
+                      <p className="mt-1 text-xs text-moon/35">開啟 LINE 後，請貼上此驗證碼並送出。</p>
                     </div>
-                    {/* 主要按鈕：開啟 LINE */}
-                    <a
-                      href={LINE_OFFICIAL_ACCOUNT_URL}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    {/* 主要按鈕：複製驗證碼並開啟 LINE */}
+                    <button
+                      type="button"
+                      onClick={copyUnlockCodeAndOpenLine}
                       className="flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold text-white shadow-[0_0_20px_rgba(6,199,85,0.28)] transition hover:opacity-90 active:scale-95 sm:w-auto sm:min-w-[240px]"
                       style={{ background: "#06C755" }}
                     >
-                      加入 LINE 免費解鎖
-                    </a>
+                      複製驗證碼並開啟 LINE
+                    </button>
+                    <p className="text-xs text-moon/38">
+                      若無法開啟 LINE，請
+                      <a href={LINE_OFFICIAL_ACCOUNT_URL} target="_blank" rel="noopener noreferrer"
+                        className="ml-1 underline underline-offset-2 hover:text-moon/60">
+                        點此加入 @{LINE_OA_ID}
+                      </a>
+                    </p>
                     {/* 確認按鈕 */}
                     <button
                       type="button"
@@ -3810,11 +3870,19 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
                       disabled={lineUnlockStatus === "checking"}
                       className="w-full rounded-full border border-[#06C755]/40 px-5 py-3 text-sm font-semibold text-[#06C755] transition hover:border-[#06C755]/70 hover:bg-white/6 active:scale-95 disabled:cursor-wait disabled:opacity-60 sm:w-auto sm:min-w-[280px]"
                     >
-                      {lineUnlockStatus === "checking" ? "確認中…" : "我已完成 LINE 驗證，解鎖完整版"}
+                      {lineUnlockStatus === "checking" ? "確認中…" : "我已加入，重新檢查狀態"}
                     </button>
                     {lineUnlockError ? (
                       <p className="text-xs text-[#ffb4b4]">{lineUnlockError}</p>
                     ) : null}
+                    {/* 重新產生（如果覺得碼快過期）*/}
+                    <button
+                      type="button"
+                      onClick={() => { setLineUnlockStatus("idle"); setLineUnlockCode(""); setLineUnlockError(""); }}
+                      className="text-xs text-moon/40 underline underline-offset-2 transition hover:text-moon/65"
+                    >
+                      重新申請解鎖碼
+                    </button>
                   </div>
                 )}
               </div>

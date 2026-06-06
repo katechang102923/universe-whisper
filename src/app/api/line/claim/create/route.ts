@@ -27,20 +27,35 @@ function hashString(input: string): string {
   return crypto.createHash("sha256").update(input).digest("hex").slice(0, 16);
 }
 
+export type ClaimPurpose = "send_result" | "line_unlock";
+
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as {
     resultId?: unknown;
     visitorId?: unknown;
+    purpose?: unknown;
   } | null;
 
   const resultId = typeof body?.resultId === "string" ? body.resultId.trim() : "";
   const visitorId = typeof body?.visitorId === "string" ? body.visitorId.trim() : "";
+  const purpose: ClaimPurpose =
+    body?.purpose === "line_unlock" ? "line_unlock" : "send_result";
 
   if (!resultId) {
     return NextResponse.json({ ok: false, error: "缺少 resultId。" }, { status: 400 });
   }
 
-  const db = getAdminDb();
+  let db: ReturnType<typeof getAdminDb>;
+  try {
+    db = getAdminDb();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Firebase Admin 初始化失敗。";
+    console.error("[line/claim/create] Firebase Admin unavailable:", msg);
+    return NextResponse.json(
+      { ok: false, error: "目前無法產生解鎖碼，請稍後再試。" },
+      { status: 500 },
+    );
+  }
   const col = db.collection(CLAIM_COLLECTION);
   const now = new Date();
   const expiryThreshold = new Date(now.getTime() + 1000); // 稍微往後，避免時間誤差
@@ -55,9 +70,12 @@ export async function POST(request: Request) {
     expiresAt?: { toDate?: () => Date };
   }));
 
-  // ── 2. 若已有 pending 且未過期的碼，直接返回 ──────────────────────────────
+  // ── 2. 若已有相同 purpose 且 pending 未過期的碼，直接返回 ──────────────────
   const existing = allClaims.find((c) => {
     if (c.status !== "pending") return false;
+    // purpose 預設為 "send_result"（舊資料無此欄位視為 send_result）
+    const cPurpose: ClaimPurpose = (c as { purpose?: unknown }).purpose === "line_unlock" ? "line_unlock" : "send_result";
+    if (cPurpose !== purpose) return false;
     const exp = c.expiresAt?.toDate?.();
     return exp ? exp > now : false;
   });
@@ -109,6 +127,7 @@ export async function POST(request: Request) {
     claimCode,
     resultId,
     visitorId: visitorId || null,
+    purpose,
     status: "pending",
     createdAt: FieldValue.serverTimestamp(),
     expiresAt,
