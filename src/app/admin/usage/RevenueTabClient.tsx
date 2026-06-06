@@ -27,13 +27,14 @@ interface PlanRow {
 }
 
 interface DailyRow {
-  date:    string;
-  paid:    number;
-  revenue: number;
-  test:    number;
-  refund:  number;
-  pending: number;
-  failed:  number;
+  date:       string;
+  paid:       number;
+  revenue:    number;
+  test:       number;
+  refund:     number;
+  pending:    number;
+  failed:     number;
+  lastPaidAt: string | null;
 }
 
 interface RevenueData {
@@ -54,6 +55,21 @@ function fmtNT(v: number): string {
 function fmtDate(iso: string): string {
   const [y, m, d] = iso.split("-");
   return `${y}/${m}/${d}`;
+}
+
+function fmtDateTime(isoOrNull: string | null | undefined): string {
+  if (!isoOrNull) return "—";
+  try {
+    const d = new Date(isoOrNull);
+    if (isNaN(d.getTime())) return "—";
+    return d.toLocaleString("zh-TW", {
+      timeZone: "Asia/Taipei",
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", hour12: false,
+    }).replace(/\//g, "/");
+  } catch {
+    return "—";
+  }
 }
 
 // ── 子元件 ────────────────────────────────────────────────────────────────────
@@ -244,7 +260,7 @@ export function RevenueTabClient() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-white/8 text-left">
-                        {["日期", "成功付款", "收入", "測試付款", "退款", "待付款", "失敗"].map((h) => (
+                        {["日期", "成功付款", "收入", "最近成功付款時間", "測試付款", "退款", "待付款", "失敗"].map((h) => (
                           <th key={h} className="whitespace-nowrap px-4 py-3 text-xs font-medium uppercase tracking-wider text-moon/40">
                             {h}
                           </th>
@@ -265,6 +281,9 @@ export function RevenueTabClient() {
                           </td>
                           <td className="px-4 py-3 font-semibold text-[#d8bd70]">
                             {row.revenue > 0 ? fmtNT(row.revenue) : <span className="font-normal text-moon/30">—</span>}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-3 text-xs text-moon/55">
+                            {fmtDateTime(row.lastPaidAt)}
                           </td>
                           <td className="px-4 py-3">
                             {row.test > 0

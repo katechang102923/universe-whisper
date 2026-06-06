@@ -26,6 +26,7 @@ import { FortuneManagementClient } from "./FortuneManagementClient";
 import { RedeemCodeList, type SerializableRedeemCode } from "./RedeemCodeList";
 import { OrdersTabClient, type SerializableOrder } from "./OrdersTabClient";
 import { RevenueTabClient } from "./RevenueTabClient";
+import { StatsOverviewClient } from "./StatsOverviewClient";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -61,7 +62,11 @@ function toDate(v: unknown): Date | null {
 function fmtDate(v: unknown): string {
   const d = toDate(v);
   if (!d) return "—";
-  return d.toLocaleDateString("zh-TW") + " " + d.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleString("zh-TW", {
+    timeZone: "Asia/Taipei",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  });
 }
 
 // ── 子元件 ────────────────────────────────────────────────────────────────────
@@ -121,6 +126,52 @@ function UsageTable({
                     <span className="rounded-full bg-aurora/12 px-2 py-0.5 text-xs text-aurora">剩 {limit - row.count}</span>
                   )}
                 </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function ShareDownloadRankingTable({
+  rows,
+}: {
+  rows: { display: string; count: number; lastAt: string; type: string }[];
+}) {
+  if (rows.length === 0) {
+    return (
+      <div className="rounded-2xl border border-white/10 bg-midnight/50 p-5">
+        <p className="text-sm font-semibold text-moon">分享圖下載排行（前 20）</p>
+        <p className="mt-3 text-sm text-moon/44">尚無下載紀錄</p>
+      </div>
+    );
+  }
+  return (
+    <div className="overflow-hidden rounded-2xl border border-white/10 bg-midnight/50">
+      <div className="border-b border-white/8 px-5 py-4">
+        <p className="text-sm font-semibold text-moon">分享圖下載排行（前 20，全期）</p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-white/8 text-left">
+              <th className="px-5 py-3 text-xs font-medium uppercase tracking-wider text-moon/48">#</th>
+              <th className="px-5 py-3 text-xs font-medium uppercase tracking-wider text-moon/48">使用者識別</th>
+              <th className="px-5 py-3 text-right text-xs font-medium uppercase tracking-wider text-moon/48">次數</th>
+              <th className="px-5 py-3 text-xs font-medium uppercase tracking-wider text-moon/48">最近下載</th>
+              <th className="px-5 py-3 text-xs font-medium uppercase tracking-wider text-moon/48">類型</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => (
+              <tr key={row.display + i} className={i < rows.length - 1 ? "border-b border-white/6" : ""}>
+                <td className="px-5 py-3 text-moon/40">{i + 1}</td>
+                <td className="break-all px-5 py-3 font-mono text-xs text-moon/78">{row.display}</td>
+                <td className="px-5 py-3 text-right font-semibold text-moon">{row.count}</td>
+                <td className="whitespace-nowrap px-5 py-3 text-xs text-moon/55">{row.lastAt}</td>
+                <td className="px-5 py-3 text-xs text-moon/55">{row.type}</td>
               </tr>
             ))}
           </tbody>
@@ -239,6 +290,8 @@ function OverviewTab({
   fortuneStats,
   redeemStats,
   orderStats,
+  shareDownloadStats,
+  shareDownloadRanking,
   fetchError,
   ipRanking,
   anonRanking,
@@ -252,6 +305,10 @@ function OverviewTab({
     total: number; paid: number; failed: number; pending: number;
     todayRevenue: number; todayPaid: number; todayTest: number; noCode: number; emailUnsent: number;
   };
+  shareDownloadStats: {
+    todayCount: number; todayUsers: number; allCount: number; allUsers: number;
+  };
+  shareDownloadRanking: { display: string; count: number; lastAt: string; type: string }[];
   fetchError:  boolean;
   ipRanking:   { display: string; count: number }[];
   anonRanking: { display: string; count: number }[];
@@ -308,6 +365,17 @@ function OverviewTab({
         </div>
       </div>
 
+      {/* 分享圖下載統計 */}
+      <div>
+        <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.24em] text-moon/50">分享圖下載（{today}）</h2>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard label="今日下載次數" value={shareDownloadStats.todayCount} sub="分享圖下載" />
+          <StatCard label="今日下載人數" value={shareDownloadStats.todayUsers} sub="去重計算" />
+          <StatCard label="全期下載次數" value={shareDownloadStats.allCount}   sub="分享圖下載" />
+          <StatCard label="全期下載人數" value={shareDownloadStats.allUsers}   sub="去重計算" />
+        </div>
+      </div>
+
       {/* 今日免費抽牌 */}
       <div>
         <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.24em] text-moon/50">今日免費抽牌（{today}）</h2>
@@ -346,8 +414,14 @@ function OverviewTab({
           <UsageTable title="IP 使用排行（前 20）"       keyLabel="IP 位址"      rows={ipRanking}   limit={UNAUTH_DAILY_LIMIT} />
           <UsageTable title="匿名識別碼使用排行（前 20）" keyLabel="Anonymous ID" rows={anonRanking} limit={UNAUTH_DAILY_LIMIT} />
           <UsageTable title="LINE 用戶使用排行（前 20）"  keyLabel="LINE User ID" rows={lineRanking} limit={LINE_DAILY_LIMIT} />
+          <ShareDownloadRankingTable rows={shareDownloadRanking} />
         </div>
       </details>
+
+      <StatsOverviewClient
+        year={Number(today.slice(0, 4))}
+        month={Number(today.slice(5, 7))}
+      />
     </div>
   );
 }
@@ -431,6 +505,8 @@ export default async function AdminUsagePage({
     total: 0, paid: 0, failed: 0, pending: 0,
     todayRevenue: 0, todayPaid: 0, todayTest: 0, noCode: 0, emailUnsent: 0,
   };
+  let shareDownloadStats = { todayCount: 0, todayUsers: 0, allCount: 0, allUsers: 0 };
+  let shareDownloadRanking: { display: string; count: number; lastAt: string; type: string }[] = [];
   let fetchError = false;
 
   try {
@@ -453,6 +529,71 @@ export default async function AdminUsagePage({
         if (c.status === "used_up") redeemStats.usedUp++;
         if (c.isTest)               redeemStats.test++;
       });
+
+      // 分享圖下載彙總
+      try {
+        const dlSnap = await db.collection("share_image_downloads").get();
+        const userCounterAll  = new Set<string>();
+        const userCounterToday = new Set<string>();
+        const rankMap = new Map<string, { count: number; lastAt: string; type: string }>();
+
+        dlSnap.docs.forEach((d) => {
+          const ev = d.data() as {
+            dateKey?: string; lineUserId?: string; anonymousId?: string; ip?: string;
+            createdAt?: unknown; spreadType?: string;
+          };
+          shareDownloadStats.allCount++;
+          const isToday = ev.dateKey === today;
+          if (isToday) shareDownloadStats.todayCount++;
+
+          // 去重識別
+          const uid = ev.lineUserId
+            ? `LINE:${ev.lineUserId}`
+            : ev.anonymousId
+            ? `anon:${ev.anonymousId}`
+            : ev.ip && ev.ip !== "unknown"
+            ? `ip:${ev.ip}`
+            : null;
+
+          if (uid) {
+            userCounterAll.add(uid);
+            if (isToday) userCounterToday.add(uid);
+          }
+
+          // ranking
+          const rankKey = ev.lineUserId
+            ? `LINE:${ev.lineUserId}`
+            : ev.anonymousId
+            ? `anon:${ev.anonymousId.slice(0, 20)}`
+            : ev.ip && ev.ip !== "unknown"
+            ? `ip:${ev.ip}`
+            : `unknown`;
+
+          const tsDate = toDate(ev.createdAt);
+          const tsStr  = tsDate
+            ? tsDate.toLocaleString("zh-TW", {
+                timeZone: "Asia/Taipei",
+                year: "numeric", month: "2-digit", day: "2-digit",
+                hour: "2-digit", minute: "2-digit", hour12: false,
+              })
+            : "—";
+          const existing = rankMap.get(rankKey);
+          if (!existing) {
+            rankMap.set(rankKey, { count: 1, lastAt: tsStr, type: ev.spreadType ?? "—" });
+          } else {
+            existing.count++;
+            if (tsStr > existing.lastAt) existing.lastAt = tsStr;
+          }
+        });
+
+        shareDownloadStats.allUsers   = userCounterAll.size;
+        shareDownloadStats.todayUsers = userCounterToday.size;
+
+        shareDownloadRanking = Array.from(rankMap.entries())
+          .sort(([, a], [, b]) => b.count - a.count)
+          .slice(0, 20)
+          .map(([key, v]) => ({ display: key, count: v.count, lastAt: v.lastAt, type: v.type }));
+      } catch { /* share_image_downloads 不存在時忽略 */ }
 
       // 付款訂單彙總
       try {
@@ -581,6 +722,8 @@ export default async function AdminUsagePage({
               fortuneStats={fortuneStats}
               redeemStats={redeemStats}
               orderStats={orderStats}
+              shareDownloadStats={shareDownloadStats}
+              shareDownloadRanking={shareDownloadRanking}
               fetchError={fetchError}
               ipRanking={ipRanking}
               anonRanking={anonRanking}

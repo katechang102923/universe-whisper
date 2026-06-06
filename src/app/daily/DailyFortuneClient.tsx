@@ -436,6 +436,12 @@ export function DailyFortuneClient() {
       document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
       setDownloadStatus("done");
       window.setTimeout(() => setDownloadStatus("idle"), 3500);
+      // 紀錄下載事件（fire-and-forget，不阻擋主流程）
+      void fetch("/api/analytics/share-image-download", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spreadType: "daily", source: "web" }),
+      }).catch(() => {});
     } catch (err) {
       setDownloadError(err instanceof Error ? err.message : String(err));
       setDownloadStatus("error");

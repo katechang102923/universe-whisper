@@ -88,7 +88,7 @@ export async function GET(req: NextRequest) {
   // ── 計算統計 ───────────────────────────────────────────────────────────────
 
   // 每日資料 map: "2026-06-04" → { paid, revenue, test, refund }
-  const dailyMap = new Map<string, { paid: number; revenue: number; test: number; refund: number; pending: number; failed: number }>();
+  const dailyMap = new Map<string, { paid: number; revenue: number; test: number; refund: number; pending: number; failed: number; lastPaidAt: string | null }>();
   // 方案分布 map: planName → { count, revenue }
   const planMap = new Map<string, { count: number; revenue: number }>();
 
@@ -121,7 +121,7 @@ export async function GET(req: NextRequest) {
 
     // 初始化每日 bucket
     if (dayKey && !dailyMap.has(dayKey)) {
-      dailyMap.set(dayKey, { paid: 0, revenue: 0, test: 0, refund: 0, pending: 0, failed: 0 });
+      dailyMap.set(dayKey, { paid: 0, revenue: 0, test: 0, refund: 0, pending: 0, failed: 0, lastPaidAt: null });
     }
     const day = dayKey ? dailyMap.get(dayKey)! : null;
 
@@ -134,7 +134,16 @@ export async function GET(req: NextRequest) {
         if (day) day.test++;
       } else {
         realRevenue += amount;
-        if (day) { day.paid++; day.revenue += amount; }
+        if (day) {
+          day.paid++;
+          day.revenue += amount;
+          // 記錄最近一筆成功付款時間（ISO 字串）
+          const paidTs = resolveDate(o.paidAt) ?? resolveDate(o.paymentDate) ?? resolveDate(o.createdAt);
+          if (paidTs) {
+            const paidIso = paidTs.toLocaleString("sv-SE", { timeZone: "Asia/Taipei" }).replace(" ", "T");
+            if (!day.lastPaidAt || paidIso > day.lastPaidAt) day.lastPaidAt = paidIso;
+          }
+        }
       }
       // 方案分布（只算實際付款，含測試也顯示）
       if (!isTest) {

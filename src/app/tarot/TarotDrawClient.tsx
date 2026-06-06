@@ -3206,6 +3206,12 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
       URL.revokeObjectURL(url);
       setStoryDownloadStatus("done");
       window.setTimeout(() => setStoryDownloadStatus("idle"), 3500);
+      // 紀錄下載事件（fire-and-forget，不阻擋主流程）
+      void fetch("/api/analytics/share-image-download", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ anonymousId: getOrCreateAnonId(), spreadType: "single", source: "web" }),
+      }).catch(() => {});
     } catch (err) {
       console.error("[share-story] Canvas image generation failed", err);
       setStoryError(err instanceof Error ? err.message : String(err));
@@ -3260,6 +3266,12 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    // 紀錄下載事件（fire-and-forget，不阻擋主流程）
+    void fetch("/api/analytics/share-image-download", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ anonymousId: getOrCreateAnonId(), spreadType: "three", source: "web" }),
+    }).catch(() => {});
   }
 
 

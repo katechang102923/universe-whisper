@@ -73,11 +73,11 @@ function toDateFromAny(v: unknown): Date | null {
 function fmtDate(v: unknown): string {
   const d = toDateFromAny(v);
   if (!d || isNaN(d.getTime())) return "—";
-  return (
-    d.toLocaleDateString("zh-TW") +
-    " " +
-    d.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" })
-  );
+  return d.toLocaleString("zh-TW", {
+    timeZone: "Asia/Taipei",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  });
 }
 
 // ── Status Badge ──────────────────────────────────────────────────────────────

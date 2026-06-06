@@ -14,6 +14,7 @@
 
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebaseAdmin";
+import { getTaipeiDate } from "@/lib/rateLimit";
 import {
   PAYMENT_ORDERS_COLLECTION,
   REDEEM_CODES_COLLECTION,
@@ -270,6 +271,7 @@ export async function fulfillPaidOrder(opts: {
       redeemCode:   code,
       redeemCodeId: code,
       paidAt:       FieldValue.serverTimestamp(),
+      paidDateKey:  getTaipeiDate(),
     };
     if (providerPayload.TradeNo)     { orderUpdate.ecpayTradeNo = providerPayload.TradeNo; orderUpdate.tradeNo = providerPayload.TradeNo; }
     if (providerPayload.PaymentType) orderUpdate.paymentType  = providerPayload.PaymentType;

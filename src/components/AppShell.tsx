@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { SiteNav } from "@/components/SiteNav";
 import { AdminFooterLink } from "@/components/AdminFooterLink";
+import { TrafficAnalyticsTracker } from "@/components/TrafficAnalyticsTracker";
 
 const footerLinks = [
   { href: "/tarot-cards", label: "塔羅牌介紹" },
@@ -15,6 +16,7 @@ const footerLinks = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <main className="star-field min-h-screen overflow-hidden">
+      <TrafficAnalyticsTracker />
       <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-4 sm:px-8">
         <header className="glass-card sticky top-3 z-20 flex items-center justify-between gap-3 rounded-full px-4 py-3">
           <Link href="/" className="text-sm font-semibold tracking-[0.18em] text-moon sm:text-base">
