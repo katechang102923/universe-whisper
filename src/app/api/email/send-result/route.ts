@@ -34,12 +34,10 @@ function validateEmailContent(
   const errors: string[] = [];
   let usedFallback = false;
 
-  // ── 基本欄位檢查（與 LINE 驗證相同） ───────────────────────────────────────
+  // ── 基本欄位檢查 ─────────────────────────────────────────────────────────
+  // question 是選填欄位，不作為阻擋條件；空值時用 fallback 文字顯示。
   if (!fullText || fullText.length < 100) {
     errors.push("fullText 為空或過短");
-  }
-  if (!result.question?.trim()) {
-    errors.push("question 為空");
   }
   if (!result.cards || result.cards.length === 0) {
     errors.push("cards 為空");
@@ -53,7 +51,6 @@ function validateEmailContent(
     }
     const { overallAnswer, summaryRaw } = extractSpreadSummaryFields(fullText);
     if (!overallAnswer) {
-      // 允許 fallback：summaryRaw 或 fullText 本身即可
       if (!summaryRaw && fullText.length < 300) {
         errors.push("牌陣總結段落完全缺失且 fullText 過短");
       } else {
@@ -62,7 +59,6 @@ function validateEmailContent(
     }
     const spiritualClosing = extractSpiritualClosing(fullText);
     if (!spiritualClosing) {
-      // Email fallback：心靈收束空白時用 fullText 結尾，不擋送出
       if (fullText.length < 300) {
         errors.push("心靈收束 為空且 fullText 過短");
       } else {
@@ -71,7 +67,7 @@ function validateEmailContent(
     }
   }
 
-  // ── 單張牌：保持原有邏輯 ───────────────────────────────────────────────────
+  // ── 單張牌 ────────────────────────────────────────────────────────────────
   if (result.cards.length === 1 && fullText.length > 100) {
     const { cardPoint } = extractSingleCardFields(fullText);
     if (!cardPoint) errors.push("單張牌解讀內容 為空");
@@ -84,10 +80,18 @@ function validateEmailContent(
   }
 
   if (errors.length > 0) {
-    console.error(
-      `[email/send-result] 內容驗證失敗 resultId=${resultId}`,
-      { errors, cardCount: result.cards.length, fullTextLength: fullText.length },
-    );
+    console.error(`[email/send-result] validation failed resultId=${resultId}`, {
+      resultId,
+      cardCount: result.cards.length,
+      hasQuestion: !!result.question?.trim(),
+      question: result.question ?? "",
+      fullTextLength: fullText.length,
+      hasFullText: fullText.length >= 100,
+      unlocked: result.unlocked ?? false,
+      unlockStatus: result.unlockStatus ?? "",
+      availableKeys: Object.keys(result).join(","),
+      errors,
+    });
   }
 
   return { valid: errors.length === 0, errors, usedFallback };
@@ -172,10 +176,9 @@ function buildThreeCardEmailHtml(
     console.log("[email/send-result] 使用 fallback summary content");
   }
 
-  // ── 問題卡 ────────────────────────────────────────────────────────────────
-  const questionCard = result.question
-    ? card(label("你的問題") + para(result.question, "0"), true)
-    : "";
+  // ── 問題卡（question 為選填，空值時顯示「未填寫問題」） ──────────────────────
+  const questionDisplay = result.question?.trim() || "未填寫問題";
+  const questionCard = card(label("你的問題") + para(questionDisplay, "0"), true);
 
   // ── 抽到的牌摘要卡 ────────────────────────────────────────────────────────
   const cardSummaryRows = result.cards
@@ -264,10 +267,9 @@ function buildSingleCardEmailHtml(
     overallAnswer, actionAdvice, spiritualClosing,
   } = extractSingleCardFields(fullText);
 
-  // ── 問題卡 ────────────────────────────────────────────────────────────────
-  const questionCard = result.question
-    ? card(label("你的問題") + para(result.question), true)
-    : "";
+  // ── 問題卡（question 為選填，空值時顯示「未填寫問題」） ──────────────────────
+  const questionDisplay = result.question?.trim() || "未填寫問題";
+  const questionCard = card(label("你的問題") + para(questionDisplay), true);
 
   // ── 抽到的牌卡 ────────────────────────────────────────────────────────────
   const cardSummaryCard = card(
@@ -370,7 +372,9 @@ function buildEmailText(
     "",
   ];
 
-  if (result.question) parts.push(`你的問題：\n${result.question}`, "");
+  // question 為選填；空值時用 fallback 讓純文字版也有內容
+  const questionDisplay = result.question?.trim() || "未填寫問題";
+  parts.push(`你的問題：\n${questionDisplay}`, "");
 
   if (result.cards.length === 3) {
     const DEFAULT_POSITIONS = ["過去", "現在", "未來"];
@@ -462,7 +466,7 @@ export async function POST(req: NextRequest) {
     // unlocked: 付費/兌換碼解鎖；unlockStatus:"line_verified": LINE 解鎖成功
     const isUnlocked =
       result.unlocked ||
-      (result as { unlockStatus?: string }).unlockStatus === "line_verified";
+      result.unlockStatus === "line_verified";
     if (!isUnlocked) {
       return NextResponse.json({ ok: false, error: "NOT_UNLOCKED" }, { status: 403 });
     }
@@ -487,7 +491,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── Email 內容完整性驗證（以 fullText 為主要判斷，不強制要求 structured overallAnswer）
+    // ── Email 內容完整性驗證（以 fullText 為主要判斷；question 為選填不阻擋）────
     const validation = validateEmailContent(result, fullText, resultId);
     if (!validation.valid) {
       return NextResponse.json(
@@ -495,12 +499,16 @@ export async function POST(req: NextRequest) {
         { status: 422 },
       );
     }
-    if (validation.usedFallback) {
-      console.log(
-        `[email/send-result] 使用 fallback summary content resultId=${resultId}`,
-        { cardCount: result.cards.length, fullTextLength: fullText.length },
-      );
-    }
+
+    const questionFallbackUsed = !result.question?.trim();
+    console.log(`[email/send-result] sending email resultId=${resultId}`, {
+      resultId,
+      cardCount: result.cards.length,
+      questionFallbackUsed,
+      fullTextLength: fullText.length,
+      unlocked: result.unlocked ?? false,
+      unlockStatus: result.unlockStatus ?? "",
+    });
 
     const siteUrl = (
       process.env.NEXT_PUBLIC_SITE_URL || "https://universe-whisper.vercel.app"

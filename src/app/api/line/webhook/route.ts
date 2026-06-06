@@ -205,6 +205,15 @@ async function handleClaimCode(
   }
 
   const result = resultSnap.data() as LineResultData;
+  const resultFullText = (result.fullText || result.shortText || "").replace(/\*\*/g, "").trim();
+  console.info("[webhook/send_result] formatting source", {
+    claimCode,
+    resultId,
+    hasClaimFullText: false,
+    hasResultFullText: resultFullText.length > 0,
+    fullTextLength: resultFullText.length,
+    purpose,
+  });
   const message = buildLineResultMessage(result, resultId, SITE_URL);
 
   // 3. 回覆結果 + 更新 claim 狀態 + 標記 LINE 解鎖（並行執行）

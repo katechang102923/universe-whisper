@@ -21,8 +21,12 @@ export type LineResultData = {
   cards: LineResultCard[];
   shortText: string;
   fullText: string;
-  /** 建立當時使用者是否已解鎖（付費或 FB 分享）；控制分享頁與查詢頁是否顯示完整版 */
+  /** 建立當時使用者是否已解鎖（付費或兌換碼）；控制分享頁與查詢頁是否顯示完整版 */
   unlocked?: boolean;
+  /** LINE 解鎖狀態；"line_verified" 代表 LINE 加入驗證成功，視同 unlocked */
+  unlockStatus?: string;
+  unlockedBy?: string;
+  unlockedAt?: unknown;
   lineUserId?: string | null;
   lineDisplayName?: string | null;
   pushStatus: LinePushStatus;
