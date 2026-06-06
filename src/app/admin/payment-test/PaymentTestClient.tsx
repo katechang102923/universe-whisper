@@ -14,7 +14,16 @@ type TestResult = {
   remainingUses: number;
   expiresAt: string;
   emailSent: boolean;
+  emailTo: string | null;
+  emailMessageId: string | null;
   emailError: string | null;
+  debug: {
+    fulfillFunction: string;
+    emailFunction: string;
+    isTest: boolean;
+    source: string;
+    paymentMethod: string;
+  };
 };
 
 export default function PaymentTestClient() {
@@ -185,16 +194,38 @@ export default function PaymentTestClient() {
                 {result.resultUrl}
               </a>
             </Row>
-            <Row label="Email 寄送">
+            <Row label="Email 狀態">
               {result.emailSent ? (
-                <span className="text-green-300">已寄出 ✓</span>
+                <span className="text-green-300">已送出 ✓</span>
               ) : result.emailError ? (
                 <span className="text-red-300">失敗：{result.emailError}</span>
               ) : (
                 <span className="text-moon/40">未勾選，未寄出</span>
               )}
             </Row>
+            {result.emailTo && (
+              <Row label="收件人">
+                <span className="text-moon/70">{result.emailTo}</span>
+              </Row>
+            )}
+            {result.emailMessageId && (
+              <Row label="messageId">
+                <CopyField value={result.emailMessageId} />
+              </Row>
+            )}
           </dl>
+
+          {/* 除錯資訊 */}
+          <div className="mt-4 rounded-xl border border-white/8 bg-white/[0.03] p-4">
+            <p className="mb-2 text-xs tracking-[0.15em] text-moon/40 uppercase">除錯資訊（流程確認）</p>
+            <dl className="space-y-1.5 text-xs text-moon/60">
+              <div className="flex gap-2"><dt className="w-36 shrink-0 text-moon/35">付款完成函式</dt><dd className="font-mono text-aurora/80">{result.debug.fulfillFunction}</dd></div>
+              <div className="flex gap-2"><dt className="w-36 shrink-0 text-moon/35">Email 寄送函式</dt><dd className="font-mono text-aurora/80">{result.debug.emailFunction}</dd></div>
+              <div className="flex gap-2"><dt className="w-36 shrink-0 text-moon/35">isTest</dt><dd className="font-mono">{String(result.debug.isTest)}</dd></div>
+              <div className="flex gap-2"><dt className="w-36 shrink-0 text-moon/35">source</dt><dd className="font-mono">{result.debug.source}</dd></div>
+              <div className="flex gap-2"><dt className="w-36 shrink-0 text-moon/35">paymentMethod</dt><dd className="font-mono">{result.debug.paymentMethod}</dd></div>
+            </dl>
+          </div>
 
           <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.04] p-4">
             <p className="mb-2 text-xs tracking-[0.15em] text-moon/50 uppercase">下一步：驗證兌換碼可用</p>

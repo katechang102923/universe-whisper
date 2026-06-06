@@ -35,6 +35,7 @@ export interface FulfillResult {
   remainingUses:    number;
   expiresAt:        Date;
   emailSent:        boolean;
+  emailMessageId?:  string;
   emailError?:      string;
   alreadyFulfilled: boolean;
 }
@@ -85,7 +86,7 @@ async function sendRedeemEmailDirect(opts: {
   totalUses:     number;
   remainingUses: number;
   expiresAt:     Date;
-}): Promise<{ emailSent: boolean; emailError?: string }> {
+}): Promise<{ emailSent: boolean; emailMessageId?: string; emailError?: string }> {
   const result = await sendRedeemCodeEmail({
     to:            opts.email,
     code:          opts.code,
@@ -95,8 +96,9 @@ async function sendRedeemEmailDirect(opts: {
     expiresAt:     opts.expiresAt,
   });
   return {
-    emailSent:  result.ok,
-    emailError: result.ok ? undefined : result.errorMsg,
+    emailSent:      result.ok,
+    emailMessageId: result.messageId,
+    emailError:     result.ok ? undefined : result.errorMsg,
   };
 }
 
@@ -175,15 +177,17 @@ export async function fulfillPaidOrder(opts: {
     } catch { /* 讀取失敗不影響主流程 */ }
 
     // 若 buyerEmail 存在且還沒寄 → 補寄
-    let emailSent  = orderData.emailSent ?? false;
-    let emailError: string | undefined;
+    let emailSent      = orderData.emailSent ?? false;
+    let emailMessageId: string | undefined;
+    let emailError:     string | undefined;
     if (buyerEmail && !emailSent) {
       const result = await sendRedeemEmailDirect({
         email: buyerEmail, code: existingCode, planName,
         displayName: plan.displayName, totalUses, remainingUses, expiresAt,
       });
-      emailSent  = result.emailSent;
-      emailError = result.emailError;
+      emailSent      = result.emailSent;
+      emailMessageId = result.emailMessageId;
+      emailError     = result.emailError;
       // 寫回 Firestore
       try {
         const update: Record<string, unknown> = { emailSent, emailSentAt: FieldValue.serverTimestamp() };
@@ -204,6 +208,7 @@ export async function fulfillPaidOrder(opts: {
       remainingUses,
       expiresAt,
       emailSent,
+      emailMessageId,
       emailError,
       alreadyFulfilled: true,
     };
@@ -282,8 +287,9 @@ export async function fulfillPaidOrder(opts: {
   console.log("[ECPay Fulfillment] redeem code created", { merchantTradeNo, code: generatedCode, source });
 
   // ── 寄出 Email（Transaction 外，失敗不讓主流程失敗） ─────────────────────
-  let emailSent  = false;
-  let emailError: string | undefined;
+  let emailSent      = false;
+  let emailMessageId: string | undefined;
+  let emailError:     string | undefined;
 
   if (generatedCode && buyerEmail) {
     const result = await sendRedeemEmailDirect({
@@ -291,8 +297,9 @@ export async function fulfillPaidOrder(opts: {
       displayName: plan.displayName, totalUses: plan.totalUses,
       remainingUses: plan.totalUses, expiresAt,
     });
-    emailSent  = result.emailSent;
-    emailError = result.emailError;
+    emailSent      = result.emailSent;
+    emailMessageId = result.emailMessageId;
+    emailError     = result.emailError;
 
     // 寫回 Firestore
     try {
@@ -316,6 +323,7 @@ export async function fulfillPaidOrder(opts: {
     remainingUses:    plan.totalUses,
     expiresAt,
     emailSent,
+    emailMessageId,
     emailError,
     alreadyFulfilled: false,
   };

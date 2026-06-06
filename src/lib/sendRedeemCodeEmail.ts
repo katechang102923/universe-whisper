@@ -20,9 +20,10 @@ export type EmailErrorCode =
   | "UNKNOWN_ERROR";
 
 export interface SendRedeemEmailResult {
-  ok:         boolean;
-  errorCode?: EmailErrorCode;
-  errorMsg?:  string;
+  ok:          boolean;
+  messageId?:  string;
+  errorCode?:  EmailErrorCode;
+  errorMsg?:   string;
 }
 
 // ── Email 內容產生 ────────────────────────────────────────────────────────────
@@ -179,7 +180,7 @@ export async function sendRedeemCodeEmail(opts: {
     if (res.ok) {
       const json = (await res.json().catch(() => ({}))) as { id?: string };
       console.log("[Email] resend success", { to: opts.to, id: json.id });
-      return { ok: true };
+      return { ok: true, messageId: json.id };
     }
 
     // Resend 回傳錯誤

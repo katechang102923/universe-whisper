@@ -213,17 +213,27 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     ok: true,
-    orderId: orderRef.id,
-    merchantTradeNo: mockMerchantTradeNo,
+    orderId:          orderRef.id,
+    merchantTradeNo:  mockMerchantTradeNo,
     resultId,
     resultUrl,
     lookupCode,
-    redeemCode:     fulfillResult.redeemCode,
-    displayName:    fulfillResult.displayName,
-    totalUses:      fulfillResult.totalUses,
-    remainingUses:  fulfillResult.remainingUses,
-    expiresAt:      fulfillResult.expiresAt.toISOString(),
-    emailSent:      fulfillResult.emailSent,
-    emailError:     fulfillResult.emailError ?? null,
+    redeemCode:       fulfillResult.redeemCode,
+    displayName:      fulfillResult.displayName,
+    totalUses:        fulfillResult.totalUses,
+    remainingUses:    fulfillResult.remainingUses,
+    expiresAt:        fulfillResult.expiresAt.toISOString(),
+    emailSent:        fulfillResult.emailSent,
+    emailTo:          sendEmail ? email : null,
+    emailMessageId:   fulfillResult.emailMessageId ?? null,
+    emailError:       fulfillResult.emailError ?? null,
+    // 除錯資訊
+    debug: {
+      fulfillFunction: "fulfillPaidOrder",
+      emailFunction:   "sendRedeemCodeEmail",
+      isTest:          true,
+      source:          "admin_payment_test",
+      paymentMethod:   "mock",
+    },
   });
 }

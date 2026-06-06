@@ -563,6 +563,13 @@ export default async function AdminUsagePage({
               {t.label}
             </Link>
           ))}
+          {/* 獨立頁面連結（付費測試） */}
+          <Link
+            href="/admin/payment-test"
+            className="rounded-xl px-4 py-2 text-sm font-medium transition text-moon/60 hover:bg-white/6 hover:text-moon"
+          >
+            付費測試
+          </Link>
         </div>
 
         {/* Tab 內容 */}
