@@ -3,6 +3,7 @@
 import { useState } from "react";
 import RedeemCodeBlock from "@/components/RedeemCodeBlock";
 import EmailResultBlock from "@/components/EmailResultBlock";
+import { normalizePlainText } from "@/lib/textUtils";
 
 const LINE_ADD_FRIEND_URL = "https://liff.line.me/2010215499-WrEJvUzE";
 
@@ -23,7 +24,7 @@ export default function ShareResultClient({
 
   function handleUnlocked(newFullText: string) {
     setIsUnlocked(true);
-    setFullText(newFullText);
+    setFullText(normalizePlainText(newFullText));
   }
 
   return (

@@ -5,6 +5,7 @@ import { AppShell } from "@/components/AppShell";
 import { PageNavActions } from "@/components/PageNavActions";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { LINE_RESULTS_COLLECTION, type LineResultData } from "@/lib/lineResults";
+import { normalizePlainText } from "@/lib/textUtils";
 import ShareResultClient from "./ShareResultClient";
 
 export const dynamic = "force-dynamic";
@@ -135,7 +136,7 @@ export default async function ShareResultPage({
   // 只有已解鎖才把 fullText 傳給 client，避免在 HTML 中暴露未解鎖內容
   const initialFullText =
     initialUnlocked && typeof result.fullText === "string"
-      ? result.fullText.replace(/\*\*/g, "").trim()
+      ? normalizePlainText(result.fullText.replace(/\*\*/g, ""))
       : "";
 
   return (

@@ -8,6 +8,7 @@ import { TarotShuffleAnimation } from "./TarotShuffleAnimation";
 import { useAuth } from "@/contexts/AuthContext";
 import RedeemCodeBlock from "@/components/RedeemCodeBlock";
 import EmailResultBlock from "@/components/EmailResultBlock";
+import { normalizePlainText } from "@/lib/textUtils";
 
 type DrawStatus = "idle" | "drawing" | "selecting" | "revealing" | "revealed";
 type ReadingStatus = "idle" | "loading" | "done" | "error";
@@ -182,7 +183,7 @@ function stripLeadingSymbols(line: string): string {
 }
 
 function parseReadingSectionsForDisplay(text: string): ReadingSection[] {
-  const cleaned = text.replace(/\*\*/g, "").trim();
+  const cleaned = normalizePlainText(text.replace(/\*\*/g, ""));
   if (!cleaned) return [{ title: "宇宙偷偷話", body: READING_FALLBACK_TEXT }];
 
   const sections: ReadingSection[] = [];
@@ -258,6 +259,7 @@ function parseThreeCardSections(text: string): ThreeCardParsedSections {
     combined: "", actionSteps: "", reminder: "", blessing: "", safetyNote: "",
   };
   if (!text.trim()) return result;
+  text = normalizePlainText(text);
 
   type Key = "category" | "qfocus" | "summary" | "c1" | "c2" | "c3" | "combined" | "action" | "reminder" | "blessing" | "safety";
   let current: Key | null = null;

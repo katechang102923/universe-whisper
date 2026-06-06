@@ -9,6 +9,7 @@ import {
   extractSpiritualClosing,
   extractSingleCardFields,
 } from "@/lib/lineResults";
+import { normalizePlainText } from "@/lib/textUtils";
 
 export const runtime = "nodejs";
 
@@ -460,7 +461,7 @@ export async function POST(req: NextRequest) {
     }
 
     const result   = snap.data() as LineResultData;
-    const fullText = (result.fullText || "").replace(/\*\*/g, "").trim();
+    const fullText = normalizePlainText((result.fullText || "").replace(/\*\*/g, ""));
 
     // ── 只允許已解鎖的結果寄送 ─────────────────────────────────────────────
     // unlocked: 付費/兌換碼解鎖；unlockStatus:"line_verified": LINE 解鎖成功

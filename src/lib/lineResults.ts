@@ -1,5 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebaseAdmin";
+import { normalizePlainText } from "@/lib/textUtils";
 
 export type LineResultType = "tarot" | "daily" | "whisper";
 export type LinePushStatus = "pending" | "sent" | "failed";
@@ -139,6 +140,24 @@ function firstTwoSentences(text: string, maxChars: number): string {
   }
   const picked = result.trim() || s;
   return sliceAtSentence(picked, maxChars);
+}
+
+/**
+ * LINE 專用：取文字前 n 句（以句號／驚歎號／問號斷句）
+ * 若文字不含標點則原樣回傳
+ */
+function takeNSentences(text: string, n: number): string {
+  if (!text) return "";
+  const s = text.trim();
+  const matches = [...s.matchAll(/[\s\S]*?[。！？]/g)];
+  let result = "";
+  let count = 0;
+  for (const m of matches) {
+    result += m[0];
+    count++;
+    if (count >= n) break;
+  }
+  return result.trim() || s;
 }
 
 const DIVIDER = "━━━━━━━━━━━━━━";
@@ -312,11 +331,11 @@ export function validateLineContent(
   return { valid: errors.length === 0, errors };
 }
 
-// ── LINE 三張牌訊息 ────────────────────────────────────────────────────────────
+// ── LINE 三張牌訊息（精簡版，詳細版在 share 頁）──────────────────────────────
 
 function buildLineThreeCardMessage(
   result: LineResultData,
-  questionText: string,
+  _questionText: string,
   resultUrl: string,
   fullText: string,
 ): string {
@@ -324,61 +343,50 @@ function buildLineThreeCardMessage(
   const DEFAULT_POSITIONS = ["過去", "現在", "未來"];
 
   const parts: string[] = [
-    `你的問題：\n${questionText}`,
-    "",
-    "你抽到的牌完整解讀：",
+    "宇宙聽到了你的聲音，這是為你抽出的牌組。",
   ];
 
-  // ── 每張牌完整解讀 ────────────────────────────────────────────────────────────
+  // ── 每張牌：位置｜牌名，然後三段內容直接並排（不顯示欄位標題）──────────────
   result.cards.forEach((card, i) => {
     const pos = card.position ?? DEFAULT_POSITIONS[i] ?? `第${i + 1}張`;
     const name = card.nameZh ?? card.name ?? "塔羅牌";
     const ori = card.orientationLabel ? `（${card.orientationLabel}）` : "";
 
-    // 從 fullText 提取該張牌的段落，再解析各欄位
     const cardSectionRaw = extractCardSectionText(fullText, i);
     const { cardPoint, questionMeaning, cardAdvice } = parseCardFields(cardSectionRaw);
 
     parts.push("", `${pos}｜${name}${ori}`);
-
-    if (cardPoint) {
-      parts.push("", `牌面重點：\n${cardPoint}`);
-    }
-    if (questionMeaning) {
-      parts.push("", `在你的問題中代表：\n${questionMeaning}`);
-    }
-    if (cardAdvice) {
-      parts.push("", `這張牌提醒你：\n${cardAdvice}`);
-    }
-    // 若三欄位都空，至少顯示關鍵字
+    if (cardPoint)       parts.push(cardPoint);
+    if (questionMeaning) parts.push(questionMeaning);
+    if (cardAdvice)      parts.push(cardAdvice);
     if (!cardPoint && !questionMeaning && !cardAdvice) {
       const kw = card.keywords || "";
       if (kw) parts.push(`關鍵字：${kw}`);
     }
   });
 
-  // ── 牌陣總結 ──────────────────────────────────────────────────────────────────
+  // ── 牌陣總結（壓短：整體答案 3 句、為什麼 2 句、建議 2 句）────────────────
   const { overallAnswer, whyThisHappens, actionAdvice } = extractSpreadSummaryFields(fullText);
   parts.push("", D, "", "✨ 牌陣總結");
-  if (overallAnswer) parts.push("", `整體答案：\n${overallAnswer}`);
-  if (whyThisHappens) parts.push("", `為什麼會這樣：\n${whyThisHappens}`);
-  if (actionAdvice)   parts.push("", `接下來 3～7 天建議：\n${actionAdvice}`);
+  if (overallAnswer)   parts.push("", takeNSentences(overallAnswer, 3));
+  if (whyThisHappens)  parts.push("", takeNSentences(whyThisHappens, 2));
+  if (actionAdvice)    parts.push("", `接下來 3～7 天建議：\n${takeNSentences(actionAdvice, 2)}`);
 
-  // ── 心靈收束 ──────────────────────────────────────────────────────────────────
+  // ── 心靈收束（2 句）──────────────────────────────────────────────────────────
   const spiritualClosing = extractSpiritualClosing(fullText);
   parts.push("", D, "", "🧘 心靈收束");
-  if (spiritualClosing) parts.push("", spiritualClosing);
+  if (spiritualClosing) parts.push("", takeNSentences(spiritualClosing, 2));
 
-  parts.push("", D, "", `📚 收藏版完整排版：\n${resultUrl}`);
+  parts.push("", D, `📚 收藏版完整排版：\n${resultUrl}`);
 
   return parts.join("\n");
 }
 
-// ── LINE 單張牌訊息 ───────────────────────────────────────────────────────────
+// ── LINE 單張牌訊息（精簡版，詳細版在 share 頁）──────────────────────────────
 
 function buildLineSingleCardMessage(
   result: LineResultData,
-  questionText: string,
+  _questionText: string,
   resultUrl: string,
   fullText: string,
 ): string {
@@ -397,27 +405,26 @@ function buildLineSingleCardMessage(
   } = extractSingleCardFields(fullText);
 
   const parts: string[] = [
-    `你的問題：\n${questionText}`,
+    "宇宙聽到了你的聲音，這是本次抽出的牌。",
     "",
-    "你抽到的牌完整解讀：",
-    "",
-    `本次訊息｜${cardName}${cardOri}`,
+    `${cardName}${cardOri}`,
   ];
 
-  if (cardPoint)       parts.push("", `牌面重點：\n${cardPoint}`);
-  if (questionMeaning) parts.push("", `在你的問題中代表：\n${questionMeaning}`);
-  if (cardAdvice)      parts.push("", `這張牌提醒你：\n${cardAdvice}`);
+  // 三段內容直接並排（不顯示欄位標題）
+  if (cardPoint)       parts.push(cardPoint);
+  if (questionMeaning) parts.push(questionMeaning);
+  if (cardAdvice)      parts.push(cardAdvice);
 
-  // ── 解讀總結 ──────────────────────────────────────────────────────────────────
+  // ── 解讀總結（壓短：整體答案 3 句、建議 2 句）────────────────────────────────
   parts.push("", D, "", "✨ 解讀總結");
-  if (overallAnswer) parts.push("", `整體答案：\n${overallAnswer}`);
-  if (actionAdvice)  parts.push("", `接下來 3～7 天建議：\n${actionAdvice}`);
+  if (overallAnswer) parts.push("", takeNSentences(overallAnswer, 3));
+  if (actionAdvice)  parts.push("", `接下來 3～7 天建議：\n${takeNSentences(actionAdvice, 2)}`);
 
-  // ── 心靈收束 ──────────────────────────────────────────────────────────────────
+  // ── 心靈收束（2 句）──────────────────────────────────────────────────────────
   parts.push("", D, "", "🧘 心靈收束");
-  if (spiritualClosing) parts.push("", spiritualClosing);
+  if (spiritualClosing) parts.push("", takeNSentences(spiritualClosing, 2));
 
-  parts.push("", D, "", `📚 收藏版完整排版：\n${resultUrl}`);
+  parts.push("", D, `📚 收藏版完整排版：\n${resultUrl}`);
 
   return parts.join("\n");
 }
@@ -427,7 +434,9 @@ function buildLineSingleCardMessage(
 export function buildLineResultMessage(result: LineResultData, resultId: string, siteUrl: string) {
   const questionText = result.question?.trim() || "你把問題放在心裡，宇宙也有聽見。";
   const resultUrl = result.resultUrl || `${siteUrl}/share/${resultId}`;
-  const fullText = (result.fullText || result.shortText || "").replace(/\*\*/g, "").trim();
+  const fullText = normalizePlainText(
+    (result.fullText || result.shortText || "").replace(/\*\*/g, ""),
+  );
 
   if (result.cards.length === 3) {
     return buildLineThreeCardMessage(result, questionText, resultUrl, fullText);
@@ -491,7 +500,9 @@ export async function pushResultToLine(resultId: string, lineUserId: string, sit
   }
 
   const result = snap.data() as LineResultData;
-  const fullText = (result.fullText || result.shortText || "").replace(/\*\*/g, "").trim();
+  const fullText = normalizePlainText(
+    (result.fullText || result.shortText || "").replace(/\*\*/g, ""),
+  );
   const validation = validateLineContent(result, fullText, resultId);
   if (!validation.valid) {
     const errMsg = `LINE 內容驗證失敗：${validation.errors.join("、")}`;
