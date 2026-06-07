@@ -565,6 +565,68 @@ function drawWrappedSummaryLines(
   return Math.min(drawn.length, maxLines);
 }
 
+function drawFittedSummaryLines(
+  ctx: CanvasRenderingContext2D,
+  lines: string[],
+  x: number,
+  y: number,
+  maxWidth: number,
+  maxHeight: number,
+  initialFontSize: number,
+  minFontSize: number,
+  lineHeightRatio: number,
+  color: string,
+): number {
+  const text = lines.map(clean).filter(Boolean).join("\n");
+  if (!text) return 0;
+
+  const wrapAtSize = (fontSize: number) => {
+    ctx.font = `400 ${fontSize}px sans-serif`;
+    const wrapped: string[] = [];
+    for (const paragraph of text.split("\n")) {
+      let cur = "";
+      for (const ch of [...paragraph]) {
+        const test = cur + ch;
+        if (ctx.measureText(test).width > maxWidth && cur) {
+          wrapped.push(cur);
+          cur = ch;
+        } else {
+          cur = test;
+        }
+      }
+      if (cur) wrapped.push(cur);
+    }
+    return wrapped;
+  };
+
+  let fontSize = initialFontSize;
+  let wrapped = wrapAtSize(fontSize);
+  let lineHeight = Math.round(fontSize * lineHeightRatio);
+
+  while (fontSize > minFontSize && wrapped.length * lineHeight > maxHeight) {
+    fontSize -= 1;
+    wrapped = wrapAtSize(fontSize);
+    lineHeight = Math.round(fontSize * lineHeightRatio);
+  }
+
+  const maxLines = Math.max(1, Math.floor(maxHeight / lineHeight));
+  const displayed = wrapped.slice(0, maxLines);
+  if (wrapped.length > maxLines && displayed.length) {
+    displayed[displayed.length - 1] = fitOneLine(ctx, displayed[displayed.length - 1], maxWidth);
+  }
+
+  const prevAlign = ctx.textAlign;
+  ctx.textAlign = "left";
+  ctx.font = `400 ${fontSize}px sans-serif`;
+  ctx.fillStyle = color;
+  displayed.forEach((line, i) => {
+    ctx.fillText(line, x, y + i * lineHeight);
+  });
+  ctx.textAlign = prevAlign;
+
+  return displayed.length;
+}
+
 function drawOverallSummaryCard(
   ctx: CanvasRenderingContext2D,
   paragraphs: string[],
@@ -591,15 +653,16 @@ function drawOverallSummaryCard(
   ctx.fillStyle = "#f7d987";
   ctx.fillText("三重星座整體解析", MARGIN_X + padX, titleY);
 
-  ctx.font = "400 30px sans-serif";
-  drawWrappedSummaryLines(
+  drawFittedSummaryLines(
     ctx,
     paragraphs,
     MARGIN_X + padX,
     textY,
     INNER_W - padX * 2,
-    42,
-    4,
+    cardH - 136,
+    30,
+    23,
+    1.38,
     "rgba(255,247,230,0.94)",
   );
 
@@ -648,15 +711,16 @@ function drawAspectSummaryGrid(
     ctx.fillStyle = "rgba(255,247,230,0.94)";
     ctx.fillText(fitOneLine(ctx, aspect.title, cardW - padX * 2), x + padX, y + 44);
 
-    ctx.font = "400 28px sans-serif";
-    drawWrappedSummaryLines(
+    drawFittedSummaryLines(
       ctx,
       aspect.lines,
       x + padX,
       y + 91,
       cardW - padX * 2,
-      38,
-      3,
+      cardH - 112,
+      28,
+      20,
+      1.34,
       "rgba(255,247,230,0.90)",
     );
   });
@@ -664,29 +728,18 @@ function drawAspectSummaryGrid(
   return startY + rows * cardH + (rows - 1) * rowGap;
 }
 
-function drawUnlockIncludesCard(
+function drawCompleteSummaryCard(
   ctx: CanvasRenderingContext2D,
   startY: number,
+  sections: Array<{ title: string; body: string }>,
 ): number {
-  const sections = [
-    {
-      title: "工作與金錢模式",
-      body: "看見你適合怎麼累積安全感、怎麼做選擇，以及金錢上容易卡住的地方。",
-    },
-    {
-      title: "人際關係提醒",
-      body: "理解你在人際裡容易給人的第一印象，以及最需要留意的溝通盲點。",
-    },
-    {
-      title: "專屬宇宙提醒",
-      body: "整理太陽、月亮、上升三種能量，給你一段最貼近現在狀態的提醒。",
-    },
-  ];
-  const cardH = 312;
+  if (!sections.length) return startY;
+
+  const cardH = 286;
   const padX = 38;
   const titleY = startY + 50;
   const firstSectionY = startY + 96;
-  const sectionGap = 72;
+  const sectionGap = 64;
 
   ctx.save();
   roundRectPath(ctx, MARGIN_X, startY, INNER_W, cardH, 32);
@@ -700,24 +753,25 @@ function drawUnlockIncludesCard(
   ctx.textAlign = "left";
   ctx.font = "bold 30px sans-serif";
   ctx.fillStyle = "#f7d987";
-  ctx.fillText("解鎖後會看到", MARGIN_X + padX, titleY);
+  ctx.fillText("本次完整解析重點", MARGIN_X + padX, titleY);
 
-  sections.forEach((section, index) => {
+  sections.slice(0, 3).forEach((section, index) => {
     const y = firstSectionY + index * sectionGap;
 
     ctx.font = "bold 25px sans-serif";
     ctx.fillStyle = "rgba(247,217,135,0.94)";
     ctx.fillText(section.title, MARGIN_X + padX, y);
 
-    ctx.font = "400 22px sans-serif";
-    drawWrappedSummaryLines(
+    drawFittedSummaryLines(
       ctx,
       [section.body],
       MARGIN_X + padX,
       y + 34,
       INNER_W - padX * 2,
-      30,
-      2,
+      44,
+      22,
+      18,
+      1.32,
       "rgba(255,247,230,0.90)",
     );
   });
@@ -790,18 +844,44 @@ function render(
       accent: "rgba(201,160,220,0.34)",
     },
   ];
+  const completeSummarySections = [
+    {
+      title: "人格與情感",
+      body: summarizeSentences(
+        [params.sunCoreText, params.moonEmotionText, params.overallSummary],
+        1,
+        78,
+      ).join(""),
+    },
+    {
+      title: "外在人設與關係",
+      body: summarizeSentences(
+        [params.risingOuterText, params.venusLoveText, params.whisper],
+        1,
+        78,
+      ).join(""),
+    },
+    {
+      title: "宇宙提醒",
+      body: summarizeSentences(
+        [params.advice, params.whisper, params.shortSummary],
+        1,
+        78,
+      ).join(""),
+    },
+  ].filter((section) => section.body);
 
-  // 底部保留給「解鎖包含」區塊與 footer
+  // 底部保留給完整摘要區塊與 footer
   const FOOTER_RESERVED = 148;
-  const UNLOCK_CARD_H = 312;
+  const SUMMARY_CARD_H = 286;
   const contentAreaBottom = H - FOOTER_RESERVED;
   const GAP = 24;
 
   let curY = signCardBottom + 40;
   curY = drawOverallSummaryCard(ctx, overallParagraphs, curY);
   curY += overallParagraphs.length ? GAP : 0;
-  curY = drawAspectSummaryGrid(ctx, aspects, curY, contentAreaBottom - UNLOCK_CARD_H - GAP);
-  drawUnlockIncludesCard(ctx, Math.min(curY + GAP, contentAreaBottom - UNLOCK_CARD_H));
+  curY = drawAspectSummaryGrid(ctx, aspects, curY, contentAreaBottom - SUMMARY_CARD_H - GAP);
+  drawCompleteSummaryCard(ctx, Math.min(curY + GAP, contentAreaBottom - SUMMARY_CARD_H), completeSummarySections);
 
   // 4. 底部
   const footerDivY = H - FOOTER_RESERVED + 20;

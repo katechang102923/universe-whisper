@@ -420,7 +420,7 @@ function ResultView({
   const isUnlocked = unlockState === "unlocked" || isAdminTestUnlocked;
 
   return (
-    <div className="mx-auto max-w-lg py-8 sm:py-12">
+    <div className={`mx-auto w-full px-4 py-8 sm:px-6 sm:py-12 ${isUnlocked ? "max-w-4xl" : "max-w-lg"}`}>
       {/* Header */}
       <div className="mb-8 text-center">
         <p className="text-xs uppercase tracking-[0.3em] text-aurora/70">三重星座整體解析</p>
@@ -456,7 +456,13 @@ function ResultView({
 
         {/* ── 缺少項目提示 ── */}
         {!moonSign && <Notice>尚未提供月亮星座，完整解析以太陽星座為主。</Notice>}
-        {!risingSign && <Notice>尚未提供上升星座，外在氣質解析解鎖後將顯示。</Notice>}
+        {!risingSign && (
+          <Notice>
+            {isUnlocked
+              ? "尚未提供上升星座，外在氣質解析將暫時略過。"
+              : "尚未提供上升星座，外在氣質解析解鎖後將顯示。"}
+          </Notice>
+        )}
 
         {/* ── 短摘要（免費預覽） ── */}
         <div className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-midnight/50 shadow-glow backdrop-blur-sm">
@@ -527,12 +533,12 @@ function PaidContent({
   const { sunSign, moonSign, risingSign, venusSign } = result;
 
   return (
-    <>
+    <div className="space-y-5">
       {/* 1. 三重星座整體解析 */}
       <ResultCard label="三重星座整體解析" accent="from-lavender/40 to-nebula/24" icon="✦">
-        <p className="leading-7">{sunTexts.overallSummary}</p>
+        <p className="leading-8">{sunTexts.overallSummary}</p>
         {(moonSign || risingSign) && (
-          <p className="mt-3 text-sm leading-6 text-moon/55">
+          <p className="mt-3 text-sm leading-7 text-moon/55">
             {moonSign && risingSign
               ? `月亮在${moonSign}、上升在${risingSign}——三層能量各有深度，在下方可以分別細看。`
               : moonSign
@@ -542,78 +548,82 @@ function PaidContent({
         )}
       </ResultCard>
 
-      {/* 2. 核心本質｜太陽星座 */}
-      <ResultCard label="核心本質｜太陽星座" accent="from-[#d8bd70]/50 to-nebula/20" icon="☀">
-        <div className="mb-1 flex items-center gap-2">
-          <span className="text-base font-semibold text-[#d8bd70]">
-            {ZODIAC_SYMBOLS[sunSign]} {sunSign}
-          </span>
-        </div>
-        <p className="mt-2 leading-7">{sunTexts.sunCoreText}</p>
-      </ResultCard>
+      <div className="grid gap-5 md:grid-cols-2">
+        {/* 2. 核心本質｜太陽星座 */}
+        <ResultCard label="核心本質｜太陽星座" accent="from-[#d8bd70]/50 to-nebula/20" icon="☀">
+          <div className="mb-1 flex items-center gap-2">
+            <span className="text-base font-semibold text-[#d8bd70]">
+              {ZODIAC_SYMBOLS[sunSign]} {sunSign}
+            </span>
+          </div>
+          <p className="mt-2 leading-8">{sunTexts.sunCoreText}</p>
+        </ResultCard>
 
-      {/* 3. 內在情感｜月亮星座 */}
-      <ResultCard label="內在情感｜月亮星座" accent="from-lavender/40 to-nebula/24" icon="🌙">
-        {moonSign ? (
-          <>
-            <div className="mb-1 flex items-center gap-2">
-              <span className="text-base font-semibold text-lavender">{ZODIAC_SYMBOLS[moonSign]} {moonSign}</span>
+        {/* 3. 內在情感｜月亮星座 */}
+        <ResultCard label="內在情感｜月亮星座" accent="from-lavender/40 to-nebula/24" icon="🌙">
+          {moonSign ? (
+            <>
+              <div className="mb-1 flex items-center gap-2">
+                <span className="text-base font-semibold text-lavender">{ZODIAC_SYMBOLS[moonSign]} {moonSign}</span>
+              </div>
+              <p className="mt-2 leading-8">{ASTRO_PROFILE_TEXTS[moonSign].moonInnerText}</p>
+            </>
+          ) : (
+            <p className="leading-8 text-moon/45">尚未提供月亮星座，這次先以太陽星座為主解讀。</p>
+          )}
+        </ResultCard>
+
+        {/* 4. 外在展現｜上升星座 */}
+        <ResultCard label="外在展現｜上升星座" accent="from-aurora/36 to-nebula/22" icon="⬆">
+          {risingSign ? (
+            <>
+              <div className="mb-1 flex items-center gap-2">
+                <span className="text-base font-semibold text-aurora">{ZODIAC_SYMBOLS[risingSign]} {risingSign}</span>
+              </div>
+              <p className="mt-2 leading-8">{ASTRO_PROFILE_TEXTS[risingSign].risingOuterText}</p>
+            </>
+          ) : (
+            <p className="leading-8 text-moon/45">尚未提供上升星座，外在氣質解析將暫時略過。</p>
+          )}
+        </ResultCard>
+
+        {/* 5. 感情吸引力｜金星星座 */}
+        <div className="overflow-hidden rounded-[1.5rem] border border-white/8 bg-midnight/30 shadow-sm backdrop-blur-sm">
+          <div className="h-px bg-gradient-to-r from-[#c9a0dc]/30 to-nebula/20" />
+          <div className="p-5 sm:p-6">
+            <p className="mb-3 flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-moon/40">
+              <span>♀</span>
+              感情吸引力｜金星星座
+              <span className="ml-1 rounded-full border border-white/10 px-2 py-0.5 text-[10px] normal-case tracking-wide text-moon/30">延伸解析</span>
+            </p>
+            <div className="text-sm leading-8 text-moon/75">
+              {venusSign ? (
+                <>
+                  <div className="mb-1 flex items-center gap-2">
+                    <span className="text-sm font-semibold text-[#c9a0dc]/80">{ZODIAC_SYMBOLS[venusSign]} {venusSign}</span>
+                  </div>
+                  <p className="mt-2">{ASTRO_PROFILE_TEXTS[venusSign].venusLoveText}</p>
+                </>
+              ) : (
+                <p className="text-moon/40">尚未提供金星星座，感情與吸引力解析將暫時略過。</p>
+              )}
             </div>
-            <p className="mt-2 leading-7">{ASTRO_PROFILE_TEXTS[moonSign].moonInnerText}</p>
-          </>
-        ) : (
-          <p className="leading-7 text-moon/45">尚未提供月亮星座，這次先以太陽星座為主解讀。</p>
-        )}
-      </ResultCard>
-
-      {/* 4. 外在展現｜上升星座 */}
-      <ResultCard label="外在展現｜上升星座" accent="from-aurora/36 to-nebula/22" icon="⬆">
-        {risingSign ? (
-          <>
-            <div className="mb-1 flex items-center gap-2">
-              <span className="text-base font-semibold text-aurora">{ZODIAC_SYMBOLS[risingSign]} {risingSign}</span>
-            </div>
-            <p className="mt-2 leading-7">{ASTRO_PROFILE_TEXTS[risingSign].risingOuterText}</p>
-          </>
-        ) : (
-          <p className="leading-7 text-moon/45">尚未提供上升星座，外在氣質解析將暫時略過。</p>
-        )}
-      </ResultCard>
-
-      {/* 5. 感情吸引力｜金星星座 */}
-      <div className="overflow-hidden rounded-[1.5rem] border border-white/8 bg-midnight/30 shadow-sm backdrop-blur-sm">
-        <div className="h-px bg-gradient-to-r from-[#c9a0dc]/30 to-nebula/20" />
-        <div className="p-5 sm:p-6">
-          <p className="mb-3 flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-moon/40">
-            <span>♀</span>
-            感情吸引力｜金星星座
-            <span className="ml-1 rounded-full border border-white/10 px-2 py-0.5 text-[10px] normal-case tracking-wide text-moon/30">延伸解析</span>
-          </p>
-          <div className="text-sm leading-7 text-moon/75">
-            {venusSign ? (
-              <>
-                <div className="mb-1 flex items-center gap-2">
-                  <span className="text-sm font-semibold text-[#c9a0dc]/80">{ZODIAC_SYMBOLS[venusSign]} {venusSign}</span>
-                </div>
-                <p className="mt-2">{ASTRO_PROFILE_TEXTS[venusSign].venusLoveText}</p>
-              </>
-            ) : (
-              <p className="text-moon/40">尚未提供金星星座，感情與吸引力解析將暫時略過。</p>
-            )}
           </div>
         </div>
       </div>
 
-      {/* 6. 宇宙偷偷話 */}
-      <ResultCard label="宇宙偷偷話" accent="from-[#d8bd70]/40 to-nebula/20" icon="🌙">
-        <p className="leading-7">{sunTexts.whisper}</p>
-      </ResultCard>
+      <div className="grid gap-5 md:grid-cols-2">
+        {/* 6. 宇宙偷偷話 */}
+        <ResultCard label="宇宙偷偷話" accent="from-[#d8bd70]/40 to-nebula/20" icon="🌙">
+          <p className="leading-8">{sunTexts.whisper}</p>
+        </ResultCard>
 
-      {/* 7. 給你的提醒 */}
-      <ResultCard label="給你的提醒" accent="from-aurora/36 to-nebula/22" icon="🌿">
-        <p className="leading-7">{sunTexts.advice}</p>
-      </ResultCard>
-    </>
+        {/* 7. 給你的提醒 */}
+        <ResultCard label="給你的提醒" accent="from-aurora/36 to-nebula/22" icon="🌿">
+          <p className="leading-8">{sunTexts.advice}</p>
+        </ResultCard>
+      </div>
+    </div>
   );
 }
 
