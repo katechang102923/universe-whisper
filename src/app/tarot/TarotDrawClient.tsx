@@ -2193,15 +2193,29 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
     });
   }, [cards, fullReading]);
 
-  // ── 三張牌限動圖用：只取牌陣總結中的「整體答案」段落 ─────────────────────
-  // 來源：parseThreeCardSections(fullReading).overallSummary → 擷取「整體答案」
-  // 不含「為什麼會這樣／接下來的方向／心靈收束」，也不含標題文字
-  // 嚴格限制：不使用 cosmicMessage、不使用 freeSummary.message、不使用任何感情 fallback、不重新呼叫 AI
+  // ── 三張牌限動圖用：取牌陣總結中的「整體答案」內文 ───────────────────────
+  // 與網頁完整版同一來源：parseThreeCardSections(fullReading).overallSummary
+  // 來源鏈（只要 overallSummary 非空就一定回傳內容，不顯示 fallback）：
+  //   1. parseOverallSummary().verdict（網頁「整體答案」框同一解析，已去除標題）
+  //   2. extractStoryVerdictFromOverallSummary（行為解析，支援無冒號標題）
+  //   3. 整段 overallSummary（去除可能的「整體答案：」標題）
+  // 不使用 cosmicMessage / freeSummary.message / 任何感情 fallback，不重新呼叫 AI。
   const threeCardOverallAnswer = useMemo(() => {
     if (fullReading && cards.length >= 3) {
-      const sections = parseThreeCardSections(fullReading);
-      const verdict = extractStoryVerdictFromOverallSummary(sections.overallSummary);
-      if (verdict) return verdict;
+      const summary = parseThreeCardSections(fullReading).overallSummary.trim();
+      if (summary) {
+        // 1. 與網頁完整版相同的「整體答案」解析（成功時不含標題、不含為什麼/方向）
+        const parsedVerdict = parseOverallSummary(summary).verdict?.trim();
+        if (parsedVerdict) return parsedVerdict;
+        // 2. 行為解析器（支援標題獨立一行、無冒號的格式）
+        const verdict = extractStoryVerdictFromOverallSummary(summary);
+        if (verdict) return verdict;
+        // 3. 解析不出段落結構 → 直接用整段，只移除開頭可能的「整體答案：」標題
+        const stripped = summary
+          .replace(/^[^\p{L}\p{N}]*(?:整體答案|核心判斷)[：:]?\s*/u, "")
+          .trim();
+        return stripped || summary;
+      }
     }
     return "目前無法產生總結，請稍後再試。";
   }, [cards, fullReading]);
