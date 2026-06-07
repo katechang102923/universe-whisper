@@ -751,18 +751,29 @@ function UnlockGate({
       <div className="overflow-hidden rounded-[1.5rem] border border-[#d8bd70]/30 bg-midnight/60 backdrop-blur-sm">
         <div className="h-1 bg-gradient-to-r from-[#d8bd70]/60 via-lavender/50 to-aurora/40" />
         <div className="p-5 sm:p-6">
-          <p className="mb-1 text-xs uppercase tracking-[0.24em] text-[#d8bd70]/70">解鎖完整解析</p>
+          <p className="mb-1 text-xs uppercase tracking-[0.24em] text-[#d8bd70]/70">解鎖你的專屬人格命盤</p>
+          <p className="mt-3 text-sm leading-7 text-moon/62">
+            不是一般星座運勢，而是依照你的太陽、月亮、上升星座，生成專屬人格、感情、人際與人生傾向解析。
+          </p>
           <p className="mt-2 text-2xl font-bold text-moon">NT$149</p>
+          <p className="mt-4 text-sm font-semibold text-moon/74">解鎖後可查看：</p>
           <div className="mt-4 space-y-2">
             {[
-              "完整三重星座解析（整體 + 逐層）",
-              "宇宙偷偷話 & 給你的提醒",
+              "太陽星座人格核心",
+              "月亮星座情感模式",
+              "上升星座外在人設",
+              "三種能量如何互相影響",
+              "愛情中的真實需求",
+              "最容易吸引的人",
+              "工作與金錢模式",
+              "人際關係盲點",
+              "專屬宇宙提醒",
               "下載限動分享圖",
               "傳送到 LINE 官方帳號",
-              "寄送 EMAIL 保存",
+              "寄送 Email 保存",
             ].map((item) => (
               <div key={item} className="flex items-center gap-2 text-sm text-moon/70">
-                <span className="shrink-0 text-[#d8bd70]">✦</span>
+                <span className="shrink-0 text-[#d8bd70]">✓</span>
                 {item}
               </div>
             ))}
@@ -801,7 +812,7 @@ function UnlockGate({
               className="mt-5 w-full rounded-full py-3.5 text-base font-semibold text-midnight transition hover:brightness-105 active:scale-[0.98] disabled:opacity-60"
               style={{ background: "linear-gradient(135deg, #d8bd70 0%, #b89adf 60%, #d8bd70 100%)" }}
             >
-              {loading ? "處理中…" : "解鎖完整解析 NT$149"}
+              {loading ? "處理中…" : "解鎖你的專屬人格命盤 NT$149"}
             </button>
           )}
 

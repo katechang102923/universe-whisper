@@ -374,32 +374,32 @@ function drawSignCard(
   startY: number,
   params: StoryImageParams,
 ): number {
-  const ROW_H  = 90;
-  const CARD_H = ROW_H * 4 + 20;
+  const ROW_H  = 58;
+  const CARD_H = ROW_H * 4 + 18;
 
   ctx.save();
-  roundRectPath(ctx, MARGIN_X, startY, INNER_W, CARD_H, 36);
-  ctx.fillStyle   = "rgba(255,255,255,0.050)";
+  roundRectPath(ctx, MARGIN_X, startY, INNER_W, CARD_H, 28);
+  ctx.fillStyle   = "rgba(7,11,30,0.72)";
   ctx.fill();
-  ctx.strokeStyle = "rgba(247,217,135,0.24)";
+  ctx.strokeStyle = "rgba(247,217,135,0.32)";
   ctx.lineWidth   = 1.5;
   ctx.stroke();
   ctx.restore();
 
   const rows: Array<{ sym: string; label: string; sign: string | null | undefined; color: string }> = [
-    { sym: "☀",  label: "太陽", sign: params.sunSign,    color: "#f7d987" },
-    { sym: "●",  label: "月亮", sign: params.moonSign,   color: "#b8a0f0" },
+    { sym: "☉",  label: "太陽", sign: params.sunSign,    color: "#f7d987" },
+    { sym: "☽",  label: "月亮", sign: params.moonSign,   color: "#b8a0f0" },
     { sym: "↑",  label: "上升", sign: params.risingSign, color: "#88d8b0" },
     { sym: "♀",  label: "金星", sign: params.venusSign,  color: "#c9a0dc" },
   ];
 
   rows.forEach((row, i) => {
-    const rowTop = startY + 10 + i * ROW_H;
-    const baseY  = rowTop + ROW_H / 2 + 13;
+    const rowTop = startY + 9 + i * ROW_H;
+    const baseY  = rowTop + ROW_H / 2 + 10;
 
     if (i > 0) {
       ctx.save();
-      ctx.strokeStyle = "rgba(255,255,255,0.06)";
+      ctx.strokeStyle = "rgba(255,255,255,0.07)";
       ctx.lineWidth   = 1;
       ctx.beginPath();
       ctx.moveTo(MARGIN_X + 28, rowTop);
@@ -408,20 +408,13 @@ function drawSignCard(
       ctx.restore();
     }
 
-    // 左側標籤
     ctx.textAlign = "left";
-    ctx.font      = "400 33px sans-serif";
-    ctx.fillStyle = "rgba(255,247,230,0.50)";
-    ctx.fillText(`${row.sym}  ${row.label}`, MARGIN_X + 44, baseY);
-
-    // 右側星座
-    ctx.textAlign = "right";
-    ctx.font      = row.sign ? "bold 36px sans-serif" : "400 28px sans-serif";
+    ctx.font      = row.sign ? "bold 28px sans-serif" : "400 25px sans-serif";
     ctx.fillStyle = row.sign ? row.color : "rgba(255,247,230,0.22)";
     const signLabel = row.sign
-      ? `${ZODIAC_SYMBOLS[row.sign] ?? ""}  ${row.sign}`
-      : "尚未提供";
-    ctx.fillText(signLabel, MARGIN_X + INNER_W - 44, baseY);
+      ? `${row.sym}  ${row.label}  ${row.sign}`
+      : `${row.sym}  ${row.label}  尚未提供`;
+    ctx.fillText(signLabel, MARGIN_X + 44, baseY);
   });
 
   return startY + CARD_H;
@@ -586,9 +579,9 @@ function drawOverallSummaryCard(
 
   ctx.save();
   roundRectPath(ctx, MARGIN_X, startY, INNER_W, cardH, 34);
-  ctx.fillStyle = "rgba(255,255,255,0.062)";
+  ctx.fillStyle = "rgba(7,11,30,0.76)";
   ctx.fill();
-  ctx.strokeStyle = "rgba(247,217,135,0.24)";
+  ctx.strokeStyle = "rgba(247,217,135,0.34)";
   ctx.lineWidth = 1.5;
   ctx.stroke();
   ctx.restore();
@@ -607,7 +600,7 @@ function drawOverallSummaryCard(
     INNER_W - padX * 2,
     42,
     4,
-    "rgba(255,247,230,0.88)",
+    "rgba(255,247,230,0.94)",
   );
 
   return startY + cardH;
@@ -643,7 +636,7 @@ function drawAspectSummaryGrid(
 
     ctx.save();
     roundRectPath(ctx, x, y, cardW, cardH, 28);
-    ctx.fillStyle = "rgba(255,255,255,0.054)";
+    ctx.fillStyle = "rgba(7,11,30,0.68)";
     ctx.fill();
     ctx.strokeStyle = aspect.accent;
     ctx.lineWidth = 1.4;
@@ -664,11 +657,61 @@ function drawAspectSummaryGrid(
       cardW - padX * 2,
       38,
       3,
-      "rgba(255,247,230,0.82)",
+      "rgba(255,247,230,0.90)",
     );
   });
 
   return startY + rows * cardH + (rows - 1) * rowGap;
+}
+
+function drawUnlockIncludesCard(
+  ctx: CanvasRenderingContext2D,
+  startY: number,
+): number {
+  const items = [
+    "人格核心",
+    "情感模式",
+    "外在人設",
+    "三重能量分析",
+    "愛情需求",
+    "感情吸引力",
+    "工作與金錢模式",
+    "人際關係提醒",
+    "宇宙偷偷話",
+  ];
+  const cardH = 244;
+  const padX = 38;
+  const colGap = 28;
+  const colW = (INNER_W - padX * 2 - colGap) / 2;
+
+  ctx.save();
+  roundRectPath(ctx, MARGIN_X, startY, INNER_W, cardH, 32);
+  ctx.fillStyle = "rgba(7,11,30,0.78)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(184,160,240,0.34)";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.textAlign = "left";
+  ctx.font = "bold 30px sans-serif";
+  ctx.fillStyle = "#f7d987";
+  ctx.fillText("解鎖完整解析包含", MARGIN_X + padX, startY + 50);
+
+  ctx.font = "400 25px sans-serif";
+  items.forEach((item, index) => {
+    const col = index < 5 ? 0 : 1;
+    const row = col === 0 ? index : index - 5;
+    const x = MARGIN_X + padX + col * (colW + colGap);
+    const y = startY + 94 + row * 30;
+
+    ctx.fillStyle = "rgba(247,217,135,0.92)";
+    ctx.fillText("✓", x, y);
+    ctx.fillStyle = "rgba(255,247,230,0.90)";
+    ctx.fillText(item, x + 30, y);
+  });
+
+  return startY + cardH;
 }
 
 // ── 主繪製入口 ────────────────────────────────────────────────────────────────
@@ -737,15 +780,17 @@ function render(
     },
   ];
 
-  // 底部保留給 footer（分隔線 + 網址）
+  // 底部保留給「解鎖包含」區塊與 footer
   const FOOTER_RESERVED = 148;
+  const UNLOCK_CARD_H = 244;
   const contentAreaBottom = H - FOOTER_RESERVED;
   const GAP = 24;
 
   let curY = signCardBottom + 40;
   curY = drawOverallSummaryCard(ctx, overallParagraphs, curY);
   curY += overallParagraphs.length ? GAP : 0;
-  drawAspectSummaryGrid(ctx, aspects, curY, contentAreaBottom);
+  curY = drawAspectSummaryGrid(ctx, aspects, curY, contentAreaBottom - UNLOCK_CARD_H - GAP);
+  drawUnlockIncludesCard(ctx, Math.min(curY + GAP, contentAreaBottom - UNLOCK_CARD_H));
 
   // 4. 底部
   const footerDivY = H - FOOTER_RESERVED + 20;

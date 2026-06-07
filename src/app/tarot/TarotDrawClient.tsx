@@ -618,6 +618,10 @@ function ThreeCardReadingDisplay({
         </article>
       ) : null}
 
+      <p className="px-1 text-xs leading-6 text-lavender/62 sm:text-sm">
+        點開每張牌，可以查看牌面重點、問題代表與提醒。
+      </p>
+
       {/* ── 逐張牌解讀：每張分三小段（牌陣總結已移到行動建議之後）── */}
       {cardSections.map(({ data, card, idx }) => {
         if (!data.body) return null;
@@ -649,6 +653,9 @@ function ThreeCardReadingDisplay({
                     {[data.subtitle || card?.position, card?.orientationLabel].filter(Boolean).join(" · ")}
                   </span>
                 )}
+              </span>
+              <span className="max-w-[5.5rem] shrink-0 text-right text-[11px] font-medium leading-4 tracking-wide text-[#d8bd70]/68 sm:max-w-none sm:text-xs">
+                點開查看完整解析
               </span>
               <span className={`shrink-0 text-lg leading-none text-lavender/70 transition-transform ${isOpen ? "rotate-180" : ""}`}>
                 ▾
