@@ -728,55 +728,112 @@ function drawAspectSummaryGrid(
   return startY + rows * cardH + (rows - 1) * rowGap;
 }
 
-function drawCompleteSummaryCard(
+/** 解鎖引導卡：「🔓 完整版額外包含」四項功能預覽 */
+function drawUnlockTeaserCard(
   ctx: CanvasRenderingContext2D,
   startY: number,
-  sections: Array<{ title: string; body: string }>,
 ): number {
-  if (!sections.length) return startY;
-
-  const cardH = 286;
+  const CARD_H = 340;
   const padX = 38;
-  const titleY = startY + 50;
-  const firstSectionY = startY + 96;
-  const sectionGap = 64;
 
+  // 卡片背景
   ctx.save();
-  roundRectPath(ctx, MARGIN_X, startY, INNER_W, cardH, 32);
+  roundRectPath(ctx, MARGIN_X, startY, INNER_W, CARD_H, 32);
   ctx.fillStyle = "rgba(7,11,30,0.78)";
   ctx.fill();
-  ctx.strokeStyle = "rgba(184,160,240,0.34)";
+  ctx.strokeStyle = "rgba(247,217,135,0.30)";
   ctx.lineWidth = 1.5;
   ctx.stroke();
   ctx.restore();
 
+  // 標題
   ctx.textAlign = "left";
   ctx.font = "bold 30px sans-serif";
   ctx.fillStyle = "#f7d987";
-  ctx.fillText("本次完整解析重點", MARGIN_X + padX, titleY);
+  ctx.fillText("🔓 完整版額外包含", MARGIN_X + padX, startY + 52);
 
-  sections.slice(0, 3).forEach((section, index) => {
-    const y = firstSectionY + index * sectionGap;
+  // 標題下分隔線
+  ctx.save();
+  ctx.strokeStyle = "rgba(247,217,135,0.20)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(MARGIN_X + padX, startY + 66);
+  ctx.lineTo(MARGIN_X + INNER_W - padX, startY + 66);
+  ctx.stroke();
+  ctx.restore();
 
-    ctx.font = "bold 25px sans-serif";
-    ctx.fillStyle = "rgba(247,217,135,0.94)";
-    ctx.fillText(section.title, MARGIN_X + padX, y);
+  const ITEMS = [
+    {
+      icon: "💰",
+      title: "個人事業與財富天賦報告",
+      desc: "分析工作模式、累積財富的方式與金錢盲點。",
+    },
+    {
+      icon: "❤️",
+      title: "情感正緣與人際模式分析",
+      desc: "了解你的吸引力、感情需求與人際互動模式。",
+    },
+    {
+      icon: "🌙",
+      title: "流年與未來半年運勢",
+      desc: "整理三重星座能量與未來半年的方向機會。",
+    },
+    {
+      icon: "✨",
+      title: "靈魂課題與人生方向",
+      desc: "找出太陽、月亮、上升三重能量的成長課題。",
+    },
+  ];
 
+  const colGap = 20;
+  const rowGap = 16;
+  const contentW = INNER_W - padX * 2;
+  const itemW = (contentW - colGap) / 2;
+  const itemH = 106;
+  const gridTop = startY + 82;
+
+  ITEMS.forEach((item, idx) => {
+    const col = idx % 2;
+    const row = Math.floor(idx / 2);
+    const ix = MARGIN_X + padX + col * (itemW + colGap);
+    const iy = gridTop + row * (itemH + rowGap);
+
+    // 小卡背景
+    ctx.save();
+    roundRectPath(ctx, ix, iy, itemW, itemH, 16);
+    ctx.fillStyle = "rgba(255,255,255,0.048)";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(247,217,135,0.16)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+
+    // icon + title
+    ctx.textAlign = "left";
+    ctx.font = "bold 22px sans-serif";
+    ctx.fillStyle = "rgba(255,247,230,0.94)";
+    ctx.fillText(
+      fitOneLine(ctx, `${item.icon} ${item.title}`, itemW - 28),
+      ix + 14,
+      iy + 33,
+    );
+
+    // desc（自動縮字）
     drawFittedSummaryLines(
       ctx,
-      [section.body],
-      MARGIN_X + padX,
-      y + 34,
-      INNER_W - padX * 2,
-      44,
-      22,
-      18,
-      1.32,
-      "rgba(255,247,230,0.90)",
+      [item.desc],
+      ix + 14,
+      iy + 58,
+      itemW - 28,
+      itemH - 70,
+      20,
+      15,
+      1.40,
+      "rgba(255,247,230,0.62)",
     );
   });
 
-  return startY + cardH;
+  return startY + CARD_H;
 }
 
 // ── 主繪製入口 ────────────────────────────────────────────────────────────────
@@ -844,36 +901,9 @@ function render(
       accent: "rgba(201,160,220,0.34)",
     },
   ];
-  const completeSummarySections = [
-    {
-      title: "人格與情感",
-      body: summarizeSentences(
-        [params.sunCoreText, params.moonEmotionText, params.overallSummary],
-        1,
-        78,
-      ).join(""),
-    },
-    {
-      title: "外在人設與關係",
-      body: summarizeSentences(
-        [params.risingOuterText, params.venusLoveText, params.whisper],
-        1,
-        78,
-      ).join(""),
-    },
-    {
-      title: "宇宙提醒",
-      body: summarizeSentences(
-        [params.advice, params.whisper, params.shortSummary],
-        1,
-        78,
-      ).join(""),
-    },
-  ].filter((section) => section.body);
-
-  // 底部保留給完整摘要區塊與 footer
+  // 底部保留給解鎖引導區塊與 footer
   const FOOTER_RESERVED = 148;
-  const SUMMARY_CARD_H = 286;
+  const SUMMARY_CARD_H = 340;
   const contentAreaBottom = H - FOOTER_RESERVED;
   const GAP = 24;
 
@@ -881,7 +911,7 @@ function render(
   curY = drawOverallSummaryCard(ctx, overallParagraphs, curY);
   curY += overallParagraphs.length ? GAP : 0;
   curY = drawAspectSummaryGrid(ctx, aspects, curY, contentAreaBottom - SUMMARY_CARD_H - GAP);
-  drawCompleteSummaryCard(ctx, Math.min(curY + GAP, contentAreaBottom - SUMMARY_CARD_H), completeSummarySections);
+  drawUnlockTeaserCard(ctx, Math.min(curY + GAP, contentAreaBottom - SUMMARY_CARD_H));
 
   // 4. 底部
   const footerDivY = H - FOOTER_RESERVED + 20;

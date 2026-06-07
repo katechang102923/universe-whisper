@@ -3893,21 +3893,29 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
               </div>
             </div>
           ) : (
-            /* Three-card: stacked on mobile, 3-col on desktop */
+            /* Three-card: horizontal scroll carousel on mobile, 3-col on desktop */
             <div className="relative z-10 mt-8 rounded-[2rem] border border-lavender/18 bg-[radial-gradient(circle_at_50%_0%,rgba(203,184,255,0.12),transparent_34%),rgba(255,255,255,0.035)] p-4 shadow-[0_22px_68px_rgba(4,7,26,0.28)] sm:p-5">
-              <p className="mb-4 text-center text-xs tracking-[0.22em] text-lavender/62">THREE CARD SPREAD</p>
-              <div className="grid gap-4 sm:grid-cols-3 sm:gap-5">
+              <div className="mb-3 flex flex-col items-center gap-1 sm:flex-row sm:justify-between">
+                <p className="text-xs tracking-[0.22em] text-lavender/62">THREE CARD SPREAD</p>
+                {/* Mobile hint — hidden on sm+ */}
+                <p className="text-[11px] text-lavender/50 sm:hidden">← 左右滑動查看三張牌 →</p>
+              </div>
+              {/* Mobile: horizontal snap carousel; Desktop: 3-col grid */}
+              <div className="flex gap-4 overflow-x-auto scroll-smooth snap-x snap-mandatory scrollbar-hide pb-2 sm:grid sm:grid-cols-3 sm:gap-5 sm:overflow-visible sm:pb-0">
                 {status === "revealed" && cards.length
                   ? cards.map((card, index) => (
                       <article
                         key={`${card.id}-${index}`}
-                        className="reading-fade-in mx-auto w-full max-w-[280px] sm:max-w-none sm:min-w-0"
+                        className="reading-fade-in three-card-carousel-item w-[75vw] shrink-0 snap-center sm:w-auto sm:shrink sm:snap-align-none"
                       >
                         <TarotCardFaceCompact card={card} topic={topic} cardIndex={index} />
                       </article>
                     ))
                   : visibleBacks.map((_, index) => (
-                      <div key={`back-${index}`} className="mx-auto w-full max-w-[280px] sm:max-w-none sm:min-w-0">
+                      <div
+                        key={`back-${index}`}
+                        className="w-[75vw] shrink-0 snap-center sm:w-auto sm:shrink sm:snap-align-none"
+                      >
                         <TarotCardBack compact />
                       </div>
                     ))}

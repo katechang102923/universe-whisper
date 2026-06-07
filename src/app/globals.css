@@ -2,6 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Hide scrollbar while keeping scroll functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Three-card carousel: limit image height on mobile so cards don't grow too tall */
+@media (max-width: 639px) {
+  .three-card-carousel-item .tarot-image-shell {
+    width: min(100%, 180px) !important;
+  }
+}
+
 :root {
   color-scheme: dark;
   background: #0a1028;
