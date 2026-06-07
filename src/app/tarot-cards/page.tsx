@@ -41,13 +41,13 @@ export default function TarotCardsPage() {
         </p>
 
         <div className="mt-8 grid gap-4 md:grid-cols-2">
-          <article className="cosmic-tool-panel rounded-[1.75rem] p-5">
+          <article className="cosmic-tool-panel rounded-[2rem] p-5 shadow-[0_20px_60px_rgba(4,7,26,0.18)]">
             <h2 className="text-2xl font-semibold text-moon">大阿爾克那</h2>
             <p className="mt-3 leading-8 text-moon/72">
               大阿爾克那共有 22 張，描述人生旅程中的重要課題，例如開始、選擇、轉化、療癒與完成。抽到大牌時，通常代表事件背後有更深層的生命主題。
             </p>
           </article>
-          <article className="cosmic-tool-panel rounded-[1.75rem] p-5">
+          <article className="cosmic-tool-panel rounded-[2rem] p-5 shadow-[0_20px_60px_rgba(4,7,26,0.18)]">
             <h2 className="text-2xl font-semibold text-moon">小阿爾克那</h2>
             <p className="mt-3 leading-8 text-moon/72">
               小阿爾克那共有 56 張，更貼近日常生活，包含情感、人際、工作、金錢與行動細節。它們能協助我們看見當下正在發生的能量流動。
@@ -59,7 +59,7 @@ export default function TarotCardsPage() {
           <h2 className="text-2xl font-semibold text-moon">四元素牌組</h2>
           <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {suits.map((suit) => (
-              <article key={suit.key} className="rounded-3xl border border-white/10 bg-white/[0.055] p-5 shadow-glow">
+              <article key={suit.key} className="rounded-[1.75rem] border border-white/10 bg-white/[0.055] p-5 shadow-[0_16px_44px_rgba(4,7,26,0.18)]">
                 <p className="text-sm tracking-[0.22em] text-[#d8bd70]/78">{suit.element}</p>
                 <h3 className="mt-2 text-xl font-semibold text-moon">{suit.name}</h3>
                 <p className="mt-3 leading-7 text-moon/70">{suit.text}</p>

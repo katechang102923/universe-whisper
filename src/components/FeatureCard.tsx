@@ -17,14 +17,14 @@ export function FeatureCard({ gradient, icon, title, description, href, badge }:
   return (
     <Link
       href={href}
-      className="group block overflow-hidden rounded-[1.5rem] border border-white/10 bg-midnight/50 shadow-glow backdrop-blur-sm transition-all duration-300 hover:-translate-y-2 hover:border-white/22 hover:shadow-[0_12px_48px_rgba(203,184,255,0.28)]"
+      className="group block overflow-hidden rounded-[1.75rem] border border-white/10 bg-midnight/54 shadow-[0_18px_54px_rgba(4,7,26,0.22)] backdrop-blur-sm transition-all duration-300 hover:-translate-y-2 hover:border-white/22 hover:shadow-[0_12px_48px_rgba(203,184,255,0.28)]"
     >
       {/* Top gradient accent bar */}
       <div className={`h-1 bg-gradient-to-r ${gradient}`} />
 
       <div className="p-5 sm:p-6">
         {/* Icon container */}
-        <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/12 bg-white/8">
+        <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/12 bg-white/8 shadow-[0_10px_24px_rgba(4,7,26,0.14)]">
           {icon}
         </div>
 

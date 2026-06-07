@@ -46,7 +46,7 @@ export function TarotModeClient({
       <PageNavActions className="mb-6" />
 
       {/* ── Hero：左側標題 + 右側模式切換 ── */}
-      <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-8">
+      <div className="relative flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between sm:gap-8">
         {/* 左：目前模式標題 */}
         <div className="min-w-0">
           <p className="text-xs uppercase tracking-[0.32em] text-aurora/80">
@@ -62,7 +62,7 @@ export function TarotModeClient({
         </div>
 
         {/* 右：模式切換（桌機垂直排列，手機水平緊湊）*/}
-        <div className="flex shrink-0 flex-row gap-2 sm:flex-col sm:items-end sm:pt-1">
+        <div className="grid shrink-0 grid-cols-2 gap-3 sm:flex sm:flex-col sm:items-end sm:pt-1">
           <p className="hidden text-right text-[11px] tracking-[0.18em] text-moon/35 sm:block">
             選擇模式
           </p>
@@ -74,21 +74,25 @@ export function TarotModeClient({
                 type="button"
                 onClick={() => switchSpread(option.key)}
                 className={[
-                  "flex-1 rounded-2xl border px-3 py-2 text-left text-sm transition",
-                  "sm:flex-none sm:min-w-[172px] sm:px-4 sm:py-3",
+                  "group relative min-h-[112px] overflow-hidden rounded-[1.5rem] border px-4 py-3 text-left text-sm transition active:scale-[0.98]",
+                  "sm:flex-none sm:min-w-[190px] sm:min-h-[112px] sm:px-4 sm:py-3",
                   isActive
-                    ? "border-[#d8bd70]/50 bg-[#d8bd70]/10 text-moon shadow-[0_0_14px_rgba(216,189,112,0.14)]"
-                    : "border-white/10 bg-white/[0.04] text-moon/52 hover:border-white/18 hover:bg-white/8 hover:text-moon/78",
+                    ? "border-[#d8bd70]/64 bg-[#d8bd70]/14 text-moon shadow-[0_0_28px_rgba(216,189,112,0.18)]"
+                    : "border-white/10 bg-white/[0.045] text-moon/60 shadow-[0_14px_34px_rgba(4,7,26,0.18)] hover:border-white/22 hover:bg-white/8 hover:text-moon/82",
                 ].join(" ")}
               >
-                <span className="flex items-center gap-1.5 font-medium leading-snug">
-                  <span aria-hidden="true">{option.emoji}</span>
+                <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_0%,rgba(216,189,112,0.16),transparent_34%)] opacity-0 transition group-hover:opacity-100" />
+                <span className="relative flex items-center gap-2 font-semibold leading-snug">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full border border-white/12 bg-white/8" aria-hidden="true">{option.emoji}</span>
                   {option.label}
                 </span>
                 {/* 短敘述只在桌機顯示 */}
-                <span className="mt-0.5 hidden text-xs text-moon/40 sm:block">
+                <span className="relative mt-2 block text-xs leading-5 text-moon/44">
                   {option.shortDesc}
                 </span>
+                {isActive ? (
+                  <span className="relative mt-3 block h-1.5 w-12 rounded-full bg-[#d8bd70]" />
+                ) : null}
               </button>
             );
           })}

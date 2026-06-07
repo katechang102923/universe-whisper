@@ -30,6 +30,12 @@ const positionDescriptions: Record<NonNullable<TarotCardFaceData["position"]>, s
   未來: "代表接下來可能的走向與提醒。"
 };
 
+const positionDisplayLabels: Record<NonNullable<TarotCardFaceData["position"]>, string> = {
+  過去: "過去背景",
+  現在: "現在狀態",
+  未來: "接下來方向",
+};
+
 export function TarotCardBack({ compact = false }: { compact?: boolean }) {
   return (
     <div
@@ -67,7 +73,7 @@ export function TarotCardFace({ card, topic }: { card: TarotCardFaceData; topic:
   }
 
   return (
-    <div className={`tarot-image-card ${isUpright ? "tarot-card-face-upright" : "tarot-card-face-reversed"}`}>
+    <div className={`tarot-image-card overflow-hidden rounded-[2rem] border border-[#d8bd70]/28 shadow-[0_24px_70px_rgba(4,7,26,0.34),0_0_34px_rgba(216,189,112,0.12)] ${isUpright ? "tarot-card-face-upright" : "tarot-card-face-reversed"}`}>
       <div className="tarot-image-stage">
         <div className="tarot-image-shell">
           <Image
@@ -83,12 +89,12 @@ export function TarotCardFace({ card, topic }: { card: TarotCardFaceData; topic:
           />
         </div>
         <div className="pointer-events-none absolute inset-0 rounded-[28px] ring-1 ring-[#d8bd70]/45" />
-        <p className="absolute left-4 top-4 rounded-full border border-[#d8bd70]/35 bg-midnight/72 px-3 py-1 text-xs uppercase tracking-[0.22em] text-moon backdrop-blur">
-          {card.position ?? topic}
+        <p className="absolute left-4 top-4 rounded-full border border-[#d8bd70]/40 bg-midnight/78 px-3 py-1 text-xs uppercase tracking-[0.22em] text-moon shadow-[0_10px_24px_rgba(0,0,0,0.22)] backdrop-blur">
+          {card.position ? positionDisplayLabels[card.position] : topic}
         </p>
       </div>
 
-      <div className="border-t border-white/10 p-5">
+      <div className="border-t border-white/10 bg-gradient-to-b from-white/[0.035] to-transparent p-5">
         <div className="flex items-start justify-between gap-3">
           <h3 className="text-3xl font-semibold text-moon">{card.name}</h3>
           <span
@@ -100,9 +106,9 @@ export function TarotCardFace({ card, topic }: { card: TarotCardFaceData; topic:
           </span>
         </div>
         <p className="mt-3 text-base leading-7 text-lavender">{card.keywords.join(" / ")}</p>
-        <div className="mt-4 rounded-2xl border border-white/10 bg-midnight/42 p-4 pr-3">
+        <div className="mt-4 rounded-[1.4rem] border border-white/10 bg-midnight/48 p-4 pr-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
           <p className="text-sm text-lavender">宇宙訊息</p>
-          {card.position ? <p className="mt-2 text-base leading-7 text-moon">{card.position}：{positionDescriptions[card.position]}</p> : null}
+          {card.position ? <p className="mt-2 text-base leading-7 text-moon">{positionDisplayLabels[card.position]}：{positionDescriptions[card.position]}</p> : null}
           <p className="mt-2 text-base leading-8 text-moon/84">{card.cosmicMessage}</p>
         </div>
       </div>
@@ -142,10 +148,17 @@ export function TarotCardFaceCompact({
 
   return (
     <div
-      className={`tarot-image-card ${
+      className={`tarot-image-card overflow-hidden rounded-[1.75rem] border border-white/10 shadow-[0_18px_54px_rgba(4,7,26,0.26)] ${
         isUpright ? "tarot-card-face-upright" : "tarot-card-face-reversed"
       }`}
     >
+      {card.position ? (
+        <div className="border-b border-white/10 bg-gradient-to-r from-[#d8bd70]/12 via-white/[0.04] to-lavender/10 px-4 py-3">
+          <p className="text-center text-xs font-semibold tracking-[0.18em] text-[#d8bd70]/78">
+            {positionDisplayLabels[card.position]}
+          </p>
+        </div>
+      ) : null}
       {/* ══ 1. 牌圖：最頂層，乾淨無任何文字 ══════════════════════════════════ */}
       <div className="tarot-image-stage" style={{ padding: "16px 16px 14px" }}>
         <div className="tarot-image-shell" style={{ width: "min(100%, 240px)" }}>
@@ -174,12 +187,12 @@ export function TarotCardFaceCompact({
           style={{
             fontSize: 11,
             letterSpacing: "0.16em",
-            color: "rgba(216,189,112,0.65)",
+            color: "rgba(216,189,112,0.70)",
             marginBottom: 6,
             marginTop: 0,
           }}
         >
-          {card.position ? `第 ${cardIndex + 1} 張｜${card.position}` : `第 ${cardIndex + 1} 張`}
+          {card.position ? `第 ${cardIndex + 1} 張｜${positionDisplayLabels[card.position]}` : `第 ${cardIndex + 1} 張`}
         </p>
 
         {/* 牌名（大字） + 正逆位 badge（右側） */}
@@ -236,8 +249,8 @@ export function TarotCardFaceCompact({
             style={{
               marginTop: 10,
               borderRadius: 12,
-              border: "1px solid rgba(255,255,255,0.08)",
-              background: "rgba(7,11,30,0.45)",
+              border: "1px solid rgba(255,255,255,0.10)",
+              background: "rgba(7,11,30,0.50)",
               padding: "8px 12px",
               fontSize: 13,
               lineHeight: 1.7,

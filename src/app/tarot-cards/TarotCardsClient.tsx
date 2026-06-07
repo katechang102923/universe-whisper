@@ -68,26 +68,26 @@ export function TarotCardsClient({ cards }: { cards: TarotCard[] }) {
 
   return (
     <>
-      <section className="mt-10 space-y-12">
+      <section className="mt-10 space-y-14 sm:space-y-16">
         {groupedCards.map((group) => (
-          <div key={group.suit}>
-            <div className="flex items-end justify-between gap-4">
+          <div key={group.suit} className="rounded-[2rem] border border-white/8 bg-white/[0.025] p-3 shadow-[0_20px_60px_rgba(4,7,26,0.16)] sm:p-5">
+            <div className="flex items-end justify-between gap-4 px-1">
               <div>
                 <p className="text-xs uppercase tracking-[0.28em] text-[#d8bd70]/70">{group.suit}</p>
                 <h2 className="mt-2 text-2xl font-semibold text-moon">{group.label}卡牌</h2>
               </div>
-              <p className="text-sm text-moon/48">{group.cards.length} 張</p>
+              <p className="rounded-full border border-white/10 bg-white/[0.055] px-3 py-1 text-sm text-moon/48">{group.cards.length} 張</p>
             </div>
 
-            <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
               {group.cards.map((card) => (
                 <button
                   key={card.id}
                   type="button"
                   onClick={() => setSelectedCard(card)}
-                  className="group rounded-3xl border border-[#d8bd70]/20 bg-midnight/58 p-3 text-left shadow-[0_18px_54px_rgba(0,0,0,0.22)] transition duration-300 hover:-translate-y-1 hover:border-[#d8bd70]/58 hover:shadow-[0_0_38px_rgba(216,189,112,0.22)] active:scale-[0.98]"
+                  className="group rounded-[1.65rem] border border-[#d8bd70]/20 bg-midnight/62 p-2.5 text-left shadow-[0_16px_44px_rgba(0,0,0,0.24)] transition duration-300 hover:-translate-y-1 hover:border-[#d8bd70]/58 hover:shadow-[0_0_38px_rgba(216,189,112,0.22)] active:scale-[0.98] sm:p-3"
                 >
-                  <div className="relative flex aspect-[2/3] items-center justify-center rounded-2xl border border-white/10 bg-black/20 p-2">
+                  <div className="relative flex aspect-[2/3] items-center justify-center overflow-hidden rounded-[1.25rem] border border-white/10 bg-black/20 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:rounded-2xl">
                     {card.image ? (
                       <Image
                         src={card.image}
@@ -101,8 +101,10 @@ export function TarotCardsClient({ cards }: { cards: TarotCard[] }) {
                     )}
                     <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_12%,rgba(247,241,223,0.22),transparent_34%)] opacity-0 transition group-hover:opacity-100" />
                   </div>
-                  <h3 className="mt-3 text-base font-semibold text-moon">{card.nameZh}</h3>
-                  <p className="mt-1 text-xs text-moon/52">{card.nameEn}</p>
+                  <div className="px-1 pb-1">
+                    <h3 className="mt-3 text-base font-semibold leading-tight text-moon">{card.nameZh}</h3>
+                    <p className="mt-1 text-xs leading-snug text-lavender/58">{card.nameEn}</p>
+                  </div>
                 </button>
               ))}
             </div>

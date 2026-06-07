@@ -3541,7 +3541,7 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
   // ?????????????????????????????????????????????????????????????????????????
 
   return (
-    <div className="cosmic-tool-panel relative mt-8 overflow-hidden rounded-[1.75rem] p-4 sm:p-7">
+    <div className="cosmic-tool-panel relative mt-8 overflow-hidden rounded-[2rem] border border-white/10 p-4 shadow-[0_24px_70px_rgba(4,7,26,0.28)] sm:p-7">
       <div className="pointer-events-none absolute inset-0 opacity-70">
         <span className="floating-star left-[7%] top-[8%]" />
         <span className="floating-star left-[88%] top-[20%] animation-delay-150" />
@@ -3549,10 +3549,10 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
       </div>
 
       {/* ✨ Operation guide ✨ */}
-      <ol className="relative z-10 mb-5 flex flex-wrap gap-x-5 gap-y-1.5">
+      <ol className="relative z-10 mb-5 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] sm:flex-wrap sm:overflow-visible">
         {["選擇愛情、工作、生活或財運", "寫下你想問的問題", "抽牌後查看宇宙訊息"].map((step, i) => (
-          <li key={i} className="flex items-center gap-1.5 text-sm text-moon/50">
-            <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-lavender/35 text-[10px] text-lavender">
+          <li key={i} className="flex shrink-0 items-center gap-2 rounded-full border border-white/10 bg-white/[0.055] px-3.5 py-2 text-xs text-moon/58 shadow-[0_10px_24px_rgba(4,7,26,0.14)] sm:text-sm">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-lavender/45 bg-lavender/12 text-[10px] font-semibold text-lavender">
               {i + 1}
             </span>
             {step}
@@ -3563,7 +3563,7 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
       {/* ?? Mode selector ?? */}
 
       {/* ?? Topic selector ?? */}
-      <div className="relative z-10 mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="relative z-10 mt-5 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] sm:grid sm:grid-cols-4 sm:overflow-visible">
         {topics.map((item) => (
           <button
             key={item}
@@ -3576,10 +3576,10 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
               setCards([]);
               resetReading();
             }}
-            className={`min-h-11 rounded-full border px-3 text-sm transition ${
+            className={`min-h-11 shrink-0 rounded-full border px-5 text-sm font-semibold shadow-[0_10px_24px_rgba(4,7,26,0.14)] transition active:scale-95 sm:shrink ${
               topic === item
-                ? "border-lavender bg-lavender text-midnight"
-                : "border-white/12 bg-white/8 text-moon/76 hover:bg-white/12"
+                ? "border-[#d8bd70]/70 bg-[#d8bd70] text-midnight shadow-[0_0_24px_rgba(216,189,112,0.22)]"
+                : "border-white/12 bg-white/[0.065] text-moon/76 hover:border-lavender/30 hover:bg-white/12"
             }`}
           >
             {item}
@@ -3592,7 +3592,7 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
         <button
           type="button"
           onClick={() => setSpreadQuestionsOpen((v) => !v)}
-          className="flex items-center gap-2 text-sm text-moon/55 transition hover:text-moon/80"
+          className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.045] px-3 py-2 text-sm text-moon/58 transition hover:border-lavender/24 hover:bg-white/8 hover:text-moon/80"
         >
           <span>不知道怎麼問？</span>
           <span className="rounded-full border border-white/14 bg-white/6 px-3 py-1 text-xs">
@@ -3601,7 +3601,7 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
         </button>
 
         {spreadQuestionsOpen ? (
-          <div className="mt-3 rounded-3xl border border-lavender/18 bg-midnight/38 p-4">
+          <div className="mt-3 rounded-[1.6rem] border border-lavender/18 bg-midnight/46 p-4 shadow-[0_16px_44px_rgba(4,7,26,0.2)] backdrop-blur-sm">
             {mode === "three_card" ? (
               <>
                 <p className="mb-2 text-xs tracking-[0.22em] text-lavender/70">{currentSpreadGroup.title}</p>
@@ -3611,10 +3611,10 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
                       key={item}
                       type="button"
                       onClick={() => selectSpreadQuestion(item)}
-                      className={`rounded-2xl border px-4 py-3 text-left text-base leading-6 transition ${
+                      className={`rounded-2xl border px-4 py-3 text-left text-base leading-6 shadow-[0_10px_24px_rgba(4,7,26,0.12)] transition active:scale-[0.98] ${
                         selectedSpreadQuestion === item
                           ? "border-moon bg-moon text-midnight"
-                          : "border-white/12 bg-white/8 text-moon/78 hover:bg-white/12"
+                          : "border-white/12 bg-white/8 text-moon/78 hover:border-white/24 hover:bg-white/12"
                       }`}
                     >
                       {item}
@@ -3634,10 +3634,10 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
                         setQuestion(item);
                         setSpreadQuestionsOpen(false);
                       }}
-                      className={`rounded-2xl border px-3 py-2 text-left text-sm leading-6 transition ${
+                      className={`rounded-full border px-3.5 py-2 text-left text-sm leading-6 shadow-[0_8px_18px_rgba(4,7,26,0.12)] transition active:scale-[0.98] ${
                         question === item
                           ? "border-moon bg-moon text-midnight"
-                          : "border-white/12 bg-white/8 text-moon/78 hover:bg-white/12"
+                          : "border-white/12 bg-white/8 text-moon/78 hover:border-white/24 hover:bg-white/12"
                       }`}
                     >
                       {item}
@@ -3653,36 +3653,36 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
       {/* ✨ Single-card example questions ✨ */}
 
       {/* ?? Question input ?? */}
-      <div className="relative z-10 mt-6">
+      <div className="relative z-10 mt-6 rounded-[1.6rem] border border-white/10 bg-white/[0.045] p-4 shadow-[0_16px_44px_rgba(4,7,26,0.18)]">
         <p className="text-base font-medium text-moon">把想問的事交給宇宙</p>
         <p className="mt-1 text-sm text-moon/52">
           {isAdmin
             ? "管理員模式：不限抽牌次數"
             : "把想問的事寫下來，越具體，宇宙給你的解讀越貼近你。"}
         </p>
+        <textarea
+          id="question"
+          value={question}
+          onChange={(event) => {
+            setQuestion(event.target.value);
+            setSelectedSpreadQuestion("");
+          }}
+          className="mt-4 min-h-32 w-full resize-none rounded-[1.35rem] border border-white/12 bg-midnight/70 p-4 text-base leading-7 text-moon shadow-inner outline-none transition placeholder:text-moon/36 focus:border-lavender/70 focus:ring-2 focus:ring-lavender/15"
+          placeholder={textareaPlaceholders[topic]}
+        />
       </div>
-      <textarea
-        id="question"
-        value={question}
-        onChange={(event) => {
-          setQuestion(event.target.value);
-          setSelectedSpreadQuestion("");
-        }}
-        className="relative z-10 mt-3 min-h-32 w-full resize-none rounded-3xl border border-white/12 bg-midnight/58 p-4 text-base leading-7 text-moon outline-none transition placeholder:text-moon/40 focus:border-lavender"
-        placeholder={textareaPlaceholders[topic]}
-      />
 
       {/* ── Draw CTA 區（只在 idle 時顯示，避免與抽牌動畫衝突） ── */}
       {status === "idle" ? (
         isLoadingDraws ? (
           /* ── 載入中：API 尚未回應，不顯示「0 次」或付費方案 ── */
-          <div className="relative z-10 mt-5 rounded-2xl border border-white/8 bg-midnight/40 px-5 py-4">
+          <div className="relative z-10 mt-5 rounded-[1.5rem] border border-white/10 bg-midnight/48 px-5 py-4 shadow-[0_14px_36px_rgba(4,7,26,0.18)]">
             <p className="text-sm text-moon/45">正在確認今日免費次數…</p>
           </div>
 
         ) : isBlockedState ? (
           /* ── 狀態 B：次數用完 + 無有效通行碼（只顯示提示，通行碼/購買在卡牌區下方）── */
-          <div className="relative z-10 mt-5 rounded-2xl border border-white/10 bg-midnight/50 px-4 py-3.5">
+          <div className="relative z-10 mt-5 rounded-[1.5rem] border border-white/10 bg-midnight/52 px-4 py-3.5 shadow-[0_14px_36px_rgba(4,7,26,0.18)]">
             <p className="text-sm font-semibold text-moon">今日免費次數已使用完畢</p>
             <p className="mt-1 text-xs leading-5 text-moon/55">
               你可以明天再回來免費抽牌，或使用通行碼繼續抽牌。
@@ -3691,7 +3691,7 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
 
         ) : isOutOfFreeDraws && hasActivePass ? (
           /* ── 狀態 C：次數用完但有效通行碼已啟用 ── */
-          <div className="relative z-10 mt-5 rounded-2xl border border-aurora/22 bg-aurora/6 px-5 py-4">
+          <div className="relative z-10 mt-5 rounded-[1.5rem] border border-aurora/26 bg-aurora/8 px-5 py-4 shadow-[0_18px_44px_rgba(4,7,26,0.2)]">
             <p className="text-sm font-semibold text-aurora">✓ 已啟用通行碼</p>
             <p className="mt-1 text-xs leading-5 text-moon/60">
               通行碼已啟用，請開始選牌。
@@ -3699,7 +3699,7 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
             <button
               type="button"
               onClick={handleDrawButtonClick}
-              className="mt-4 w-full rounded-full bg-moon px-6 py-3 font-medium text-midnight shadow-[0_0_24px_rgba(247,241,223,0.28)] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-4 w-full rounded-full bg-moon px-6 py-3.5 font-semibold text-midnight shadow-[0_0_30px_rgba(247,241,223,0.30)] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
             >
               ✦ 開始抽牌
             </button>
@@ -3707,7 +3707,7 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
 
         ) : (
           /* ── 狀態 A：今日免費次數還有（或管理員） ── */
-          <div className="relative z-10 mt-5 rounded-2xl border border-[#d8bd70]/22 bg-midnight/50 px-5 py-4">
+          <div className="relative z-10 mt-5 rounded-[1.5rem] border border-[#d8bd70]/28 bg-gradient-to-br from-[#d8bd70]/10 via-midnight/58 to-lavender/[0.06] px-5 py-4 shadow-[0_20px_52px_rgba(4,7,26,0.24)]">
             <p className="text-sm font-semibold text-moon">今日免費抽牌</p>
             <p className="mt-1 text-xs leading-6 text-moon/60">
               你今天還有 {isAdmin ? "無限" : (drawsRemaining ?? 1)} 次免費抽牌機會，可以先免費體驗一次。
@@ -3715,7 +3715,8 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
             <button
               type="button"
               onClick={handleFreeDrawButtonClick}
-              className="mt-4 w-full rounded-full bg-moon px-6 py-3 font-medium text-midnight shadow-[0_0_24px_rgba(247,241,223,0.28)] transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-4 w-full rounded-full px-6 py-3.5 font-semibold text-midnight shadow-[0_16px_38px_rgba(216,189,112,0.24),0_0_26px_rgba(247,241,223,0.16)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+              style={{ background: "linear-gradient(135deg, #f7d987 0%, #d8bd70 48%, #cbb8ff 100%)" }}
             >
               ✦ 使用今日免費次數抽牌
             </button>
@@ -3778,7 +3779,7 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
       <div ref={cardAreaRef}>
         {/* 尚未開始抽牌且有免費次數：提示使用者先點按鈕 */}
         {status === "idle" && !isBlockedState && !isLoadingDraws && drawAccessMode === null && !hasActivePass ? (
-          <div className="relative z-10 mt-6 rounded-2xl border border-white/8 bg-midnight/30 px-5 py-4 text-center">
+          <div className="relative z-10 mt-6 rounded-[1.5rem] border border-white/10 bg-midnight/38 px-5 py-4 text-center shadow-[0_14px_34px_rgba(4,7,26,0.16)]">
             <p className="text-sm text-moon/55">請先使用今日免費次數，或輸入通行碼開始抽牌。</p>
           </div>
         ) : null}
@@ -3791,12 +3792,14 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
         <>
           {/* Single-card: 置中單張牌卡，避免孤單靠左、右側大留白 */}
           {isSingleResult ? (
-            <div className="relative z-10 mt-8 flex justify-center">
+            <div className="relative z-10 mt-8 rounded-[2rem] border border-[#d8bd70]/18 bg-[radial-gradient(circle_at_50%_0%,rgba(216,189,112,0.10),transparent_34%),rgba(255,255,255,0.035)] p-4 shadow-[0_22px_68px_rgba(4,7,26,0.28)] sm:p-6">
+              <p className="mb-4 text-center text-xs tracking-[0.22em] text-[#d8bd70]/62">SINGLE CARD MESSAGE</p>
+              <div className="flex justify-center">
               {status === "revealed" && cards.length
                 ? cards.map((card, index) => (
                     <article
                       key={`${card.id}-${index}`}
-                      className="reading-fade-in tarot-card-shell mx-auto w-full max-w-[420px]"
+                      className="reading-fade-in tarot-card-shell mx-auto w-full max-w-[430px]"
                     >
                       {card.position ? (
                         <p className="mb-3 rounded-full border border-moon/20 bg-midnight/54 px-4 py-2 text-center text-base font-medium text-moon shadow-glow">
@@ -3811,23 +3814,24 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
                       <TarotCardBack />
                     </div>
                   ))}
+              </div>
             </div>
           ) : (
-            /* Three-card: compact cards, horizontal scroll on mobile, 3-col on desktop */
-            <div className="relative z-10 mt-8">
-              <p className="mb-2 text-center text-xs text-moon/38 sm:hidden">← 左右滑動查看三張牌 →</p>
-              <div className="flex gap-3 overflow-x-auto scroll-smooth pb-3 [scrollbar-width:none] [-webkit-overflow-scrolling:touch] sm:grid sm:grid-cols-3 sm:gap-5 sm:overflow-visible sm:pb-0">
+            /* Three-card: stacked on mobile, 3-col on desktop */
+            <div className="relative z-10 mt-8 rounded-[2rem] border border-lavender/18 bg-[radial-gradient(circle_at_50%_0%,rgba(203,184,255,0.12),transparent_34%),rgba(255,255,255,0.035)] p-4 shadow-[0_22px_68px_rgba(4,7,26,0.28)] sm:p-5">
+              <p className="mb-4 text-center text-xs tracking-[0.22em] text-lavender/62">THREE CARD SPREAD</p>
+              <div className="grid gap-4 sm:grid-cols-3 sm:gap-5">
                 {status === "revealed" && cards.length
                   ? cards.map((card, index) => (
                       <article
                         key={`${card.id}-${index}`}
-                        className="reading-fade-in min-w-[72vw] flex-shrink-0 sm:min-w-0"
+                        className="reading-fade-in sm:min-w-0"
                       >
                         <TarotCardFaceCompact card={card} topic={topic} cardIndex={index} />
                       </article>
                     ))
                   : visibleBacks.map((_, index) => (
-                      <div key={`back-${index}`} className="min-w-[72vw] flex-shrink-0 sm:min-w-0">
+                      <div key={`back-${index}`} className="sm:min-w-0">
                         <TarotCardBack compact />
                       </div>
                     ))}

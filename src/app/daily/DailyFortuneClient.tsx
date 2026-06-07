@@ -175,7 +175,7 @@ function CategoryCard({ label, stars, text, gradient }: {
   label: string; stars: number; text: string; gradient: string;
 }) {
   return (
-    <article className="relative overflow-hidden rounded-[1.5rem] border border-white/10 bg-midnight/50 shadow-glow transition duration-300 hover:-translate-y-1 hover:border-[#d8bd70]/35">
+    <article className="relative overflow-hidden rounded-[1.65rem] border border-white/10 bg-midnight/54 shadow-[0_16px_46px_rgba(4,7,26,0.22)] transition duration-300 hover:-translate-y-1 hover:border-[#d8bd70]/35">
       <div className={`h-1 bg-gradient-to-r ${gradient}`} />
       <div className="p-5">
         <div className="flex items-center justify-between gap-3">
@@ -493,7 +493,7 @@ export function DailyFortuneClient() {
           Button height: 48 px
           Icon: 18–20 px | Name: 13 px | Date: 11 px (hidden mobile)
         */}
-        <div className="mt-5 grid grid-cols-3 gap-2">
+        <div className="mt-5 flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none] sm:grid sm:grid-cols-3 sm:overflow-visible sm:pb-0">
           {ZODIAC_ORDER.map((slug) => {
             const active = selectedSlug === slug;
             return (
@@ -502,13 +502,13 @@ export function DailyFortuneClient() {
                 type="button"
                 onClick={() => selectSign(slug)}
                 className={[
-                  "flex h-12 flex-col items-center justify-center gap-[2px]",
-                  "rounded-xl border px-1",
+                  "flex h-[74px] min-w-[92px] flex-col items-center justify-center gap-[3px]",
+                  "rounded-2xl border px-2 sm:min-w-0",
                   "transition-all duration-200 active:scale-95",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d8bd70]/60",
                   active
-                    ? "border-[#d8bd70]/80 bg-[#d8bd70]/14 shadow-[0_0_14px_rgba(216,189,112,0.28)]"
-                    : "border-white/10 bg-midnight/50 hover:border-[#d8bd70]/36 hover:bg-white/5",
+                    ? "border-[#d8bd70]/80 bg-[#d8bd70]/16 shadow-[0_0_24px_rgba(216,189,112,0.26)]"
+                    : "border-white/10 bg-midnight/52 shadow-[0_12px_28px_rgba(4,7,26,0.16)] hover:border-[#d8bd70]/36 hover:bg-white/5",
                 ].join(" ")}
               >
                 {/* Symbol */}
@@ -523,7 +523,7 @@ export function DailyFortuneClient() {
                   {ZODIAC_LABELS[slug]}
                 </span>
                 {/* Date range — hidden on mobile */}
-                <span className="hidden text-[10px] text-moon/32 sm:block">
+                <span className={`text-[10px] ${active ? "text-[#d8bd70]/70" : "text-moon/32"}`}>
                   {ZODIAC_DATES[slug]}
                 </span>
               </button>
@@ -638,7 +638,7 @@ export function DailyFortuneClient() {
 
         {/* Placeholder when no sign is selected */}
         {!selectedSlug && (
-          <div className="rounded-[1.75rem] border border-white/8 bg-midnight/28 px-6 py-14 text-center lg:py-20">
+          <div className="rounded-[2rem] border border-white/10 bg-midnight/34 px-6 py-14 text-center shadow-[0_18px_54px_rgba(4,7,26,0.22)] lg:py-20">
             <p className="text-sm text-moon/46">點選左側星座，查看今日宇宙訊息 ✦</p>
           </div>
         )}
@@ -655,7 +655,7 @@ export function DailyFortuneClient() {
               ← 重新選擇
             </button>
 
-            <section className="relative overflow-hidden rounded-[1.75rem] border border-lavender/22 bg-midnight/52 shadow-glow">
+            <section className="relative overflow-hidden rounded-[2rem] border border-lavender/24 bg-gradient-to-br from-white/[0.06] via-midnight/58 to-lavender/[0.06] shadow-[0_24px_76px_rgba(4,7,26,0.30),0_0_32px_rgba(203,184,255,0.10)]">
 
               {/* Faint zodiac image in background */}
               <div className="pointer-events-none absolute inset-y-4 right-[-8%] z-0 w-[68%] max-w-[440px] opacity-[0.07] blur-[1.5px] sm:right-0 sm:w-[38%]">
@@ -680,7 +680,7 @@ export function DailyFortuneClient() {
                 </div>
 
                 {/* Star ratings */}
-                <div className="mb-4 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                <div className="mb-4 rounded-[1.35rem] border border-white/10 bg-white/[0.045] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
                   <div className="space-y-1.5">
                     {[
                       { label: "總評", stars: sign.overallStars, accent: true },
@@ -714,9 +714,9 @@ export function DailyFortuneClient() {
                 </div>
 
                 {/* Summary */}
-                <div className="mb-4 rounded-xl border border-lavender/14 bg-lavender/5 p-4">
+                <div className="mb-4 rounded-[1.6rem] border border-[#d8bd70]/22 bg-gradient-to-br from-[#d8bd70]/10 via-white/[0.045] to-lavender/[0.06] p-5 shadow-[0_18px_50px_rgba(4,7,26,0.18)]">
                   <p className="text-[10px] tracking-[0.22em] text-lavender/55">今日提醒</p>
-                  <p className="mt-2 text-sm leading-7 text-moon/80 sm:text-base">{sign.summary}</p>
+                  <p className="mt-2 text-base leading-8 text-moon/84">{sign.summary}</p>
                 </div>
 
                 {/* Category cards */}
@@ -734,7 +734,7 @@ export function DailyFortuneClient() {
                     { label: "幸運數字", value: sign.luckyNumber },
                     { label: "幸運時間", value: sign.luckyTime },
                   ].map(({ label, value }) => (
-                    <div key={label} className="flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-center" style={{ minWidth: "88px" }}>
+                    <div key={label} className="flex-1 rounded-2xl border border-white/10 bg-white/[0.045] px-3 py-2.5 text-center shadow-[0_10px_24px_rgba(4,7,26,0.12)]" style={{ minWidth: "88px" }}>
                       <p className="text-[10px] text-moon/42">{label}</p>
                       <p className="mt-0.5 text-sm font-semibold text-[#d8bd70]">{value}</p>
                     </div>

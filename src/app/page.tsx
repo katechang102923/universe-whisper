@@ -29,7 +29,7 @@ export default function Home() {
   return (
     <AppShell>
       {/* ── Hero ───────────────────────────────────────────────────── */}
-      <section className="relative flex flex-1 items-center py-8 sm:py-12 lg:min-h-[calc(100vh-96px)]">
+      <section className="relative flex flex-1 items-center py-6 sm:py-12 lg:min-h-[calc(100vh-96px)]">
         {/* Floating star decorations */}
         <span className="floating-star left-[10%] top-[12%]" />
         <span className="floating-star right-[18%] top-[18%] [animation-delay:1.2s]" />
@@ -38,33 +38,43 @@ export default function Home() {
 
         <div className="grid w-full items-center gap-8 lg:grid-cols-2 lg:gap-12">
           {/* ── Left: headline + CTAs ─────────────────────────── */}
-          <div>
+          <div className="text-center lg:text-left">
             <p className="text-xs uppercase tracking-[0.36em] text-aurora/80">
               宇宙塔羅 · 每日提醒
             </p>
-            <h1 className="mt-4 text-[2.6rem] font-semibold leading-tight text-moon sm:text-5xl lg:text-6xl">
+            <h1 className="mx-auto mt-4 max-w-[9em] text-[2.8rem] font-semibold leading-[1.08] text-moon drop-shadow-[0_0_22px_rgba(203,184,255,0.16)] sm:text-5xl lg:mx-0 lg:text-6xl">
               今晚想聽
               <br className="hidden sm:block" />
               宇宙說什麼？
             </h1>
-            <p className="mt-5 max-w-xl text-lg leading-8 text-moon/76 sm:text-xl">
+            <p className="mx-auto mt-5 max-w-xl text-base leading-8 text-moon/76 sm:text-xl lg:mx-0">
               深夜裡，陪你抽一張牌，聽聽宇宙想對你說什麼。
             </p>
 
+            <Link
+              href="/tarot"
+              className="mt-6 inline-flex min-h-14 w-full max-w-[320px] items-center justify-center rounded-full px-7 text-base font-semibold text-midnight shadow-[0_18px_50px_rgba(216,189,112,0.26),0_0_26px_rgba(203,184,255,0.18)] transition hover:brightness-110 active:scale-[0.98] sm:w-auto"
+              style={{
+                background: "linear-gradient(135deg, #f7d987 0%, #d8bd70 42%, #cbb8ff 100%)",
+              }}
+            >
+              立即抽牌
+            </Link>
+
             {/* ── Two entry cards ── */}
-            <div className="mt-7 grid gap-3 sm:grid-cols-2">
+            <div className="mt-7 grid gap-4 sm:grid-cols-2">
               {/* 單張入口 */}
               <Link
                 href="/tarot?spread=single"
-                className="group flex flex-col rounded-3xl border border-[#d8bd70]/30 bg-midnight/50 p-5 transition hover:border-[#d8bd70]/60 hover:bg-white/5 active:scale-[0.98]"
+                className="group flex min-h-[188px] flex-col rounded-[2rem] border border-[#d8bd70]/34 bg-gradient-to-br from-white/[0.09] via-midnight/62 to-[#d8bd70]/[0.06] p-5 text-left shadow-[0_18px_54px_rgba(4,7,26,0.28)] backdrop-blur-sm transition hover:-translate-y-1 hover:border-[#d8bd70]/62 hover:bg-white/5 active:scale-[0.98]"
               >
-                <span className="text-2xl">✨</span>
+                <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-[#d8bd70]/28 bg-[#d8bd70]/12 text-2xl shadow-[0_0_24px_rgba(216,189,112,0.16)]">✨</span>
                 <span className="mt-2 text-base font-semibold text-moon">單張宇宙訊息</span>
-                <span className="mt-1 text-sm leading-6 text-moon/55">
+                <span className="mt-1 flex-1 text-sm leading-6 text-moon/58">
                   適合快速獲得一個提醒與方向
                 </span>
                 <span
-                  className="mt-4 self-start rounded-full px-5 py-2.5 text-sm font-semibold text-midnight transition group-hover:brightness-105"
+                  className="mt-4 self-start rounded-full px-5 py-2.5 text-sm font-semibold text-midnight shadow-[0_10px_24px_rgba(216,189,112,0.22)] transition group-hover:brightness-105"
                   style={{
                     background: "linear-gradient(135deg, #d8bd70 0%, #b89adf 60%, #d8bd70 100%)",
                     backgroundSize: "200% 200%",
@@ -77,14 +87,14 @@ export default function Home() {
               {/* 三張入口 */}
               <Link
                 href="/tarot?spread=three"
-                className="group flex flex-col rounded-3xl border border-lavender/30 bg-midnight/50 p-5 transition hover:border-lavender/60 hover:bg-white/5 active:scale-[0.98]"
+                className="group flex min-h-[188px] flex-col rounded-[2rem] border border-lavender/34 bg-gradient-to-br from-white/[0.08] via-midnight/62 to-lavender/[0.07] p-5 text-left shadow-[0_18px_54px_rgba(4,7,26,0.28)] backdrop-blur-sm transition hover:-translate-y-1 hover:border-lavender/62 hover:bg-white/5 active:scale-[0.98]"
               >
-                <span className="text-2xl">🔮</span>
+                <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-lavender/28 bg-lavender/12 text-2xl shadow-[0_0_24px_rgba(203,184,255,0.16)]">🔮</span>
                 <span className="mt-2 text-base font-semibold text-moon">三張宇宙訊息</span>
-                <span className="mt-1 text-sm leading-6 text-moon/55">
+                <span className="mt-1 flex-1 text-sm leading-6 text-moon/58">
                   從過去、現在、未來看清整體脈絡
                 </span>
-                <span className="mt-4 self-start rounded-full border border-lavender/50 bg-lavender/20 px-5 py-2.5 text-sm font-semibold text-lavender transition group-hover:bg-lavender/30">
+                <span className="mt-4 self-start rounded-full border border-lavender/50 bg-lavender/20 px-5 py-2.5 text-sm font-semibold text-lavender shadow-[0_10px_24px_rgba(203,184,255,0.14)] transition group-hover:bg-lavender/30">
                   抽三張
                 </span>
               </Link>
