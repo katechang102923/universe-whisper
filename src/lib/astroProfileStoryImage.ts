@@ -35,22 +35,19 @@ export interface StoryImageParams {
   siteUrl?:       string;
 }
 
-export function generateAstroStoryImage(params: StoryImageParams): Promise<Blob> {
+export async function generateAstroStoryImage(params: StoryImageParams): Promise<Blob> {
+  const canvas = document.createElement("canvas");
+  canvas.width  = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("瀏覽器不支援 Canvas，無法產生圖片。");
+  }
+
+  const backgroundImage = await loadStoryBackgroundImage();
+  render(ctx, params, backgroundImage);
+
   return new Promise((resolve, reject) => {
-    const canvas = document.createElement("canvas");
-    canvas.width  = W;
-    canvas.height = H;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      reject(new Error("瀏覽器不支援 Canvas，無法產生圖片。"));
-      return;
-    }
-    try {
-      render(ctx, params);
-    } catch (e) {
-      reject(e);
-      return;
-    }
     canvas.toBlob(
       (blob) => blob ? resolve(blob) : reject(new Error("Canvas toBlob 失敗，請稍後再試。")),
       "image/png",
@@ -62,6 +59,7 @@ export function generateAstroStoryImage(params: StoryImageParams): Promise<Blob>
 
 const W = 1080;
 const H = 1920;
+const STORY_BG_SRC = "/images/astro-profile-story-bg.png";
 
 // 左右邊距
 const MARGIN_X = 96;
@@ -267,9 +265,28 @@ function roundRectPath(
   ctx.closePath();
 }
 
+function loadStoryBackgroundImage(): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = STORY_BG_SRC;
+  });
+}
+
 // ── 裝飾 ─────────────────────────────────────────────────────────────────────
 
-function drawBackground(ctx: CanvasRenderingContext2D) {
+function drawBackground(ctx: CanvasRenderingContext2D, backgroundImage: HTMLImageElement | null) {
+  if (backgroundImage?.naturalWidth && backgroundImage.naturalHeight) {
+    const scale = Math.max(W / backgroundImage.naturalWidth, H / backgroundImage.naturalHeight);
+    const drawW = backgroundImage.naturalWidth * scale;
+    const drawH = backgroundImage.naturalHeight * scale;
+    const drawX = (W - drawW) / 2;
+    const drawY = (H - drawH) / 2;
+    ctx.drawImage(backgroundImage, drawX, drawY, drawW, drawH);
+    return;
+  }
+
   const bg = ctx.createLinearGradient(0, 0, 0, H);
   bg.addColorStop(0,    "#05071d");
   bg.addColorStop(0.45, "#0d0b2a");
@@ -656,8 +673,12 @@ function drawAspectSummaryGrid(
 
 // ── 主繪製入口 ────────────────────────────────────────────────────────────────
 
-function render(ctx: CanvasRenderingContext2D, params: StoryImageParams) {
-  drawBackground(ctx);
+function render(
+  ctx: CanvasRenderingContext2D,
+  params: StoryImageParams,
+  backgroundImage: HTMLImageElement | null,
+) {
+  drawBackground(ctx, backgroundImage);
   drawStarDots(ctx);
 
   // 1. 頂部品牌
