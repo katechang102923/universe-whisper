@@ -331,17 +331,20 @@ function ReadingSectionList({ text, limit }: { text: string; limit?: number }) {
   const visibleSections = typeof limit === "number" ? sections.slice(0, limit) : sections;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {visibleSections.map((section, index) => (
         <article
           key={`${section.title}-${index}`}
-          className="reading-fade-in rounded-3xl border border-white/10 bg-white/[0.055] p-4 shadow-[0_18px_54px_rgba(8,10,35,0.2)] sm:p-5"
+          className="reading-fade-in rounded-3xl border border-white/10 bg-gradient-to-br from-white/[0.07] to-white/[0.03] p-5 shadow-[0_18px_54px_rgba(8,10,35,0.2)] sm:p-6"
           style={{ animationDelay: `${index * 0.55}s` }}
         >
           {section.title ? (
-            <h4 className="text-lg font-semibold text-moon">{section.title}</h4>
+            <h4 className="flex items-center gap-2.5 text-lg font-semibold text-moon">
+              <span className="h-4 w-1 rounded-full bg-gradient-to-b from-[#d8bd70] to-lavender/70" />
+              {section.title}
+            </h4>
           ) : null}
-          <p className="mt-3 whitespace-pre-line text-base leading-8 text-moon/80">
+          <p className="mt-3.5 whitespace-pre-line text-base leading-[1.95] text-moon/82">
             {section.body}
           </p>
         </article>
@@ -3777,9 +3780,9 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
       {status === "idle" && isBlockedState ? null
       : status === "idle" || status === "revealed" ? (
         <>
-          {/* Single-card: original layout unchanged */}
+          {/* Single-card: 置中單張牌卡，避免孤單靠左、右側大留白 */}
           {isSingleResult ? (
-            <div className="relative z-10 mt-8 grid grid-cols-1 items-start gap-8 md:grid-cols-2 xl:grid-cols-3">
+            <div className="relative z-10 mt-8 flex justify-center">
               {status === "revealed" && cards.length
                 ? cards.map((card, index) => (
                     <article
@@ -3889,7 +3892,10 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
       ) : null}
 
       {canShowReadings ? (
-        <section ref={readingSectionRef} className="relative z-10 mt-9 space-y-5">
+        <section
+          ref={readingSectionRef}
+          className={`relative z-10 mt-9 space-y-5 ${isSingleResult ? "mx-auto w-full max-w-2xl" : ""}`}
+        >
 
           {/* 通行碼扣次成功提示 */}
           {codeDeductResult !== null && (
