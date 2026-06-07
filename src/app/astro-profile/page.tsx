@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import { AstroProfileClient } from "./AstroProfileClient";
 import { AppShell } from "@/components/AppShell";
@@ -10,7 +11,9 @@ export const metadata: Metadata = {
 export default function AstroProfilePage() {
   return (
     <AppShell>
-      <AstroProfileClient />
+      <Suspense fallback={<div className="min-h-screen" />}>
+        <AstroProfileClient />
+      </Suspense>
     </AppShell>
   );
 }
