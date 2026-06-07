@@ -786,8 +786,11 @@ function PostUnlockActions({
   const { sunSign, moonSign, risingSign, venusSign } = result;
   const [dlLoading, setDlLoading] = useState(false);
   const [dlError, setDlError] = useState("");
+  // LINE claim-code flow
   const [lineLoading, setLineLoading] = useState(false);
-  const [lineMsg, setLineMsg] = useState("");
+  const [lineClaimCode, setLineClaimCode] = useState("");
+  const [lineClaimError, setLineClaimError] = useState("");
+  const [lineClaimCopied, setLineClaimCopied] = useState(false);
   const [showEmailPanel, setShowEmailPanel] = useState(false);
   const [emailAddr, setEmailAddr] = useState("");
   const [emailLoading, setEmailLoading] = useState(false);
@@ -837,11 +840,17 @@ function PostUnlockActions({
     }
   };
 
-  const handleSendLine = async () => {
+  const LINE_OA_ID = process.env.NEXT_PUBLIC_LINE_OA_ID ?? "453gfmok";
+  const LINE_OA_URL = `https://line.me/R/ti/p/%40${LINE_OA_ID}`;
+
+  const handleGenerateLineClaim = async () => {
+    if (lineLoading) return;
     setLineLoading(true);
-    setLineMsg("");
+    setLineClaimError("");
+    setLineClaimCode("");
+    setLineClaimCopied(false);
     try {
-      const res = await fetch("/api/astro-profile/send-line", {
+      const res = await fetch("/api/astro-profile/line-claim", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -851,24 +860,34 @@ function PostUnlockActions({
           venusSign: venusSign ?? null,
           overallSummary: sunTexts.overallSummary,
           sunCoreText: sunTexts.sunCoreText,
-          moonInnerText: moonSign ? ASTRO_PROFILE_TEXTS[moonSign].moonInnerText : undefined,
-          risingOuterText: risingSign ? ASTRO_PROFILE_TEXTS[risingSign].risingOuterText : undefined,
-          venusLoveText: venusSign ? ASTRO_PROFILE_TEXTS[venusSign].venusLoveText : undefined,
+          moonInnerText: moonSign ? ASTRO_PROFILE_TEXTS[moonSign].moonInnerText : null,
+          risingOuterText: risingSign ? ASTRO_PROFILE_TEXTS[risingSign].risingOuterText : null,
+          venusLoveText: venusSign ? ASTRO_PROFILE_TEXTS[venusSign].venusLoveText : null,
           whisper: sunTexts.whisper,
-          siteUrl,
+          advice: sunTexts.advice,
+          shortSummary: sunTexts.shortSummary,
         }),
       });
-      const data = await res.json() as { ok: boolean; loginRequired?: boolean; loginUrl?: string };
-
-      if (data.loginRequired && data.loginUrl) {
-        window.location.href = data.loginUrl;
-        return;
+      const data = await res.json() as { ok: boolean; claimCode?: string; error?: string };
+      if (!res.ok || !data.ok || !data.claimCode) {
+        throw new Error(data.error ?? "無法產生查詢碼，請稍後再試。");
       }
-      setLineMsg(data.ok ? "✦ 已傳送到你的 LINE" : "傳送失敗，請稍後再試。");
-    } catch {
-      setLineMsg("網路錯誤，請稍後再試。");
+      setLineClaimCode(data.claimCode);
+    } catch (err) {
+      setLineClaimError(err instanceof Error ? err.message : "無法產生查詢碼，請稍後再試。");
     } finally {
       setLineLoading(false);
+    }
+  };
+
+  const handleCopyLineClaim = async () => {
+    if (!lineClaimCode) return;
+    try {
+      await navigator.clipboard.writeText(lineClaimCode);
+      setLineClaimCopied(true);
+      setTimeout(() => setLineClaimCopied(false), 2500);
+    } catch {
+      // fallback: select text
     }
   };
 
@@ -930,35 +949,54 @@ function PostUnlockActions({
           </button>
           {dlError && <p className="text-xs text-red-300">{dlError}</p>}
 
-          {/* LINE login return notice */}
-          {lineLoginNotice && (
-            <div className={`flex items-start justify-between gap-2 rounded-xl px-4 py-3 text-xs ${lineLoginNotice === "success" ? "border border-[#06C755]/30 bg-[#06C755]/10 text-[#06C755]" : "border border-red-400/30 bg-red-400/10 text-red-300"}`}>
-              <span>
-                {lineLoginNotice === "success"
-                  ? "✦ 已成功連結 LINE，請再按一次「傳送到 LINE 官方帳號」"
-                  : "LINE 登入失敗，請再試一次"}
-              </span>
+          {/* Send to LINE – claim-code flow */}
+          {!lineClaimCode ? (
+            <>
               <button
-                onClick={onLineLoginNoticeDismiss}
-                className="shrink-0 opacity-60 hover:opacity-100"
+                onClick={() => void handleGenerateLineClaim()}
+                disabled={lineLoading}
+                className="flex items-center justify-center gap-2 rounded-full border border-[#06C755]/40 bg-[#06C755]/10 py-3 text-sm font-semibold text-[#06C755] transition hover:bg-[#06C755]/20 active:scale-[0.98] disabled:opacity-60"
               >
-                ✕
+                {lineLoading ? "產生查詢碼中…" : "傳送到 LINE 官方帳號"}
+              </button>
+              {lineClaimError && (
+                <p className="text-xs text-red-300">{lineClaimError}</p>
+              )}
+            </>
+          ) : (
+            <div className="space-y-3 rounded-xl border border-[#06C755]/20 bg-[#06C755]/5 p-4">
+              <p className="text-xs text-moon/55">
+                你的三重星座查詢碼：
+              </p>
+              <p className="text-center font-mono text-lg font-bold tracking-widest text-[#06C755]">
+                {lineClaimCode}
+              </p>
+              <p className="text-xs leading-5 text-moon/50">
+                請到 LINE 官方帳號輸入這組代碼，即可取得你的三重星座完整解析。代碼 1 小時內有效。
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => void handleCopyLineClaim()}
+                  className="flex-1 rounded-full border border-[#06C755]/40 bg-[#06C755]/15 py-2.5 text-sm font-semibold text-[#06C755] transition hover:bg-[#06C755]/25 active:scale-[0.98]"
+                >
+                  {lineClaimCopied ? "已複製！" : "複製代碼"}
+                </button>
+                <a
+                  href={LINE_OA_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 rounded-full border border-[#06C755]/40 bg-[#06C755]/10 py-2.5 text-center text-sm font-semibold text-[#06C755] transition hover:bg-[#06C755]/20 active:scale-[0.98]"
+                >
+                  開啟 LINE 官方帳號
+                </a>
+              </div>
+              <button
+                onClick={() => { setLineClaimCode(""); setLineClaimError(""); setLineClaimCopied(false); }}
+                className="w-full text-xs text-moon/30 underline underline-offset-2 hover:text-moon/50"
+              >
+                重新產生代碼
               </button>
             </div>
-          )}
-
-          {/* Send to LINE */}
-          <button
-            onClick={handleSendLine}
-            disabled={lineLoading}
-            className="flex items-center justify-center gap-2 rounded-full border border-[#06C755]/40 bg-[#06C755]/10 py-3 text-sm font-semibold text-[#06C755] transition hover:bg-[#06C755]/20 active:scale-[0.98] disabled:opacity-60"
-          >
-            {lineLoading ? "傳送中…" : "傳送到 LINE 官方帳號"}
-          </button>
-          {lineMsg && (
-            <p className={`text-xs ${lineMsg.startsWith("✦") ? "text-[#06C755]" : "text-red-300"}`}>
-              {lineMsg}
-            </p>
           )}
 
           {/* Send email */}

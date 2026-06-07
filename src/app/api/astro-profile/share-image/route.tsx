@@ -176,7 +176,7 @@ export async function POST(request: NextRequest) {
               </span>
               {row.sign ? (
                 <span style={{ fontSize: 36, fontWeight: 700, color: row.color, letterSpacing: 4 }}>
-                  {sym(row.sign)}&nbsp;{row.sign}
+                  {sym(row.sign)}{" "}{row.sign}
                 </span>
               ) : (
                 <span style={{ fontSize: 28, color: "rgba(255,247,230,0.25)" }}>
@@ -202,7 +202,6 @@ export async function POST(request: NextRequest) {
               width: 860,
               textAlign: "center",
               color: "#261936",
-              boxShadow: "0 24px 72px rgba(5,7,24,0.28)",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20, width: "100%" }}>
@@ -251,12 +250,14 @@ export async function POST(request: NextRequest) {
           </div>
         )}
 
+        {/* Spacer – pushes footer to bottom (Satori/Yoga does not support marginTop:"auto") */}
+        <div style={{ flex: 1, display: "flex" }} />
+
         {/* Footer */}
         <div
           style={{
             display: "flex",
             alignItems: "center",
-            marginTop: "auto",
             marginBottom: 80,
             gap: 12,
           }}

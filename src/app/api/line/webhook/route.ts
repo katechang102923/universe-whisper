@@ -8,6 +8,10 @@ import {
   type LineResultData,
 } from "@/lib/lineResults";
 import { CLAIM_COLLECTION, type ClaimPurpose } from "../claim/create/route";
+import {
+  buildLineAstroProfileMessage,
+  type AstroProfileClaimData,
+} from "@/lib/astroProfileLine";
 
 // -------------------------------------------------------------------
 // LINE Webhook  —  處理所有來自 LINE 的事件
@@ -153,6 +157,23 @@ async function handleClaimCode(
   if (!expiresAt || expiresAt < new Date()) {
     await claimRef.update({ status: "expired" });
     await replyWithText(replyToken, "此驗證碼已過期，請回到網站重新點擊「加入 LINE 並領取結果」取得新的驗證碼。");
+    return;
+  }
+
+  // ── 三重星座查詢碼：資料直接存在 claim doc，不走 lineResults ────────────────
+  const resultType = (claim as Record<string, unknown>).resultType;
+  if (resultType === "astro_profile") {
+    const astroData = claim as unknown as AstroProfileClaimData;
+    const message = buildLineAstroProfileMessage(astroData);
+    await Promise.all([
+      replyWithText(replyToken, message),
+      claimRef.update({
+        status: "claimed",
+        lineUserId,
+        claimedAt: FieldValue.serverTimestamp(),
+      }),
+    ]);
+    console.info("[webhook/claim] Astro-profile claim redeemed", { claimCode, lineUserId });
     return;
   }
 
