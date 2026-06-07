@@ -5,7 +5,7 @@
  * 版面（由上到下）：
  *   1. 頂部品牌區   UNIVERSE WHISPER / 我的三重星座 / 太陽×月亮×上升
  *   2. 星座資訊卡   太陽 / 月亮 / 上升 / 金星 四列
- *   3. 主內容區     最多 3 個內容卡（整體解析 / 核心提醒 / 宇宙悄悄話）
+ *   3. 主內容區     整體解析卡 + 四個星座摘要卡
  *   4. 底部         分隔線 + 網址
  */
 
@@ -18,6 +18,18 @@ export interface StoryImageParams {
   venusSign:      string | null | undefined;
   shortSummary:   string | null | undefined;
   overallSummary: string | null | undefined;
+  sunCoreText?:   string | null | undefined;
+  sunText?:       string | null | undefined;
+  coreText?:      string | null | undefined;
+  moonEmotionText?: string | null | undefined;
+  moonText?:      string | null | undefined;
+  emotionText?:   string | null | undefined;
+  risingOuterText?: string | null | undefined;
+  risingText?:    string | null | undefined;
+  outerText?:     string | null | undefined;
+  venusLoveText?: string | null | undefined;
+  venusText?:     string | null | undefined;
+  loveText?:      string | null | undefined;
   whisper:        string | null | undefined;
   advice:         string | null | undefined;
   siteUrl?:       string;
@@ -81,6 +93,13 @@ function clean(raw: string | null | undefined): string {
     .replace(/<br\s*\/?>/gi, " ")
     .replace(/<[^>]+>/g, "")
     .replace(/\bundefined\b|\bnull\b/gi, "")
+    .replace(/在下方可以分別細看/g, "")
+    .replace(/下方有完整解析/g, "")
+    .replace(/延伸解析/g, "")
+    .replace(/請繼續往下看/g, "")
+    .replace(/下方可以分別細看/g, "")
+    .replace(/完整解析/g, "")
+    .replace(/\n{2,}/g, "\n")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -95,6 +114,58 @@ function pick(candidates: Array<string | null | undefined>, minLen = 4): string 
     if (s.length >= minLen) return s;
   }
   return "";
+}
+
+function splitSentences(text: string): string[] {
+  const normalized = clean(text);
+  if (!normalized) return [];
+  const matches = normalized.match(/[^。！？!?]+[。！？!?]?/g) ?? [normalized];
+  return matches.map((part) => part.trim()).filter(Boolean);
+}
+
+function trimToChars(text: string, maxChars: number): string {
+  const s = clean(text);
+  if (s.length <= maxChars) return s;
+  return `${[...s].slice(0, Math.max(0, maxChars - 3)).join("").trim()}...`;
+}
+
+function summarizeSentences(
+  candidates: Array<string | null | undefined>,
+  sentenceCount: number,
+  maxChars: number,
+): string[] {
+  const source = pick(candidates);
+  if (!source) return [];
+  const sentences = splitSentences(source);
+  const selected = sentences.slice(0, sentenceCount);
+  const fallback = selected.length ? selected : [source];
+  const perSentenceMax = Math.max(20, Math.ceil(maxChars / Math.max(fallback.length, 1)));
+  return fallback
+    .map((sentence) => trimToChars(sentence, perSentenceMax))
+    .filter(Boolean)
+    .slice(0, sentenceCount);
+}
+
+function summarizeParagraphs(
+  candidates: Array<string | null | undefined>,
+  maxChars: number,
+): string[] {
+  const source = pick(candidates);
+  if (!source) return [];
+  const sentences = splitSentences(source);
+  if (!sentences.length) return [];
+  const paragraphs = [
+    sentences.slice(0, 2).join(""),
+    sentences.slice(2, 4).join(""),
+  ].filter(Boolean);
+  const fallback = paragraphs.length >= 2
+    ? paragraphs
+    : [sentences[0] ?? "", sentences.slice(1, 3).join("")].filter(Boolean);
+  const perParagraphMax = Math.ceil(maxChars / Math.max(fallback.length, 1));
+  return fallback
+    .map((paragraph) => trimToChars(paragraph, perParagraphMax))
+    .filter(Boolean)
+    .slice(0, 2);
 }
 
 /**
@@ -339,7 +410,7 @@ function drawSignCard(
   return startY + CARD_H;
 }
 
-/** 內容卡（整體解析 / 核心提醒 / 宇宙悄悄話）
+/** 舊版內容卡 helper，保留給相同 Canvas 樣式日後復用。
  *  @param badgeLabel  標題文字
  *  @param text        已清洗後的文字
  *  @param maxLines    最多行數
@@ -425,6 +496,164 @@ function drawContentCard(
   return startY + cardH;
 }
 
+function fitOneLine(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
+  const s = clean(text);
+  if (ctx.measureText(s).width <= maxWidth) return s;
+  let fitted = s;
+  while (fitted && ctx.measureText(`${fitted}...`).width > maxWidth) {
+    fitted = [...fitted].slice(0, -1).join("");
+  }
+  return fitted ? `${fitted}...` : "";
+}
+
+function drawWrappedSummaryLines(
+  ctx: CanvasRenderingContext2D,
+  lines: string[],
+  x: number,
+  y: number,
+  maxWidth: number,
+  lineHeight: number,
+  maxLines: number,
+  color: string,
+): number {
+  const text = lines.map(clean).filter(Boolean).join("\n");
+  if (!text) return 0;
+
+  const prevAlign = ctx.textAlign;
+  ctx.textAlign = "left";
+  ctx.fillStyle = color;
+
+  const drawn: string[] = [];
+  for (const paragraph of text.split("\n")) {
+    let cur = "";
+    for (const ch of [...paragraph]) {
+      const test = cur + ch;
+      if (ctx.measureText(test).width > maxWidth && cur) {
+        drawn.push(cur);
+        cur = ch;
+        if (drawn.length >= maxLines) break;
+      } else {
+        cur = test;
+      }
+    }
+    if (drawn.length >= maxLines) break;
+    if (cur) drawn.push(cur);
+    if (drawn.length >= maxLines) break;
+  }
+
+  const sourceChars = text.replace(/\n/g, "");
+  const drawnChars = drawn.join("");
+  if (drawn.length && drawnChars.length < sourceChars.length) {
+    drawn[drawn.length - 1] = fitOneLine(ctx, drawn[drawn.length - 1], maxWidth);
+  }
+
+  drawn.slice(0, maxLines).forEach((line, i) => {
+    ctx.fillText(line, x, y + i * lineHeight);
+  });
+
+  ctx.textAlign = prevAlign;
+  return Math.min(drawn.length, maxLines);
+}
+
+function drawOverallSummaryCard(
+  ctx: CanvasRenderingContext2D,
+  paragraphs: string[],
+  startY: number,
+): number {
+  if (!paragraphs.length) return startY;
+
+  const cardH = 274;
+  const padX = 44;
+  const titleY = startY + 56;
+  const textY = startY + 112;
+
+  ctx.save();
+  roundRectPath(ctx, MARGIN_X, startY, INNER_W, cardH, 34);
+  ctx.fillStyle = "rgba(255,255,255,0.062)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(247,217,135,0.24)";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.textAlign = "left";
+  ctx.font = "bold 34px sans-serif";
+  ctx.fillStyle = "#f7d987";
+  ctx.fillText("三重星座整體解析", MARGIN_X + padX, titleY);
+
+  ctx.font = "400 30px sans-serif";
+  drawWrappedSummaryLines(
+    ctx,
+    paragraphs,
+    MARGIN_X + padX,
+    textY,
+    INNER_W - padX * 2,
+    42,
+    4,
+    "rgba(255,247,230,0.88)",
+  );
+
+  return startY + cardH;
+}
+
+interface AspectSummary {
+  title: string;
+  lines: string[];
+  accent: string;
+}
+
+function drawAspectSummaryGrid(
+  ctx: CanvasRenderingContext2D,
+  aspects: AspectSummary[],
+  startY: number,
+  bottomY: number,
+): number {
+  const visible = aspects.filter((aspect) => aspect.title && aspect.lines.length > 0).slice(0, 4);
+  if (!visible.length) return startY;
+
+  const colGap = 22;
+  const rowGap = 22;
+  const cardW = (INNER_W - colGap) / 2;
+  const rows = Math.ceil(visible.length / 2);
+  const cardH = Math.min(236, Math.floor((bottomY - startY - rowGap * (rows - 1)) / rows));
+  const padX = 24;
+
+  visible.forEach((aspect, index) => {
+    const col = index % 2;
+    const row = Math.floor(index / 2);
+    const x = MARGIN_X + col * (cardW + colGap);
+    const y = startY + row * (cardH + rowGap);
+
+    ctx.save();
+    roundRectPath(ctx, x, y, cardW, cardH, 28);
+    ctx.fillStyle = "rgba(255,255,255,0.054)";
+    ctx.fill();
+    ctx.strokeStyle = aspect.accent;
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.textAlign = "left";
+    ctx.font = "bold 25px sans-serif";
+    ctx.fillStyle = "rgba(255,247,230,0.94)";
+    ctx.fillText(fitOneLine(ctx, aspect.title, cardW - padX * 2), x + padX, y + 44);
+
+    ctx.font = "400 28px sans-serif";
+    drawWrappedSummaryLines(
+      ctx,
+      aspect.lines,
+      x + padX,
+      y + 91,
+      cardW - padX * 2,
+      38,
+      3,
+      "rgba(255,247,230,0.82)",
+    );
+  });
+
+  return startY + rows * cardH + (rows - 1) * rowGap;
+}
+
 // ── 主繪製入口 ────────────────────────────────────────────────────────────────
 
 function render(ctx: CanvasRenderingContext2D, params: StoryImageParams) {
@@ -438,53 +667,64 @@ function render(ctx: CanvasRenderingContext2D, params: StoryImageParams) {
   const signCardTop    = headerBottom + 36;
   const signCardBottom = drawSignCard(ctx, signCardTop, params);
 
-  // 3. 主內容區 ── 準備 3 張內容卡的文字
-  const overall = pick([params.overallSummary, params.shortSummary, params.whisper, params.advice]);
-  const advice  = pick([params.advice, params.whisper, params.shortSummary, params.overallSummary]);
-  const whisper = pick([params.whisper, params.shortSummary, params.advice]);
+  // 3. 主內容區：精簡分享版，不直接照貼完整版
+  const overallParagraphs = summarizeParagraphs(
+    [params.overallSummary, params.shortSummary, params.whisper, params.advice],
+    132,
+  );
+  const sunLines = summarizeSentences(
+    [params.sunCoreText, params.sunText, params.coreText, params.overallSummary],
+    2,
+    76,
+  );
+  const moonLines = summarizeSentences(
+    [params.moonEmotionText, params.moonText, params.emotionText, params.overallSummary],
+    2,
+    76,
+  );
+  const risingLines = summarizeSentences(
+    [params.risingOuterText, params.risingText, params.outerText, params.overallSummary],
+    2,
+    76,
+  );
+  const venusLines = summarizeSentences(
+    [params.venusLoveText, params.venusText, params.loveText, params.overallSummary],
+    2,
+    66,
+  );
 
-  // 避免卡片間內容完全相同（如果 overall 已等於 advice 就換用備用）
-  const adviceText   = advice  === overall ? pick([params.whisper, params.shortSummary]) : advice;
-  const whisperText  = whisper === overall || whisper === adviceText
-    ? pick([params.shortSummary, params.advice])
-    : whisper;
+  const aspects: AspectSummary[] = [
+    {
+      title: params.sunSign ? `☀ 核心本質｜太陽${params.sunSign}` : "",
+      lines: sunLines,
+      accent: "rgba(247,217,135,0.34)",
+    },
+    {
+      title: params.moonSign ? `🌙 內在情感｜月亮${params.moonSign}` : "",
+      lines: moonLines,
+      accent: "rgba(184,160,240,0.34)",
+    },
+    {
+      title: params.risingSign ? `⬆ 外在展現｜上升${params.risingSign}` : "",
+      lines: risingLines,
+      accent: "rgba(136,216,176,0.34)",
+    },
+    {
+      title: params.venusSign ? `♀ 感情吸引力｜金星${params.venusSign}` : "",
+      lines: venusLines,
+      accent: "rgba(201,160,220,0.34)",
+    },
+  ];
 
   // 底部保留給 footer（分隔線 + 網址）
   const FOOTER_RESERVED = 148;
   const contentAreaBottom = H - FOOTER_RESERVED;
-  const GAP = 28;
+  const GAP = 24;
 
   let curY = signCardBottom + 40;
-
-  // ── 卡 A：整體解析（最重要，給最多行）
-  if (overall) {
-    curY = drawContentCard(ctx, "三重星座整體解析", overall, 6, curY, false);
-    curY += GAP;
-  }
-
-  // ── 卡 B：核心提醒
-  if (adviceText && curY + 180 < contentAreaBottom) {
-    const remainB = contentAreaBottom - curY - (whisperText ? GAP + 160 : 0);
-    // 動態計算最多幾行可放
-    ctx.font = `400 ${CARD_FONT_SIZE}px sans-serif`;
-    const maxLinesB = Math.max(2, Math.floor(
-      (remainB - CARD_PAD_TOP - CARD_BADGE_H - CARD_BADGE_GAP - CARD_PAD_BOT) / CARD_LINE_H,
-    ));
-    const cappedB = Math.min(maxLinesB, 5);
-    curY = drawContentCard(ctx, "核心提醒", adviceText, cappedB, curY, true);
-    curY += GAP;
-  }
-
-  // ── 卡 C：宇宙悄悄話
-  if (whisperText && curY + 160 < contentAreaBottom) {
-    const remainC = contentAreaBottom - curY;
-    ctx.font = `400 ${CARD_FONT_SIZE}px sans-serif`;
-    const maxLinesC = Math.max(2, Math.floor(
-      (remainC - CARD_PAD_TOP - CARD_BADGE_H - CARD_BADGE_GAP - CARD_PAD_BOT) / CARD_LINE_H,
-    ));
-    const cappedC = Math.min(maxLinesC, 4);
-    curY = drawContentCard(ctx, "宇宙悄悄話", whisperText, cappedC, curY, false);
-  }
+  curY = drawOverallSummaryCard(ctx, overallParagraphs, curY);
+  curY += overallParagraphs.length ? GAP : 0;
+  drawAspectSummaryGrid(ctx, aspects, curY, contentAreaBottom);
 
   // 4. 底部
   const footerDivY = H - FOOTER_RESERVED + 20;
