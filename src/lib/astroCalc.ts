@@ -30,6 +30,15 @@ function birthToUtc(birthDate: string, birthTime: string, tzOffsetHours: number)
   return new Date(utcMs);
 }
 
+// ── Moon sign ─────────────────────────────────────────────────────────────────
+
+export function calcMoonSign(birthDate: string, birthTime: string): ZodiacSign {
+  // Taiwan is UTC+8
+  const utc = birthToUtc(birthDate, birthTime, 8);
+  const mLon = Astronomy.EclipticLongitude(Astronomy.Body.Moon, utc);
+  return eclipticLonToSign(mLon);
+}
+
 // ── Venus sign ────────────────────────────────────────────────────────────────
 
 export function calcVenusSign(birthDate: string, birthTime: string): ZodiacSign {

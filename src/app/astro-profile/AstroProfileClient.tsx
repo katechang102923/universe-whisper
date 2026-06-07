@@ -11,7 +11,7 @@ import {
 import type { ZodiacSign } from "@/lib/astroProfileTexts";
 import { BIRTH_CITIES } from "@/lib/birthCities";
 import type { BirthCity } from "@/lib/birthCities";
-import { calcVenusSign, calcRisingSign } from "@/lib/astroCalc";
+import { calcVenusSign, calcRisingSign, calcMoonSign } from "@/lib/astroCalc";
 
 // ── Birth time options (00:00–23:30, every 30 min) ───────────────────────────
 
@@ -28,6 +28,7 @@ type Step = "form" | "result";
 
 interface CalcResult {
   sunSign: ZodiacSign;
+  moonSign: ZodiacSign | null;
   risingSign: ZodiacSign | null;
   venusSign: ZodiacSign | null;
   risingCalcNote: string | null;
@@ -47,6 +48,7 @@ export function AstroProfileClient() {
 
   // Advanced manual override (collapsed by default)
   const [showManual, setShowManual] = useState(false);
+  const [manualMoon, setManualMoon] = useState<ZodiacSign | "">("");
   const [manualRising, setManualRising] = useState<ZodiacSign | "">("");
   const [manualVenus, setManualVenus] = useState<ZodiacSign | "">("");
 
@@ -55,6 +57,7 @@ export function AstroProfileClient() {
   const hasTime = birthTime !== "不知道出生時間";
   const hasCity = birthCity !== null;
   const canCalcFull = !!(birthDate && hasTime && hasCity);
+  const canCalcMoon = !!(birthDate && hasTime);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,9 +65,18 @@ export function AstroProfileClient() {
     if (!sunSign) { setError("日期格式有誤，請重新輸入"); return; }
     setError("");
 
+    let moonSign: ZodiacSign | null = null;
     let risingSign: ZodiacSign | null = null;
     let venusSign: ZodiacSign | null = null;
     let risingCalcNote: string | null = null;
+
+    if (canCalcMoon) {
+      try {
+        moonSign = calcMoonSign(birthDate, birthTime);
+      } catch {
+        // Calculation failed silently — leave null
+      }
+    }
 
     if (canCalcFull) {
       try {
@@ -77,10 +89,11 @@ export function AstroProfileClient() {
     }
 
     // Manual overrides take precedence
+    if (manualMoon) moonSign = manualMoon;
     if (manualRising) risingSign = manualRising;
     if (manualVenus) venusSign = manualVenus;
 
-    setCalcResult({ sunSign, risingSign, venusSign, risingCalcNote });
+    setCalcResult({ sunSign, moonSign, risingSign, venusSign, risingCalcNote });
     setStep("result");
   };
 
@@ -100,8 +113,8 @@ export function AstroProfileClient() {
         <p className="text-xs uppercase tracking-[0.3em] text-aurora/70">三重能量解析</p>
         <h1 className="mt-3 text-3xl font-semibold text-moon sm:text-4xl">我的三重星座</h1>
         <p className="mt-3 text-sm leading-7 text-moon/60">
-          太陽 × 上升 × 金星<br />
-          三層能量交織，看看你的核心個性、外在氣質與感情吸引力。
+          太陽 × 月亮 × 上升<br />
+          三層能量交織，看看你的核心個性、內在情感與外在氣質。
         </p>
       </div>
 
@@ -134,7 +147,7 @@ export function AstroProfileClient() {
         <div className="mb-6">
           <label className="mb-2 block text-sm font-medium text-moon/80">
             出生時間
-            <span className="ml-1.5 text-xs text-moon/38">（選填，用於計算上升星座）</span>
+            <span className="ml-1.5 text-xs text-moon/38">（選填，用於計算月亮與上升星座）</span>
           </label>
           <CosmicSelect
             options={BIRTH_TIME_OPTIONS}
@@ -143,7 +156,9 @@ export function AstroProfileClient() {
             placeholder="不知道出生時間"
           />
           {!hasTime && (
-            <p className="mt-2 text-xs text-moon/40">若不提供出生時間，上升星座與金星星座將無法自動計算。</p>
+            <p className="mt-2 text-xs text-moon/40">
+              若不提供出生時間，月亮星座、上升星座與金星星座將無法自動計算。
+            </p>
           )}
         </div>
 
@@ -169,7 +184,14 @@ export function AstroProfileClient() {
         {canCalcFull && (
           <div className="mb-6 rounded-xl border border-aurora/20 bg-aurora/5 px-4 py-3">
             <p className="text-xs text-aurora/80">
-              ✦ 資料齊全，將自動計算上升星座與金星星座
+              ✦ 資料齊全，將自動計算月亮星座、上升星座與金星星座
+            </p>
+          </div>
+        )}
+        {canCalcMoon && !canCalcFull && (
+          <div className="mb-6 rounded-xl border border-lavender/20 bg-lavender/5 px-4 py-3">
+            <p className="text-xs text-lavender/80">
+              ✦ 提供出生時間，將自動計算月亮星座
             </p>
           </div>
         )}
@@ -182,10 +204,18 @@ export function AstroProfileClient() {
             className="flex items-center gap-1.5 text-xs text-moon/40 transition hover:text-moon/60"
           >
             <span className={`transition-transform ${showManual ? "rotate-90" : ""}`}>▶</span>
-            我已知道上升 / 金星星座，手動選擇
+            我已知道月亮 / 上升 / 金星星座，手動選擇
           </button>
           {showManual && (
             <div className="mt-4 space-y-4 rounded-xl border border-white/8 bg-white/3 p-4">
+              <div>
+                <label className="mb-2 block text-xs text-moon/60">手動指定月亮星座（覆蓋自動計算）</label>
+                <ZodiacSelect
+                  value={manualMoon}
+                  onChange={setManualMoon}
+                  placeholder="不指定"
+                />
+              </div>
               <div>
                 <label className="mb-2 block text-xs text-moon/60">手動指定上升星座（覆蓋自動計算）</label>
                 <ZodiacSelect
@@ -233,8 +263,6 @@ export function AstroProfileClient() {
 }
 
 // ── Custom dropdown (CosmicSelect) ────────────────────────────────────────────
-// Native <select> options can't be styled on Windows Chrome dark mode,
-// so we build a custom accessible dropdown.
 
 function CosmicSelect({
   options,
@@ -250,7 +278,6 @@ function CosmicSelect({
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Close when clicking outside
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
@@ -314,7 +341,7 @@ function CosmicSelect({
   );
 }
 
-// ── Zodiac select (custom dropdown variant with symbols) ──────────────────────
+// ── Zodiac select ─────────────────────────────────────────────────────────────
 
 function ZodiacSelect({
   value,
@@ -410,71 +437,179 @@ function ResultView({
   result: CalcResult;
   onReset: () => void;
 }) {
-  const { sunSign, risingSign, venusSign, risingCalcNote } = result;
-  const texts = ASTRO_PROFILE_TEXTS[sunSign];
+  const { sunSign, moonSign, risingSign, venusSign, risingCalcNote } = result;
+  const sunTexts = ASTRO_PROFILE_TEXTS[sunSign];
 
   return (
     <div className="mx-auto max-w-lg py-8 sm:py-12">
-      {/* Header */}
+      {/* ── Header ── */}
       <div className="mb-8 text-center">
         <p className="text-xs uppercase tracking-[0.3em] text-aurora/70">三重星座整體解析</p>
         <h1 className="mt-3 text-3xl font-semibold text-moon sm:text-4xl">
           {ZODIAC_SYMBOLS[sunSign]} {sunSign}
         </h1>
-        <p className="mt-2 text-sm text-moon/50">你的三重星座能量</p>
+        <p className="mt-2 text-sm text-moon/50">太陽 × 月亮 × 上升</p>
       </div>
 
       <div className="space-y-4">
-        {/* Three signs overview */}
-        <div className="rounded-[1.5rem] border border-white/10 bg-midnight/50 p-5 backdrop-blur-sm sm:p-6">
-          <p className="mb-4 text-xs uppercase tracking-[0.24em] text-lavender/60">三重星座概覽</p>
-          <div className="space-y-3">
-            <SignRow label="太陽星座" sublabel="核心個性" sign={sunSign} accentColor="text-[#d8bd70]" />
-            <SignRow label="上升星座" sublabel="外在氣質" sign={risingSign} accentColor="text-lavender" emptyNote="尚未提供" />
-            <SignRow label="金星星座" sublabel="感情與吸引力" sign={venusSign} accentColor="text-aurora" emptyNote="尚未提供" />
+
+        {/* ── 三重星座主結構概覽 ── */}
+        <div className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-midnight/50 backdrop-blur-sm">
+          <div className="h-px bg-gradient-to-r from-[#d8bd70]/50 via-lavender/50 to-aurora/40" />
+          <div className="p-5 sm:p-6">
+            <p className="mb-4 text-xs uppercase tracking-[0.24em] text-lavender/60">三重星座概覽</p>
+            <div className="space-y-2.5">
+              <SignRow
+                label="太陽星座"
+                sublabel="核心個性 · 可類比命宮主軸"
+                sign={sunSign}
+                accentColor="text-[#d8bd70]"
+              />
+              <SignRow
+                label="月亮星座"
+                sublabel="內在情感 · 可類比福德傾向"
+                sign={moonSign}
+                accentColor="text-lavender"
+                emptyNote="尚未提供"
+              />
+              <SignRow
+                label="上升星座"
+                sublabel="外在氣質 · 可類比命宮展現"
+                sign={risingSign}
+                accentColor="text-aurora"
+                emptyNote="尚未提供"
+              />
+            </div>
+            {risingCalcNote && (
+              <p className="mt-4 text-xs leading-5 text-moon/35">✦ {risingCalcNote}</p>
+            )}
           </div>
-          {risingCalcNote && (
-            <p className="mt-3 text-xs leading-5 text-moon/35">✦ {risingCalcNote}</p>
-          )}
         </div>
 
-        {/* Missing sign notices */}
+        {/* ── 金星延伸參考（次要區塊） ── */}
+        <div className="rounded-2xl border border-white/8 bg-white/3 px-5 py-4">
+          <p className="mb-3 text-xs uppercase tracking-[0.2em] text-moon/38">延伸參考</p>
+          <SignRow
+            label="金星星座"
+            sublabel="感情吸引力 · 延伸參考"
+            sign={venusSign}
+            accentColor="text-[#c9a0dc]/80"
+            emptyNote="尚未提供"
+            compact
+          />
+        </div>
+
+        {/* ── 缺少項目提示 ── */}
+        {!moonSign && (
+          <Notice>尚未提供月亮星座，這次先以太陽星座為主解讀。</Notice>
+        )}
         {!risingSign && (
-          <Notice>尚未提供上升星座，這次先以太陽星座為主解讀。</Notice>
-        )}
-        {!venusSign && (
-          <Notice>尚未提供金星星座，感情與吸引力描述會先以太陽星座延伸。</Notice>
+          <Notice>尚未提供上升星座，外在氣質解析將暫時略過。</Notice>
         )}
 
-        {/* Core message */}
+        {/* ── 1. 三重星座整體解析 ── */}
         <ResultCard label="三重星座整體解析" accent="from-lavender/40 to-nebula/24" icon="✦">
-          <p>{texts.coreMessage}</p>
-          {risingSign && (
-            <p className="mt-3 text-moon/70">
-              <span className="text-lavender/80">上升 {ZODIAC_SYMBOLS[risingSign]} {risingSign}：</span>
-              {ASTRO_PROFILE_TEXTS[risingSign].risingText}
-            </p>
-          )}
-          {venusSign && (
-            <p className="mt-3 text-moon/70">
-              <span className="text-aurora/80">金星 {ZODIAC_SYMBOLS[venusSign]} {venusSign}：</span>
-              {ASTRO_PROFILE_TEXTS[venusSign].venusText}
+          <p className="leading-7">{sunTexts.overallSummary}</p>
+          {(moonSign || risingSign) && (
+            <p className="mt-3 text-sm leading-6 text-moon/55">
+              {moonSign && risingSign
+                ? `月亮在${moonSign}、上升在${risingSign}——三層能量各有深度，在下方可以分別細看。`
+                : moonSign
+                  ? `月亮在${moonSign}，內在情感的層次在下方可以進一步了解。`
+                  : `上升在${risingSign}，外在氣質的展現在下方可以進一步了解。`}
             </p>
           )}
         </ResultCard>
 
-        {/* Whisper */}
+        {/* ── 2. 核心本質｜太陽星座 ── */}
+        <ResultCard label="核心本質｜太陽星座" accent="from-[#d8bd70]/50 to-nebula/20" icon="☀">
+          <div className="mb-1 flex items-center gap-2">
+            <span className="text-base font-semibold text-[#d8bd70]">
+              {ZODIAC_SYMBOLS[sunSign]} {sunSign}
+            </span>
+          </div>
+          <p className="mt-2 leading-7">{sunTexts.sunCoreText}</p>
+        </ResultCard>
+
+        {/* ── 3. 內在情感｜月亮星座 ── */}
+        <ResultCard label="內在情感｜月亮星座" accent="from-lavender/40 to-nebula/24" icon="🌙">
+          {moonSign ? (
+            <>
+              <div className="mb-1 flex items-center gap-2">
+                <span className="text-base font-semibold text-lavender">
+                  {ZODIAC_SYMBOLS[moonSign]} {moonSign}
+                </span>
+              </div>
+              <p className="mt-2 leading-7">{ASTRO_PROFILE_TEXTS[moonSign].moonInnerText}</p>
+            </>
+          ) : (
+            <p className="leading-7 text-moon/45">
+              尚未提供月亮星座，這次先以太陽星座為主解讀。
+            </p>
+          )}
+        </ResultCard>
+
+        {/* ── 4. 外在展現｜上升星座 ── */}
+        <ResultCard label="外在展現｜上升星座" accent="from-aurora/36 to-nebula/22" icon="⬆">
+          {risingSign ? (
+            <>
+              <div className="mb-1 flex items-center gap-2">
+                <span className="text-base font-semibold text-aurora">
+                  {ZODIAC_SYMBOLS[risingSign]} {risingSign}
+                </span>
+              </div>
+              <p className="mt-2 leading-7">{ASTRO_PROFILE_TEXTS[risingSign].risingOuterText}</p>
+            </>
+          ) : (
+            <p className="leading-7 text-moon/45">
+              尚未提供上升星座，外在氣質解析將暫時略過。
+            </p>
+          )}
+        </ResultCard>
+
+        {/* ── 5. 感情吸引力｜金星星座（延伸解析） ── */}
+        <div className="overflow-hidden rounded-[1.5rem] border border-white/8 bg-midnight/30 shadow-sm backdrop-blur-sm">
+          <div className="h-px bg-gradient-to-r from-[#c9a0dc]/30 to-nebula/20" />
+          <div className="p-5 sm:p-6">
+            <p className="mb-3 flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-moon/40">
+              <span>♀</span>
+              感情吸引力｜金星星座
+              <span className="ml-1 rounded-full border border-white/10 px-2 py-0.5 text-[10px] normal-case tracking-wide text-moon/30">
+                延伸解析
+              </span>
+            </p>
+            <div className="text-sm leading-7 text-moon/75">
+              {venusSign ? (
+                <>
+                  <div className="mb-1 flex items-center gap-2">
+                    <span className="text-sm font-semibold text-[#c9a0dc]/80">
+                      {ZODIAC_SYMBOLS[venusSign]} {venusSign}
+                    </span>
+                  </div>
+                  <p className="mt-2">{ASTRO_PROFILE_TEXTS[venusSign].venusLoveText}</p>
+                </>
+              ) : (
+                <p className="text-moon/40">
+                  尚未提供金星星座，感情與吸引力解析將暫時略過。
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── 6. 宇宙偷偷話 ── */}
         <ResultCard label="宇宙偷偷話" accent="from-[#d8bd70]/40 to-nebula/20" icon="🌙">
-          <p>{texts.whisper}</p>
+          <p className="leading-7">{sunTexts.whisper}</p>
         </ResultCard>
 
-        {/* Advice */}
+        {/* ── 7. 給你的提醒 ── */}
         <ResultCard label="給你的提醒" accent="from-aurora/36 to-nebula/22" icon="🌿">
-          <p>{texts.advice}</p>
+          <p className="leading-7">{sunTexts.advice}</p>
         </ResultCard>
+
       </div>
 
-      {/* Actions */}
+      {/* ── Actions ── */}
       <div className="mt-8 flex flex-col gap-3 sm:flex-row">
         <button
           onClick={onReset}
@@ -496,21 +631,31 @@ function ResultView({
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function SignRow({
-  label, sublabel, sign, accentColor, emptyNote,
+  label, sublabel, sign, accentColor, emptyNote, compact,
 }: {
-  label: string; sublabel: string; sign: ZodiacSign | null; accentColor: string; emptyNote?: string;
+  label: string;
+  sublabel: string;
+  sign: ZodiacSign | null;
+  accentColor: string;
+  emptyNote?: string;
+  compact?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-white/8 bg-white/4 px-4 py-3">
-      <div>
-        <p className="text-xs text-moon/50">{label}</p>
-        <p className="text-xs text-moon/30">{sublabel}</p>
+    <div className={[
+      "flex items-center justify-between gap-3 rounded-xl border border-white/8 bg-white/4",
+      compact ? "px-4 py-2.5" : "px-4 py-3",
+    ].join(" ")}>
+      <div className="min-w-0">
+        <p className={`font-medium text-moon/70 ${compact ? "text-xs" : "text-sm"}`}>{label}</p>
+        <p className="mt-0.5 text-xs text-moon/35">{sublabel}</p>
       </div>
-      <div className="text-right">
+      <div className="shrink-0 text-right">
         {sign ? (
-          <p className={`text-base font-semibold ${accentColor}`}>{ZODIAC_SYMBOLS[sign]} {sign}</p>
+          <p className={`font-semibold ${accentColor} ${compact ? "text-sm" : "text-base"}`}>
+            {ZODIAC_SYMBOLS[sign]} {sign}
+          </p>
         ) : (
-          <p className="text-sm text-moon/30">{emptyNote ?? "—"}</p>
+          <p className={`text-moon/30 ${compact ? "text-xs" : "text-sm"}`}>{emptyNote ?? "—"}</p>
         )}
       </div>
     </div>
@@ -528,17 +673,20 @@ function Notice({ children }: { children: React.ReactNode }) {
 function ResultCard({
   label, accent, icon, children,
 }: {
-  label: string; accent: string; icon: string; children: React.ReactNode;
+  label: string;
+  accent: string;
+  icon: string;
+  children: React.ReactNode;
 }) {
   return (
     <div className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-midnight/50 shadow-glow backdrop-blur-sm">
       <div className={`h-1 bg-gradient-to-r ${accent}`} />
       <div className="p-5 sm:p-6">
         <p className="mb-3 flex items-center gap-2 text-xs uppercase tracking-[0.24em] text-moon/50">
-          <span>{icon}</span>
+          <span aria-hidden="true">{icon}</span>
           {label}
         </p>
-        <div className="text-sm leading-7 text-moon/85">{children}</div>
+        <div className="text-sm text-moon/85">{children}</div>
       </div>
     </div>
   );

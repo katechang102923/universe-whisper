@@ -110,10 +110,11 @@ export default function Home() {
             >
               <div>
                 <p className="text-sm font-semibold text-moon">✦ 我的三重星座</p>
-                <p className="mt-0.5 text-xs text-moon/50">太陽 × 上升 × 金星</p>
+                <p className="mt-0.5 text-xs text-moon/50">太陽 × 月亮 × 上升</p>
                 <p className="mt-1 text-xs leading-5 text-moon/45">
-                  輸入出生資訊，看看你的核心個性、外在氣質與感情吸引力。
+                  輸入出生資訊，看看你的核心個性、內在情感與外在氣質。
                 </p>
+                <p className="mt-1 text-xs text-moon/32">延伸查看金星感情吸引力</p>
               </div>
               <span className="ml-4 shrink-0 text-xs text-lavender/60 transition-transform group-hover:translate-x-1">
                 →
@@ -185,9 +186,9 @@ export default function Home() {
           <FeatureCard
             gradient="from-[#d8bd70]/38 to-lavender/30"
             title="我的三重星座"
-            description="輸入生日，選擇你的上升與金星，看看今天三層能量想提醒你什麼。"
+            description="輸入出生資訊，看看你的核心個性、內在情感與外在氣質。延伸查看金星感情吸引力。"
             href="/astro-profile"
-            badge="太陽 × 上升 × 金星"
+            badge="太陽 × 月亮 × 上升"
             icon={
               <svg
                 viewBox="0 0 22 22"
