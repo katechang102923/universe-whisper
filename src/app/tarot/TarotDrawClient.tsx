@@ -467,30 +467,58 @@ function parseOverallSummary(text: string): OverallSummaryParsed {
 
 /**
  * 從 overallSummary 只擷取「整體答案」段落（限動圖用）。
- * - 找到「整體答案：」/「整體答案:」後的內容
- * - 遇到後續標題（為什麼會這樣／接下來的方向／心靈收束／牌面提醒／分隔線）即停止
- * - 移除標題文字、trim 多餘空白與換行
- * 擷取不到時回傳空字串，交由呼叫端 fallback。
+ * 以「行」為單位解析，同時支援有冒號與無冒號的標題格式：
+ *   「整體答案：」「整體答案:」「整體答案」（標題獨立一行）
+ * - 找到「整體答案」標題後，移除標題本身，開始收集內容。
+ * - 遇到下列標題即停止：為什麼會這樣／接下來的方向／心靈收束／牌面提醒／
+ *   3～7 天行動建議（含 3~7 變體）／分隔線 ━ ─
+ * - trim 掉多餘空白與換行，回傳純文字。
+ * 擷取不到時回傳空字串，交由呼叫端決定 fallback。
  */
-function extractVerdictForStory(overallSummary: string): string {
+function extractStoryVerdictFromOverallSummary(overallSummary: string): string {
   if (!overallSummary?.trim()) return "";
-  const normalized = overallSummary.replace(/\r/g, "");
 
-  // 「整體答案」或舊標籤「核心判斷」之後的內容
-  const startM = normalized.match(/(?:整體答案|核心判斷)[：:]\s*/);
-  // 即使找不到「整體答案」標題，也從整段開頭開始嘗試切到第一個停止標題
-  const startIdx = startM && startM.index != null ? startM.index + startM[0].length : 0;
-  const tail = normalized.slice(startIdx);
+  const STOP_HEADERS = [
+    "為什麼會這樣", "接下來的方向", "心靈收束", "牌面提醒",
+    "3～7 天行動建議", "3~7 天行動建議", "3～7天行動建議", "3~7天行動建議",
+  ];
+  // 去除行首 emoji / 符號，取得純文字標題
+  const strip = (s: string) => s.replace(/^[^\p{L}\p{N}]+/u, "").trim();
+  const isStop = (bare: string) => STOP_HEADERS.some((h) => bare.startsWith(h));
 
-  // 遇到任一後續標題就停止（不需依賴換行）
-  const stopRe = /(?:為什麼會這樣|接下來的方向|心靈收束|牌面提醒)[：:]|━{3,}|─{3,}/;
-  const stopM = tail.match(stopRe);
-  const verdict = (stopM && stopM.index != null ? tail.slice(0, stopM.index) : tail).trim();
+  const lines = overallSummary.replace(/\r/g, "").split("\n");
 
-  // 若開頭沒有「整體答案」標題且整段沒有任何停止標題，視為擷取失敗
-  if (!startM && !stopM) return "";
+  // 先找「整體答案」（或舊標籤「核心判斷」）標題所在行；找不到則從第 0 行開始
+  let startLine = 0;
+  let foundHeader = false;
+  for (let i = 0; i < lines.length; i++) {
+    const bare = strip(lines[i].trim());
+    if (bare.startsWith("整體答案") || bare.startsWith("核心判斷")) {
+      startLine = i;
+      foundHeader = true;
+      break;
+    }
+  }
 
-  return verdict.replace(/\n{2,}/g, "\n").trim();
+  const out: string[] = [];
+  for (let i = startLine; i < lines.length; i++) {
+    const line = lines[i].trim();
+    const bare = strip(line);
+
+    if (/^[━─]+/.test(line)) break;            // 分隔線即停止
+
+    if (i === startLine && foundHeader) {
+      // 標題行：移除「整體答案」/「核心判斷」與其後冒號，保留同行可能殘留的內容
+      const after = bare.replace(/^(整體答案|核心判斷)[：:]?\s*/, "").trim();
+      if (after) out.push(after);
+      continue;
+    }
+
+    if (isStop(bare)) break;                    // 後續標題即停止
+    if (line) out.push(line);
+  }
+
+  return out.join("\n").replace(/\n{2,}/g, "\n").trim();
 }
 
 /**
@@ -1061,22 +1089,17 @@ async function generateStoryImage(
   const BOX_X = (W - BOX_W) / 2;
   const BOX_Y = curY + 54;
 
+  // 文字來源維持原本，僅移除截斷（不再 slice，改用自動縮放完整顯示）
   const cleanResult = resultText
     .replace(/\*\*/g, "")
     .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, "")
     .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 96);
+    .trim();
 
-  ctx.font = `400 34px ${ff}`;
-  const msgLines = wrapCanvasText(
-    ctx,
-    cleanResult || "宇宙正在整理這次抽牌的核心訊息。",
-    BOX_W - BPAD_X * 2,
-  );
-  const lineH = 34 * 1.8;
   const badgeRowH = 52;
-  const BOX_H = BPAD_Y * 2 + badgeRowH + 32 + msgLines.length * lineH;
+  // 固定訊息區高度：主要文字一律自動換行＋自動縮放完整顯示於此區，框體大小穩定不超出
+  const MSG_AREA_H = 300;
+  const BOX_H = BPAD_Y * 2 + badgeRowH + 32 + MSG_AREA_H;
 
   ctx.save();
   canvasRoundRect(ctx, BOX_X, BOX_Y, BOX_W, BOX_H, 52);
@@ -1131,13 +1154,23 @@ async function generateStoryImage(
   ctx.lineTo(BOX_X + BOX_W - BPAD_X, sepY);
   ctx.stroke();
 
-  ctx.font = `400 34px ${ff}`;
-  ctx.fillStyle = "#241937";
-  ctx.textAlign = "center";
+  // 主要文字：自動換行＋自動縮放，完整顯示於固定訊息區內，不截斷、不加省略號、不超出白框
   const msgStartY = badgeBY + badgeRowH + 32;
-  for (let i = 0; i < msgLines.length; i++) {
-    ctx.fillText(msgLines[i], W / 2, msgStartY + i * lineH + 34);
-  }
+  drawFittedTextInBox(
+    ctx,
+    cleanResult || "宇宙正在整理這次抽牌的核心訊息。",
+    BOX_X + BPAD_X,
+    msgStartY,
+    BOX_W - BPAD_X * 2,
+    MSG_AREA_H,
+    {
+      fontFamily: ff,
+      maxFontSize: 34,
+      minFontSize: 20,
+      color: "#241937",
+      fontWeight: "400",
+    },
+  );
 
   ctx.font = `400 24px ${ff}`;
   ctx.fillStyle = "rgba(255,247,230,0.42)";
@@ -1160,9 +1193,11 @@ async function generateStoryImage(
 
 /**
  * 自動換行 + 自動縮放，將 text 完整填入 Canvas 矩形區域。
- * 從 maxFontSize 開始，逐步縮小直到所有行都能放入 boxH。
+ * 從 maxFontSize 開始，依 boxW 自動切行；若總高度超過 boxH 就 fontSize-1 再試，
+ * 直到 fit 或觸及 minFontSize；最後垂直置中繪製所有行。
+ * 不加省略號、不裁切文字（lineHeight 隨 fontSize 一起縮放）。
  */
-function fitTextToBox(
+function drawFittedTextInBox(
   ctx: CanvasRenderingContext2D,
   text: string,
   boxX: number,
@@ -1424,7 +1459,7 @@ async function generateThreeCardStoryImage(
   const quoteAreaH = PANEL_H - 72;
   const safeAnswer = overallAnswer.trim() || "這三張牌正在提醒你：先把眼前最重要的事情整理清楚，再慢慢走向下一步。";
 
-  fitTextToBox(ctx, safeAnswer, quoteAreaX, quoteAreaY, quoteAreaW, quoteAreaH, {
+  drawFittedTextInBox(ctx, safeAnswer, quoteAreaX, quoteAreaY, quoteAreaW, quoteAreaH, {
     fontFamily: ff,
     maxFontSize: 34,
     minFontSize: 20,
@@ -2160,21 +2195,13 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
 
   // ── 三張牌限動圖用：只取牌陣總結中的「整體答案」段落 ─────────────────────
   // 來源：parseThreeCardSections(fullReading).overallSummary → 擷取「整體答案」
-  // 不含「為什麼會這樣／接下來的方向」，也不含標題文字
-  // 嚴格限制：不使用 cosmicMessage、不使用 freeSummary.message、不使用任何感情 fallback
-  // fallback：overallSummary 前 2 句 → 固定中性提示
+  // 不含「為什麼會這樣／接下來的方向／心靈收束」，也不含標題文字
+  // 嚴格限制：不使用 cosmicMessage、不使用 freeSummary.message、不使用任何感情 fallback、不重新呼叫 AI
   const threeCardOverallAnswer = useMemo(() => {
     if (fullReading && cards.length >= 3) {
-      const summary = parseThreeCardSections(fullReading).overallSummary.trim();
-      if (summary) {
-        const verdict = extractVerdictForStory(summary);
-        if (verdict) return verdict;
-        // 擷取不到「整體答案」段落 → 退回 overallSummary 前 2 句
-        const sentMs = [...summary.replace(/\n+/g, " ").matchAll(/[\s\S]*?[。！？]/g)];
-        const twoSents = sentMs.slice(0, 2).map((m) => m[0].trim()).join("").trim();
-        if (twoSents) return twoSents;
-        return summary;
-      }
+      const sections = parseThreeCardSections(fullReading);
+      const verdict = extractStoryVerdictFromOverallSummary(sections.overallSummary);
+      if (verdict) return verdict;
     }
     return "目前無法產生總結，請稍後再試。";
   }, [cards, fullReading]);
