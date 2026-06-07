@@ -203,6 +203,10 @@ export function AstroProfileClient() {
           setSessionId(sid);
           setUnlockState("checking");
         }}
+        onDirectUnlock={(sid) => {
+          setSessionId(sid);
+          setUnlockState("unlocked");
+        }}
         onPendingOrder={(order) => setPendingOrder(order)}
         onStoreResult={(sid) => saveResultToStorage(sid, calcResult)}
         onAdminTestUnlock={() => setIsAdminTestUnlocked(true)}
@@ -368,6 +372,7 @@ function ResultView({
   sessionId,
   lineLoginNotice,
   onUnlocked,
+  onDirectUnlock,
   onPendingOrder,
   onStoreResult,
   onAdminTestUnlock,
@@ -381,6 +386,7 @@ function ResultView({
   sessionId: string | null;
   lineLoginNotice: "success" | "failed" | null;
   onUnlocked: (sid: string) => void;
+  onDirectUnlock: (sid: string) => void;
   onPendingOrder: (order: string) => void;
   onStoreResult: (sid: string) => void;
   onAdminTestUnlock: () => void;
@@ -450,6 +456,7 @@ function ResultView({
             onPendingOrder={onPendingOrder}
             onStoreResult={onStoreResult}
             onAdminTestUnlock={onAdminTestUnlock}
+            onDirectUnlock={onDirectUnlock}
           />
         ) : (
           <PaidContent result={result} sunTexts={sunTexts} />
@@ -599,6 +606,7 @@ function UnlockGate({
   onPendingOrder,
   onStoreResult,
   onAdminTestUnlock,
+  onDirectUnlock,
 }: {
   result: CalcResult;
   unlockState: UnlockState;
@@ -608,12 +616,18 @@ function UnlockGate({
   onPendingOrder: (order: string) => void;
   onStoreResult: (sid: string) => void;
   onAdminTestUnlock: () => void;
+  onDirectUnlock: (sid: string) => void;
 }) {
   const [loading, setLoading] = useState(false);
   const [unlockError, setUnlockError] = useState("");
   const [adminTestMsg, setAdminTestMsg] = useState("");
   const [email, setEmail] = useState("");
   const ecpayFormRef = useRef<HTMLFormElement>(null);
+  // 補發序號
+  const [reissueCode, setReissueCode] = useState("");
+  const [reissueLoading, setReissueLoading] = useState(false);
+  const [reissueError, setReissueError] = useState("");
+  const [showReissue, setShowReissue] = useState(false);
   const [ecpayData, setEcpayData] = useState<{ actionUrl: string; params: Record<string, string> } | null>(null);
 
   // Auto-submit ECPay form when params arrive
@@ -651,6 +665,42 @@ function UnlockGate({
     } catch {
       setUnlockError("網路錯誤，請稍後再試。");
       setLoading(false);
+    }
+  };
+
+  const handleReissueUnlock = async () => {
+    const code = reissueCode.trim().toUpperCase();
+    if (!code) { setReissueError("請輸入補發序號。"); return; }
+    if (!/^AP-[A-Z0-9]{8}$/.test(code)) {
+      setReissueError("序號格式有誤，應為 AP- 開頭共 11 碼。");
+      return;
+    }
+    setReissueLoading(true);
+    setReissueError("");
+    const sid = `reissue-${code}`;
+    onStoreResult(sid);
+    try {
+      const res = await fetch("/api/astro-profile/reissue-code/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, sessionId: sid }),
+      });
+      const data = await res.json() as { ok: boolean; error?: string };
+      if (!data.ok) {
+        const msgMap: Record<string, string> = {
+          CODE_NOT_FOUND:   "序號不存在，請確認是否輸入正確。",
+          CODE_ALREADY_USED: "此序號已使用過，無法重複兌換。",
+          CODE_EXPIRED:     "序號已過期，請聯繫客服重新補發。",
+          INVALID_CODE_FORMAT: "序號格式有誤，應為 AP- 開頭共 11 碼。",
+        };
+        setReissueError(msgMap[data.error ?? ""] ?? "序號無效，請稍後再試。");
+        setReissueLoading(false);
+        return;
+      }
+      onDirectUnlock(sid);
+    } catch {
+      setReissueError("網路錯誤，請稍後再試。");
+      setReissueLoading(false);
     }
   };
 
@@ -752,6 +802,46 @@ function UnlockGate({
           )}
         </div>
       </div>
+
+      {/* 補發序號兌換 */}
+      {!isChecking && (
+        <div className="overflow-hidden rounded-[1.5rem] border border-white/8 bg-midnight/30 backdrop-blur-sm">
+          <div className="p-5 sm:p-6">
+            <button
+              type="button"
+              onClick={() => { setShowReissue((v) => !v); setReissueError(""); }}
+              className="flex w-full items-center justify-between text-sm text-moon/45 transition hover:text-moon/65"
+            >
+              <span>已有補發序號？點此兌換</span>
+              <span className={`text-xs transition-transform ${showReissue ? "rotate-180" : ""}`}>▼</span>
+            </button>
+            {showReissue && (
+              <div className="mt-4 space-y-3">
+                <input
+                  type="text"
+                  value={reissueCode}
+                  onChange={(e) => setReissueCode(e.target.value.toUpperCase())}
+                  placeholder="AP-XXXXXXXX"
+                  maxLength={11}
+                  className="w-full rounded-xl border border-white/14 bg-[#0a1028] px-4 py-2.5 font-mono text-sm text-moon outline-none transition focus:border-lavender/60 focus:ring-2 focus:ring-lavender/20 placeholder:text-moon/25"
+                />
+                {reissueError && (
+                  <p className="rounded-xl border border-red-400/30 bg-red-400/10 px-3 py-2 text-xs text-red-300">
+                    {reissueError}
+                  </p>
+                )}
+                <button
+                  onClick={() => void handleReissueUnlock()}
+                  disabled={reissueLoading}
+                  className="w-full rounded-full border border-[#d8bd70]/40 bg-[#d8bd70]/10 py-3 text-sm font-semibold text-[#d8bd70] transition hover:bg-[#d8bd70]/20 active:scale-[0.98] disabled:opacity-60"
+                >
+                  {reissueLoading ? "驗證中…" : "兌換序號解鎖"}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Hidden ECPay form */}
       {ecpayData && (

@@ -27,19 +27,21 @@ import { RedeemCodeList, type SerializableRedeemCode } from "./RedeemCodeList";
 import { OrdersTabClient, type SerializableOrder } from "./OrdersTabClient";
 import { RevenueTabClient } from "./RevenueTabClient";
 import { StatsOverviewClient } from "./StatsOverviewClient";
+import { AstroProfileReissueClient } from "./AstroProfileReissueClient";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 // ── 型別 ──────────────────────────────────────────────────────────────────────
 
-type AdminTab = "overview" | "revenue" | "orders" | "redeem" | "fortune" | "cleanup";
+type AdminTab = "overview" | "revenue" | "orders" | "redeem" | "astro" | "fortune" | "cleanup";
 
 const TABS: { id: AdminTab; label: string }[] = [
   { id: "overview", label: "使用統計" },
   { id: "revenue",  label: "收入統計" },
   { id: "orders",   label: "付款訂單" },
   { id: "redeem",   label: "通行碼管理" },
+  { id: "astro",    label: "三重星座補發" },
   { id: "fortune",  label: "今日星座" },
   { id: "cleanup",  label: "測試清理" },
 ];
@@ -656,6 +658,18 @@ export default async function AdminUsagePage({
               <div>
                 <h2 className="mb-4 text-lg font-semibold text-moon">最近通行碼（前 50 筆）</h2>
                 <RedeemCodeList codes={serializeCodes(codes)} />
+              </div>
+            </div>
+          )}
+
+          {currentTab === "astro" && (
+            <div className="space-y-4">
+              <div>
+                <h2 className="mb-1 text-lg font-semibold text-moon">三重星座補發序號</h2>
+                <p className="mb-6 text-sm text-moon/50">
+                  產生單次使用的補發序號（AP-XXXXXXXX），寄給需要補發的用戶。用戶在 /astro-profile 解鎖頁輸入序號即可免費解鎖，序號 30 天內有效。
+                </p>
+                <AstroProfileReissueClient />
               </div>
             </div>
           )}
