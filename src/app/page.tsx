@@ -102,6 +102,23 @@ export default function Home() {
                 LINE
               </a>
             </p>
+
+            {/* ── 三重星座入口卡 ── */}
+            <Link
+              href="/astro-profile"
+              className="group mt-5 flex items-center justify-between rounded-2xl border border-[#d8bd70]/22 bg-midnight/40 px-5 py-4 transition hover:border-[#d8bd70]/44 hover:bg-white/5 active:scale-[0.98]"
+            >
+              <div>
+                <p className="text-sm font-semibold text-moon">✦ 我的三重星座</p>
+                <p className="mt-0.5 text-xs text-moon/50">太陽 × 上升 × 金星</p>
+                <p className="mt-1 text-xs leading-5 text-moon/45">
+                  輸入出生資訊，看看你的核心個性、外在氣質與感情吸引力。
+                </p>
+              </div>
+              <span className="ml-4 shrink-0 text-xs text-lavender/60 transition-transform group-hover:translate-x-1">
+                →
+              </span>
+            </Link>
           </div>
 
           {/* ── Right: cat illustration + today's cosmic message ─── */}
@@ -138,7 +155,7 @@ export default function Home() {
         <p className="mb-5 text-center text-xs uppercase tracking-[0.28em] text-moon/38">
           今日星座 · 每日運勢
         </p>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {/* 今日運勢 */}
           <FeatureCard
             gradient="from-lavender/40 to-nebula/24"
@@ -159,6 +176,32 @@ export default function Home() {
                   strokeWidth="1.6"
                   strokeLinecap="round"
                   strokeLinejoin="round"
+                />
+              </svg>
+            }
+          />
+
+          {/* 我的三重星座 */}
+          <FeatureCard
+            gradient="from-[#d8bd70]/38 to-lavender/30"
+            title="我的三重星座"
+            description="輸入生日，選擇你的上升與金星，看看今天三層能量想提醒你什麼。"
+            href="/astro-profile"
+            badge="太陽 × 上升 × 金星"
+            icon={
+              <svg
+                viewBox="0 0 22 22"
+                className="h-5 w-5"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="4" stroke="#d8bd70" strokeWidth="1.6" />
+                <path
+                  d="M11 2v2M11 18v2M2 11h2M18 11h2M4.93 4.93l1.41 1.41M15.66 15.66l1.41 1.41M4.93 17.07l1.41-1.41M15.66 6.34l1.41-1.41"
+                  stroke="#d8bd70"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
                 />
               </svg>
             }

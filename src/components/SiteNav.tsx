@@ -292,6 +292,19 @@ export function SiteNav() {
         >
           塔羅牌介紹
         </Link>
+
+        {/* 三重星座 */}
+        <Link
+          href="/astro-profile"
+          className={[
+            "rounded-full px-3 py-2 transition",
+            pathname === "/astro-profile"
+              ? "text-moon underline underline-offset-4"
+              : "hover:bg-white/10 hover:text-moon",
+          ].join(" ")}
+        >
+          三重星座
+        </Link>
       </nav>
 
       {/* Hamburger — 手機 */}
@@ -369,6 +382,18 @@ export function SiteNav() {
             ].join(" ")}
           >
             塔羅牌介紹
+          </Link>
+
+          {/* 三重星座 */}
+          <Link
+            href="/astro-profile"
+            onClick={() => setOpen(false)}
+            className={[
+              "block rounded-2xl px-4 py-3 transition",
+              pathname === "/astro-profile" ? "text-moon" : "hover:bg-white/10",
+            ].join(" ")}
+          >
+            三重星座
           </Link>
 
         </nav>
