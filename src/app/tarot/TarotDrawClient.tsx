@@ -851,20 +851,58 @@ function wrapCanvasText(
   ctx: CanvasRenderingContext2D,
   text: string,
   maxWidth: number,
+  options?: { maxLines?: number; ellipsis?: boolean },
 ): string[] {
   if (!text) return [];
-  const lines: string[] = [];
-  let current = "";
-  for (const char of text) {
-    const test = current + char;
-    if (ctx.measureText(test).width > maxWidth && current.length > 0) {
-      lines.push(current);
-      current = char;
-    } else {
-      current = test;
+  const maxLines = options?.maxLines ?? Number.POSITIVE_INFINITY;
+  const shouldClamp = Number.isFinite(maxLines);
+  const appendEllipsis = (line: string) => {
+    const mark = "…";
+    let fitted = line.trimEnd();
+    while (fitted.length > 0 && ctx.measureText(fitted + mark).width > maxWidth) {
+      fitted = fitted.slice(0, -1);
     }
+    return fitted ? fitted + mark : mark;
+  };
+
+  const lines: string[] = [];
+  const closingPunctuation = "，。！？；：、,.!?;:)]）】》」』";
+  const paragraphs = text
+    .replace(/\*\*/g, "")
+    .replace(/[ \t\r]+/g, " ")
+    .split(/\n+/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+
+  for (const paragraph of paragraphs) {
+    let current = "";
+    for (const char of paragraph) {
+      if (!current && char === " ") continue;
+
+      const test = current + char;
+      if (ctx.measureText(test).width > maxWidth && current.length > 0) {
+        if (closingPunctuation.includes(char) && ctx.measureText(test).width <= maxWidth + 18) {
+          lines.push(test.trim());
+          current = "";
+        } else {
+          lines.push(current.trim());
+          current = char === " " ? "" : char;
+        }
+      } else {
+        current = test;
+      }
+    }
+    if (current) lines.push(current.trim());
   }
-  if (current) lines.push(current);
+
+  if (shouldClamp && lines.length > maxLines) {
+    const clamped = lines.slice(0, maxLines);
+    if (options?.ellipsis && clamped.length > 0) {
+      clamped[clamped.length - 1] = appendEllipsis(clamped[clamped.length - 1]);
+    }
+    return clamped;
+  }
+
   return lines;
 }
 
@@ -1272,11 +1310,11 @@ async function generateThreeCardStoryImage(
     ctx.fillText(ori, cx, LABEL_TOP + 66);
   }
 
-  // ── 主金句卡片（霧面玻璃面板，擴展為 2～3 行）───────────────────────────
+  // ── 主金句卡片（霧面玻璃面板，固定安全文字區）───────────────────────────
   const PANEL_X = 88;
   const PANEL_Y = 832;
   const PANEL_W = W - 176;
-  const PANEL_H = 340;   // 擴大面板讓文字更完整
+  const PANEL_H = 340;
   const PANEL_R = 24;
 
   ctx.save();
@@ -1294,28 +1332,31 @@ async function generateThreeCardStoryImage(
   ctx.fillStyle = "rgba(216,189,112,0.55)";
   ctx.fillText("✦", W / 2, PANEL_Y + 34);
 
-  // 分段換行再各自 wrap（支援兩句具體摘要結構）
-  ctx.font      = "500 38px " + ff;
+  // 中間解讀文字：固定寬度、最多 4 行、超出加省略號，避免壓到底部元素
+  ctx.font      = "500 34px " + ff;
   ctx.fillStyle = MOON;
-  const answerSegments = overallAnswer.trim().split("\n").filter(Boolean).map((seg) => seg.trim());
-  const quoteLines: string[] = [];
-  for (const seg of answerSegments) {
-    quoteLines.push(...wrapCanvasText(ctx, seg, PANEL_W - 96));
-    if (quoteLines.length >= 4) break;
-  }
-  if (quoteLines.length === 0) {
-    quoteLines.push(...wrapCanvasText(ctx, overallAnswer.trim().slice(0, 120), PANEL_W - 96));
-  }
-  const maxQ      = Math.min(quoteLines.length, 4);
-  const LINE_H_Q  = 56;               // 行距一起調整（50→56px）
-  const totalQH   = (maxQ - 1) * LINE_H_Q + 38;
-  // 留出頂部裝飾空間，然後垂直置中
-  const panelInnerTop = PANEL_Y + 52;
-  const panelInnerH   = PANEL_H - 62;
-  const quoteStartY   = panelInnerTop + Math.round((panelInnerH - totalQH) / 2) + 28;
-  quoteLines.slice(0, 4).forEach((line, i) => {
+  const quoteMaxW = PANEL_W - 132;
+  const quoteAreaX = PANEL_X + 58;
+  const quoteAreaY = PANEL_Y + 74;
+  const quoteAreaW = PANEL_W - 116;
+  const quoteAreaH = 218;
+  const safeAnswer = overallAnswer
+    .replace(/\*\*/g, "")
+    .replace(/\s+/g, " ")
+    .trim() || "這三張牌正在提醒你：先把眼前最重要的事情整理清楚，再慢慢走向下一步。";
+  const quoteLines = wrapCanvasText(ctx, safeAnswer, quoteMaxW, { maxLines: 4, ellipsis: true });
+  const LINE_H_Q = 52;
+  const fontSizeQ = 34;
+  const totalQH = (quoteLines.length - 1) * LINE_H_Q + fontSizeQ;
+  const quoteStartY = quoteAreaY + Math.round((quoteAreaH - totalQH) / 2) + fontSizeQ;
+
+  ctx.save();
+  canvasRoundRect(ctx, quoteAreaX, quoteAreaY, quoteAreaW, quoteAreaH, 18);
+  ctx.clip();
+  quoteLines.forEach((line, i) => {
     ctx.fillText(line, W / 2, quoteStartY + i * LINE_H_Q);
   });
+  ctx.restore();
 
   // ── 關鍵字 Chip ───────────────────────────────────────────────────────────
   const CHIPS_Y = PANEL_Y + PANEL_H + 38; // ~1210
