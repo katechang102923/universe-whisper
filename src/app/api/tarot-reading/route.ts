@@ -417,6 +417,28 @@ function detectQuestionFocus(question: string): QuestionFocus {
   return secondary ? { primary, secondary } : { primary };
 }
 
+/**
+ * 將使用者選擇的分類（topic）映射為 QuestionFocusPrimary。
+ * 用於 fallback：當問題關鍵字偵測落到 general 時，改以使用者實際選的分類為準，
+ * 避免財運問題的靜態 fallback 跑出愛情/通用文案。
+ */
+function focusPrimaryFromTopic(topic: TarotReadingTopic): QuestionFocusPrimary {
+  switch (topic) {
+    case "finance":   return "finance";
+    case "career":    return "career";
+    case "love":      return "love";
+    case "ambiguous": return "love";
+    default:          return "general";
+  }
+}
+
+/** 合併焦點：問題關鍵字偵測為 general 時，退回使用者選擇的分類 */
+function mergeFocusWithTopic(focus: QuestionFocus, topic: TarotReadingTopic): QuestionFocus {
+  if (focus.primary !== "general") return focus;
+  const fromTopic = focusPrimaryFromTopic(topic);
+  return fromTopic === "general" ? focus : { primary: fromTopic };
+}
+
 function getFocusLabel(focus: QuestionFocus): string {
   const labels: Record<QuestionFocusPrimary, string> = {
     finance: "財運", career: "工作", love: "感情",
@@ -428,6 +450,56 @@ function getFocusLabel(focus: QuestionFocus): string {
 
 function getTopicLabel(topic: TarotReadingTopic): string {
   return { love: "愛情", career: "工作", finance: "財運", ambiguous: "曖昧", general: "生活" }[topic];
+}
+
+// ── 分類強制鎖定（依「使用者實際選擇的分類」，最高優先，凌駕問題關鍵字偵測）──────
+// 修正跑題 bug：使用者選財運但問題無投資關鍵字時，舊的 detectQuestionTopic 會落到
+// general，導致沒有財運鎖定也沒有禁止愛情詞。本函式直接用 topic 強制鎖定語境。
+
+/** 財運分類禁用的感情語境詞（同時用於 prompt 禁止與輸出防呆偵測）*/
+const FINANCE_FORBIDDEN_WORDS = [
+  "愛情", "感情", "曖昧", "戀愛", "復合", "告白", "伴侶", "桃花",
+  "心動", "暗戀", "戀人", "交往", "分手", "喜歡你", "喜歡上",
+  "關係升溫", "信任建立", "建立信任", "曖昧期", "喜歡對方", "愛你",
+];
+
+/** 偵測財運解讀是否混入感情語境，回傳第一個命中的禁詞（無則 null）*/
+function findFinanceForbiddenWord(text: string): string | null {
+  if (!text) return null;
+  for (const w of FINANCE_FORBIDDEN_WORDS) {
+    if (text.includes(w)) return w;
+  }
+  return null;
+}
+
+/** 重生指令：上一版混入感情語境時，注入此 hint 強制改用財務語境 */
+const FINANCE_REGEN_HINT = `
+
+【重試指令：上一版混入了感情語境，嚴重跑題，必須重寫】
+使用者本次問的是「財運」，整份解讀只能用財務語境：收入、支出、存款、現金流、投資、成本、回報、財務壓力、工作收入、兼差、副業、帳務、預算、資金、風險。
+整份輸出（每張牌、牌陣總結、為什麼會這樣、接下來的方向、心靈收束、祝福）絕對不得出現：愛情、感情、曖昧、戀愛、復合、告白、伴侶、桃花、心動、喜歡、交往、分手、戀人、關係升溫、信任建立。
+若牌義偏情感（例如聖杯騎士、聖杯國王、戀人、聖杯二），一律轉譯成：財務機會、收入邀約、合作提案、消費誘惑、資金取捨，不得寫成愛情。`;
+
+/**
+ * 依「使用者選擇的分類」產生強制鎖定規則，注入 prompt 最前段（高於問題關鍵字偵測）。
+ * 目前只對財運做硬鎖定（這是回報的跑題分類）；其他分類回傳空字串維持原行為。
+ */
+function getCategoryLockRules(topic: TarotReadingTopic): string {
+  if (topic === "finance") {
+    return `【🔒 分類強制鎖定 — 財運（最高優先，凌駕一切其他指示）】
+使用者本次明確選擇「財運」分類。整份解讀的每一個欄位都必須以財務／金錢語境書寫。
+✅ 只能使用：收入、支出、存款、現金流、投資、成本、回報、財務壓力、工作收入、兼差、副業、帳務、預算、資金、風險
+❌ 整份解讀（含每張牌的牌面重點／對你的問題代表／這張牌提醒你、牌陣總結、整體答案、為什麼會這樣、接下來的方向、心靈收束、溫柔提醒、祝福）絕對不得出現以下任何字詞：
+   愛情、感情、曖昧、對方喜不喜歡你、復合、告白、關係升溫、戀愛、伴侶、桃花、吸引力、心動、信任建立、喜歡、暗戀、交往、分手、戀人
+【牌義轉譯強制原則 — 情感牌一律轉成財務】
+若抽到偏情感意象的牌（如聖杯騎士、聖杯國王、戀人、聖杯二、聖杯王后等），必須一律轉譯成財務語境：
+✓ 聖杯騎士 → 看起來誘人的財務機會、收入邀約、合作提案、消費誘惑
+✓ 戀人 → 一個重要的財務選擇、兩個資金方向的取捨
+✓ 聖杯二 → 合作分潤、共同帳務、合夥金錢關係
+✓ 聖杯國王／王后 → 對金錢的態度、財務上的穩定或情緒化消費
+絕對不得把任何一張牌解讀成愛情、曖昧、人際感情或對方心意。`;
+  }
+  return "";
 }
 
 // ── 主題聚焦指令 ──────────────────────────────────────────────────────────────
@@ -1165,7 +1237,8 @@ function buildSingleCardFallback(
   _topic: TarotReadingTopic,
   question: string
 ): string {
-  const focus      = detectQuestionFocus(question);
+  // 問題關鍵字偵測為 general 時退回使用者選擇的分類，避免財運問題跑出愛情/通用 fallback
+  const focus      = mergeFocusWithTopic(detectQuestionFocus(question), _topic);
   // 永遠使用使用者選擇的分類，而非 detectQuestionFocus 的結果
   const focusLabel = getTopicLabel(_topic);
   const ori        = card.position === "upright" ? "正位" : "逆位";
@@ -1530,7 +1603,8 @@ function buildThreeCardFallback(
   _topic: TarotReadingTopic,
   question: string
 ): string {
-  const focus      = detectQuestionFocus(question);
+  // 問題關鍵字偵測為 general 時退回使用者選擇的分類，避免財運問題跑出愛情/通用 fallback
+  const focus      = mergeFocusWithTopic(detectQuestionFocus(question), _topic);
   // 永遠使用使用者選擇的分類，而非 detectQuestionFocus 的結果
   const focusLabel = getTopicLabel(_topic);
   const spreadLabels = getSpreadLabels();
@@ -1756,6 +1830,7 @@ function buildSingleCardPrompt(
   const focus              = detectQuestionFocus(question);
   const questionTopic      = detectQuestionTopic(question, focus);
   const topicBoundaryRules = getTopicBoundaryRules(questionTopic, question);
+  const categoryLockRules  = getCategoryLockRules(topic);
   const focusLabel         = getFocusLabel(focus);
   const topicGuidance      = getTopicGuidance(topic, focus, question);
   const ori           = card.position === "upright" ? "正位" : "逆位";
@@ -1861,6 +1936,7 @@ function buildSingleCardPrompt(
 【重要提示】這是使用者分享 Facebook 後才能解鎖的完整版，內容必須有真正的解鎖價值。
 
 ${topicBoundaryRules}
+${categoryLockRules}
 
 【抽牌模式】單張牌完整解讀
 【問題】${question || "（未填寫問題）"}
@@ -1946,6 +2022,7 @@ function buildThreeCardPrompt(
   const focus              = detectQuestionFocus(question);
   const questionTopic      = detectQuestionTopic(question, focus);
   const topicBoundaryRules = getTopicBoundaryRules(questionTopic, question);
+  const categoryLockRules  = getCategoryLockRules(topic);
   const focusLabel         = getFocusLabel(focus);
   const topicGuidance      = getTopicGuidance(topic, focus, question);
   const spreadLabels       = getSpreadLabels();
@@ -2036,6 +2113,7 @@ safetyNote 必須填入：「以上為塔羅牌面參考，不構成投資建議
 格式嚴格遵守：牌面重點1句≤60字、對你的問題代表2句≤140字、這張牌提醒你2句≤120字、為什麼會這樣只要2句。
 
 ${topicBoundaryRules}
+${categoryLockRules}
 
 【抽牌模式】三張牌陣完整解讀
 【問題】${question || "（未填寫問題）"}
@@ -2192,9 +2270,18 @@ async function callSingleCard(
   const first = await tryGenerate("");
   if (!first) return null;
 
+  // 財運禁詞防呆：若混入感情語境，用財務重生指令重試；仍違規則回 null 走財運 fallback
+  if (topic === "finance" && findFinanceForbiddenWord(first)) {
+    console.log("[tarot-reading] finance forbidden word in single-card, regenerating...");
+    const retry = await tryGenerate(FINANCE_REGEN_HINT);
+    if (retry && !findFinanceForbiddenWord(retry)) return retry;
+    return null;
+  }
+
   // 品質檢查：若太通用則重試一次
   if (isGenericResponse(first, [card])) {
     const retry = await tryGenerate(ANTI_SIMILARITY_HINT);
+    if (topic === "finance" && retry && findFinanceForbiddenWord(retry)) return null;
     return retry ?? first;
   }
 
@@ -2244,7 +2331,7 @@ async function callThreeCard(
       console.log("[tarot-reading] parse success:", parseSuccess);
       if (!parsed) return null;
       // 去重：偵測「這張牌提醒你」重複並替換
-      const focus = detectQuestionFocus(question);
+      const focus = mergeFocusWithTopic(detectQuestionFocus(question), topic);
       parsed.cards = deduplicateCardMessages(parsed.cards, cards, focus, question);
       return formatThreeCardReading(parsed);
     } catch (err) {
@@ -2258,6 +2345,14 @@ async function callThreeCard(
   const first = await tryGenerate("");
   if (!first) return null;
 
+  // 財運禁詞防呆：若混入感情語境，用財務重生指令重試；仍違規則回 null 走財運 fallback
+  if (topic === "finance" && findFinanceForbiddenWord(first)) {
+    console.log("[tarot-reading] finance forbidden word in three-card, regenerating...");
+    const retry = await tryGenerate(FINANCE_REGEN_HINT);
+    if (retry && !findFinanceForbiddenWord(retry)) return retry;
+    return null;
+  }
+
   // 放寬品質檢查：只要至少一張牌名出現即可，不強制全部出現
   // （三張牌 AI 可能把某些牌名寫成不同格式）
   const anyCardMentioned = cards.some((c) => first.includes(c.name));
@@ -2267,6 +2362,7 @@ async function callThreeCard(
   if (!anyCardMentioned || tooManyBannedPhrases) {
     console.log("[tarot-reading] quality check failed, retrying once...");
     const retry = await tryGenerate(ANTI_SIMILARITY_HINT);
+    if (topic === "finance" && retry && findFinanceForbiddenWord(retry)) return null;
     return retry ?? first; // 重試失敗也返回 first，不返回 null
   }
 

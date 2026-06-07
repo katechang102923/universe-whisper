@@ -2161,23 +2161,23 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
   // ── 三張牌限動圖用：只取牌陣總結中的「整體答案」段落 ─────────────────────
   // 來源：parseThreeCardSections(fullReading).overallSummary → 擷取「整體答案」
   // 不含「為什麼會這樣／接下來的方向」，也不含標題文字
-  // fallback：overallSummary 前 2 句 → freeSummary.message → 固定提示
+  // 嚴格限制：不使用 cosmicMessage、不使用 freeSummary.message、不使用任何感情 fallback
+  // fallback：overallSummary 前 2 句 → 固定中性提示
   const threeCardOverallAnswer = useMemo(() => {
     if (fullReading && cards.length >= 3) {
       const summary = parseThreeCardSections(fullReading).overallSummary.trim();
       if (summary) {
         const verdict = extractVerdictForStory(summary);
         if (verdict) return verdict;
-        // 擷取不到「整體答案」段落 → 退回前 2 句
+        // 擷取不到「整體答案」段落 → 退回 overallSummary 前 2 句
         const sentMs = [...summary.replace(/\n+/g, " ").matchAll(/[\s\S]*?[。！？]/g)];
         const twoSents = sentMs.slice(0, 2).map((m) => m[0].trim()).join("").trim();
         if (twoSents) return twoSents;
-        if (summary) return summary;
+        return summary;
       }
     }
-    const msg = freeSummary.message.trim();
-    return msg || "目前無法產生總結，請稍後再試。";
-  }, [cards, fullReading, freeSummary]);
+    return "目前無法產生總結，請稍後再試。";
+  }, [cards, fullReading]);
 
   // Cleanup timers
   useEffect(() => {
