@@ -12,7 +12,7 @@ import { normalizePlainText } from "@/lib/textUtils";
 
 type DrawStatus = "idle" | "drawing" | "selecting" | "revealing" | "revealed";
 type ReadingStatus = "idle" | "loading" | "done" | "error";
-type ReadingTopic = "love" | "career" | "general";
+type ReadingTopic = "love" | "career" | "finance" | "general";
 type SpreadPosition = "past" | "present" | "future";
 
 /** 最近一次付費結果，暫存於 localStorage */
@@ -61,7 +61,7 @@ const modes = [
   { key: "three_card", label: "三張牌", description: "過去、現在、未來的溫柔流動" },
 ] as const;
 
-const topics = ["愛情", "工作", "生活"] as const;
+const topics = ["愛情", "工作", "生活", "財運"] as const;
 type TarotTopicOption = (typeof topics)[number];
 
 const spreadQuestionGroups = {
@@ -77,6 +77,10 @@ const spreadQuestionGroups = {
     title: "生活專屬牌陣",
     questions: ["今天宇宙想提醒我什麼？", "我現在最需要放下什麼？", "下一步該往哪裡走？", "近期需要注意什麼？"],
   },
+  財運: {
+    title: "財運專屬牌陣",
+    questions: ["近期財運走向如何？", "現在適合投資嗎？", "我該如何整理支出？", "這個財務決策適合嗎？"],
+  },
 } satisfies Record<TarotTopicOption, { title: string; questions: readonly string[] }>;
 
 // 單張牌範例問題（依分類）
@@ -84,6 +88,7 @@ const singleCardQuestions = {
   愛情: ["他現在怎麼想？", "這段感情值得繼續嗎？", "我該主動靠近嗎？", "對方真正沒說出口的是什麼？"],
   工作: ["我該不該換工作？", "目前方向適合我嗎？", "面試結果會順利嗎？", "我現在卡住的原因是什麼？"],
   生活: ["今天宇宙想提醒我什麼？", "最近狀態低落的原因？", "我該怎麼調整節奏？", "接下來一週需要注意什麼？"],
+  財運: ["近期財運走向如何？", "現在適合投資嗎？", "這筆支出適合嗎？", "台股接下來要注意什麼？"],
 } satisfies Record<TarotTopicOption, readonly string[]>;
 
 // textarea placeholder 依分類切換
@@ -91,9 +96,11 @@ const textareaPlaceholders = {
   愛情: "例如：他現在怎麼想？這段關係下一步？我該主動靠近嗎？",
   工作: "例如：我該不該換工作？目前方向適合我嗎？卡住的原因是什麼？",
   生活: "例如：今天宇宙想提醒我什麼？最近狀態低落的原因？",
+  財運: "例如：近期財運如何？現在適合投資嗎？這筆支出適合嗎？",
 } satisfies Record<TarotTopicOption, string>;
 
 function toReadingTopic(topic: TarotTopicOption): ReadingTopic {
+  if (topic === "財運") return "finance";
   if (topic === "工作") return "career";
   if (topic === "愛情") return "love";
   return "general";
@@ -101,6 +108,7 @@ function toReadingTopic(topic: TarotTopicOption): ReadingTopic {
 
 function toMeaningTopic(topic: TarotTopicOption) {
   if (topic === "工作") return "work";
+  if (topic === "財運") return "work";
   if (topic === "生活") return "life";
   return "love";
 }
@@ -685,6 +693,7 @@ function buildFreeSummary(cards: TarotCardFaceData[], fullReading: string) {
 function getTopicShareLabel(topic: TarotTopicOption): string {
   if (topic === "愛情") return "愛情訊息";
   if (topic === "工作") return "工作訊息";
+  if (topic === "財運") return "財運訊息";
   return "生活訊息";
 }
 
@@ -707,6 +716,16 @@ function getShareTitle(topic: TarotTopicOption, card: TarotCardFaceData | undefi
       "現在不是硬衝的時候，先看清真正卡住你的點。",
       "機會有出現，但你需要先整理自己的籌碼。",
       "這張牌提示你：停下來看清方向，比繼續衝更重要。",
+    ];
+    return (cardDesc ? `${cardDesc}出現，提示你—— ` : "") +
+      (card ? titles[card.name.length % titles.length] : titles[0]);
+  }
+  if (topic === "財運") {
+    const titles = [
+      "現在最重要的不是衝動行動，而是看清手上的資源。",
+      "這張牌提示你：財務決策需要先穩住風險。",
+      "收入與支出的節奏，正在提醒你重新整理優先順序。",
+      "投資或花費之前，先確認自己承受風險的位置。",
     ];
     return (cardDesc ? `${cardDesc}出現，提示你—— ` : "") +
       (card ? titles[card.name.length % titles.length] : titles[0]);
@@ -3381,7 +3400,7 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
 
       {/* ✨ Operation guide ✨ */}
       <ol className="relative z-10 mb-5 flex flex-wrap gap-x-5 gap-y-1.5">
-        {["選擇愛情、工作或生活", "寫下你想問的問題", "抽牌後查看宇宙訊息"].map((step, i) => (
+        {["選擇愛情、工作、生活或財運", "寫下你想問的問題", "抽牌後查看宇宙訊息"].map((step, i) => (
           <li key={i} className="flex items-center gap-1.5 text-sm text-moon/50">
             <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-lavender/35 text-[10px] text-lavender">
               {i + 1}
@@ -3394,7 +3413,7 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
       {/* ?? Mode selector ?? */}
 
       {/* ?? Topic selector ?? */}
-      <div className="relative z-10 mt-5 grid grid-cols-3 gap-2">
+      <div className="relative z-10 mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
         {topics.map((item) => (
           <button
             key={item}

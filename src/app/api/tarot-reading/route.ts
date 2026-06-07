@@ -19,7 +19,7 @@ const DEFAULT_MODEL = "gpt-5.4-mini";
 
 // ── 輸入型別 ──────────────────────────────────────────────────────────────────
 
-const validTopics        = ["love", "career", "ambiguous", "general"] as const;
+const validTopics        = ["love", "career", "finance", "ambiguous", "general"] as const;
 const validPositions     = ["upright", "reversed"] as const;
 const validSpreadPositions = ["past", "present", "future"] as const;
 const validReadingModes  = ["free", "ad", "premium"] as const;
@@ -194,6 +194,7 @@ const INVESTMENT_KEYWORDS = [
   "進場", "出場", "要不要買", "要不要賣", "可不可以買", "可以買嗎",
   "適合買", "適合賣", "現在買", "現在賣", "買進", "賣出", "能不能買",
   "該買", "該賣", "要賣", "要買",
+  "買進", "賣出", "漲", "跌",
   // 技術操作
   "停損", "停利", "加碼", "減碼", "持倉", "空手", "定期定額",
   "波段", "多頭", "空頭",
@@ -375,6 +376,7 @@ const FOCUS_KEYWORDS: Record<Exclude<QuestionFocusPrimary, "general">, string[]>
     "財運", "金錢", "收入", "支出", "投資", "股票", "ETF", "基金",
     "薪水", "加薪", "獎金", "副業", "兼職", "理財", "存款", "現金流",
     "貸款", "房貸", "賺錢", "偏財", "財務", "錢", "財",
+    "付款", "買進", "賣出", "漲", "跌",
     // 投資理財細項
     "台股", "美股", "大盤", "股市", "0050", "00878", "00940", "00948",
     "波段", "進場", "出場", "停損", "停利", "多頭", "空頭", "籌碼",
@@ -425,12 +427,25 @@ function getFocusLabel(focus: QuestionFocus): string {
 }
 
 function getTopicLabel(topic: TarotReadingTopic): string {
-  return { love: "愛情", career: "工作", ambiguous: "曖昧", general: "生活" }[topic];
+  return { love: "愛情", career: "工作", finance: "財運", ambiguous: "曖昧", general: "生活" }[topic];
 }
 
 // ── 主題聚焦指令 ──────────────────────────────────────────────────────────────
 
 function getTopicGuidance(topic: TarotReadingTopic, focus: QuestionFocus, question = ""): string {
+  if (topic === "finance") {
+    if (isInvestmentQuestion(question)) {
+      return `【財運／投資強制聚焦】
+使用者選擇的是財運分類，且問題涉及投資或市場。至少 80% 內容必須圍繞：金錢、投資、收入、支出、股票、台股、財務風險與財務決策。
+請優先用財務與市場語氣回應，不要轉成工作、感情或生活療癒問題。
+safetyNote 欄位必須填入：「以上為塔羅牌面參考，不構成投資建議，實際操作仍請自行評估風險。」`;
+    }
+
+    return `【財運強制聚焦】
+使用者選擇的是財運分類。至少 80% 內容必須圍繞：金錢、投資、收入、支出、股票、台股、財務風險與財務決策。
+第一個回應欄位必須直接說明近期財運或財務決策方向，不可轉成工作、感情或生活療癒問題。`;
+  }
+
   switch (focus.primary) {
     case "finance":
       // ── 投資/股市問題：使用市場導向解讀 ───────────────────────────────────
@@ -569,6 +584,7 @@ oneLineConclusion 第一句必須給出明確傾向，例如：
       return {
         love:      "請偏向愛情關係、情緒需求、關係中的真實問題與是否值得繼續投入。",
         career:    "請偏向工作狀態、職涯選擇、機會判斷、卡住原因與接下來可採取的行動。",
+        finance:   "請偏向金錢、投資、收入、支出、股票、台股、財務風險與財務決策。",
         ambiguous: "請偏向曖昧關係、試探與拉扯、對方心態、訊息冷熱、是否該主動，以及如何保護自己的安全感。",
         general:   "請偏向生活狀態、內在整理、目前課題與溫柔提醒。",
       }[topic];
