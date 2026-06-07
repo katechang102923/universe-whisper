@@ -2205,7 +2205,8 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
   // 不使用 cosmicMessage / freeSummary.message / 任何感情 fallback，不重新呼叫 AI。
   const threeCardOverallAnswer = useMemo(() => {
     if (fullReading && cards.length >= 3) {
-      const summary = parseThreeCardSections(fullReading).overallSummary.trim();
+      const parsed = parseThreeCardSections(fullReading);
+      const summary = parsed.overallSummary.trim();
       if (summary) {
         // 1. 與網頁完整版相同的「整體答案」解析（成功時不含標題、不含為什麼/方向）
         const parsedVerdict = parseOverallSummary(summary).verdict?.trim();
@@ -2219,6 +2220,14 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
           .trim();
         return stripped || summary;
       }
+      // overallSummary 為空：嘗試其他已解析的段落，避免顯示固定 fallback 字串
+      const alt = (parsed.combined || parsed.questionFocus || "").trim();
+      if (alt) {
+        return alt.replace(/^[^\p{L}\p{N}]*(?:整體答案|核心判斷)[：:]?\s*/u, "").trim() || alt;
+      }
+      // 最後：直接從 fullReading 嘗試提取「整體答案：」段落
+      const m = fullReading.match(/整體答案[：:]\s*\n?([\s\S]*?)(?:\n\n為什麼|$)/);
+      if (m?.[1]?.trim()) return m[1].trim().slice(0, 200);
     }
     return "目前無法產生總結，請稍後再試。";
   }, [cards, fullReading]);

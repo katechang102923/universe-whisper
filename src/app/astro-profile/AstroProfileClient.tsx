@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback, startTransition } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo, startTransition } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -81,6 +81,15 @@ export function AstroProfileClient() {
   const [isAdminTestUnlocked, setIsAdminTestUnlocked] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [pendingOrder, setPendingOrder] = useState<string | null>(null);
+  // LINE 登入回傳提示（loginRequired → LINE OAuth → 返回後提示再按一次）
+  const lineLoginNoticeRaw = useMemo<"success" | "failed" | null>(() => {
+    const val = searchParams.get("lineLogin");
+    if (val === "success") return "success";
+    if (val === "failed") return "failed";
+    return null;
+  }, [searchParams]);
+  const [lineLoginNoticeDismissed, setLineLoginNoticeDismissed] = useState(false);
+  const lineLoginNotice = lineLoginNoticeDismissed ? null : lineLoginNoticeRaw;
 
   // Form fields
   const [birthDate, setBirthDate] = useState("");
@@ -188,6 +197,7 @@ export function AstroProfileClient() {
         isAdminTestUnlocked={isAdminTestUnlocked}
         isAdmin={isAdmin}
         sessionId={sessionId}
+        lineLoginNotice={lineLoginNotice}
         onUnlocked={(sid) => {
           setSessionId(sid);
           setUnlockState("checking");
@@ -195,6 +205,7 @@ export function AstroProfileClient() {
         onPendingOrder={(order) => setPendingOrder(order)}
         onStoreResult={(sid) => saveResultToStorage(sid, calcResult)}
         onAdminTestUnlock={() => setIsAdminTestUnlocked(true)}
+        onLineLoginNoticeDismiss={() => setLineLoginNoticeDismissed(true)}
         onReset={() => {
           setStep("form");
           setCalcResult(null);
@@ -354,10 +365,12 @@ function ResultView({
   isAdminTestUnlocked,
   isAdmin,
   sessionId,
+  lineLoginNotice,
   onUnlocked,
   onPendingOrder,
   onStoreResult,
   onAdminTestUnlock,
+  onLineLoginNoticeDismiss,
   onReset,
 }: {
   result: CalcResult;
@@ -365,10 +378,12 @@ function ResultView({
   isAdminTestUnlocked: boolean;
   isAdmin: boolean;
   sessionId: string | null;
+  lineLoginNotice: "success" | "failed" | null;
   onUnlocked: (sid: string) => void;
   onPendingOrder: (order: string) => void;
   onStoreResult: (sid: string) => void;
   onAdminTestUnlock: () => void;
+  onLineLoginNoticeDismiss: () => void;
   onReset: () => void;
 }) {
   const { sunSign, moonSign, risingSign, venusSign, risingCalcNote } = result;
@@ -441,7 +456,12 @@ function ResultView({
 
         {/* ── Post-unlock action buttons ── */}
         {isUnlocked && (
-          <PostUnlockActions result={result} sunTexts={sunTexts} />
+          <PostUnlockActions
+            result={result}
+            sunTexts={sunTexts}
+            lineLoginNotice={lineLoginNotice}
+            onLineLoginNoticeDismiss={onLineLoginNoticeDismiss}
+          />
         )}
 
       </div>
@@ -755,9 +775,13 @@ function UnlockGate({
 function PostUnlockActions({
   result,
   sunTexts,
+  lineLoginNotice,
+  onLineLoginNoticeDismiss,
 }: {
   result: CalcResult;
   sunTexts: AstroProfileText;
+  lineLoginNotice: "success" | "failed" | null;
+  onLineLoginNoticeDismiss: () => void;
 }) {
   const { sunSign, moonSign, risingSign, venusSign } = result;
   const [dlLoading, setDlLoading] = useState(false);
@@ -788,7 +812,15 @@ function PostUnlockActions({
         }),
       });
       if (!res.ok) {
-        setDlError("圖片產生失敗，請稍後再試。");
+        const errText = await res.text().catch(() => "");
+        setDlError(`圖片產生失敗，請稍後再試。${errText ? `（${errText.slice(0, 60)}）` : ""}`);
+        return;
+      }
+      // 確認回傳的是 PNG；若非 PNG 則顯示錯誤而非下載損毀檔案
+      const contentType = res.headers.get("content-type") ?? "";
+      if (!contentType.includes("image/png")) {
+        const errText = await res.text().catch(() => "");
+        setDlError(`圖片格式錯誤（${contentType || "未知"}），請稍後再試。${errText ? ` ${errText.slice(0, 60)}` : ""}`);
         return;
       }
       const blob = await res.blob();
@@ -897,6 +929,23 @@ function PostUnlockActions({
             {dlLoading ? "產生中…" : "↓ 下載限動圖"}
           </button>
           {dlError && <p className="text-xs text-red-300">{dlError}</p>}
+
+          {/* LINE login return notice */}
+          {lineLoginNotice && (
+            <div className={`flex items-start justify-between gap-2 rounded-xl px-4 py-3 text-xs ${lineLoginNotice === "success" ? "border border-[#06C755]/30 bg-[#06C755]/10 text-[#06C755]" : "border border-red-400/30 bg-red-400/10 text-red-300"}`}>
+              <span>
+                {lineLoginNotice === "success"
+                  ? "✦ 已成功連結 LINE，請再按一次「傳送到 LINE 官方帳號」"
+                  : "LINE 登入失敗，請再試一次"}
+              </span>
+              <button
+                onClick={onLineLoginNoticeDismiss}
+                className="shrink-0 opacity-60 hover:opacity-100"
+              >
+                ✕
+              </button>
+            </div>
+          )}
 
           {/* Send to LINE */}
           <button

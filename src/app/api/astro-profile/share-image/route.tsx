@@ -96,30 +96,11 @@ export async function POST(request: NextRequest) {
           overflow: "hidden",
         }}
       >
-        {/* Decorative stars */}
-        {[
-          { top: 90, left: 110, size: 28, opacity: 0.55 },
-          { top: 140, right: 130, size: 20, opacity: 0.38 },
-          { bottom: 200, left: 90, size: 22, opacity: 0.45 },
-          { bottom: 260, right: 100, size: 18, opacity: 0.38 },
-        ].map((star, i) => (
-          <span
-            key={i}
-            style={{
-              position: "absolute",
-              top: star.top,
-              bottom: star.bottom,
-              left: star.left,
-              right: star.right,
-              fontSize: star.size,
-              color: "#f7d987",
-              opacity: star.opacity,
-              display: "flex",
-            }}
-          >
-            ✦
-          </span>
-        ))}
+        {/* Decorative stars — explicit spans to avoid undefined CSS values in Satori */}
+        <span style={{ position: "absolute", top: 90, left: 110, fontSize: 28, color: "#f7d987", opacity: 0.55, display: "flex" }}>✦</span>
+        <span style={{ position: "absolute", top: 140, right: 130, fontSize: 20, color: "#f7d987", opacity: 0.38, display: "flex" }}>✦</span>
+        <span style={{ position: "absolute", bottom: 200, left: 90, fontSize: 22, color: "#f7d987", opacity: 0.45, display: "flex" }}>✦</span>
+        <span style={{ position: "absolute", bottom: 260, right: 100, fontSize: 18, color: "#f7d987", opacity: 0.38, display: "flex" }}>✦</span>
 
         {/* Brand header */}
         <div

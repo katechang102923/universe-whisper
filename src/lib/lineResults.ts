@@ -498,7 +498,7 @@ export function validateLineContent(
 
 function buildLineThreeCardMessage(
   result: LineResultData,
-  _questionText: string,
+  questionText: string,
   resultUrl: string,
   fullText: string,
 ): string {
@@ -506,10 +506,13 @@ function buildLineThreeCardMessage(
   const DEFAULT_POSITIONS = ["過去", "現在", "未來"];
 
   const parts: string[] = [
-    "宇宙聽到了你的聲音，這是為你抽出的牌組。",
+    "宇宙聽到了你的聲音，這是為你抽出的三張牌。",
   ];
 
-  // ── 每張牌：位置｜牌名，然後三段內容直接並排（不顯示欄位標題）──────────────
+  // ── 問題 ─────────────────────────────────────────────────────────────────────
+  parts.push("", `你的問題：${questionText}`);
+
+  // ── 每張牌：第N張｜位置｜牌名（正/逆位），顯示牌面重點與對問題代表各一句 ─────
   result.cards.forEach((card, i) => {
     const pos = card.position ?? DEFAULT_POSITIONS[i] ?? `第${i + 1}張`;
     const name = card.nameZh ?? card.name ?? "塔羅牌";
@@ -518,17 +521,26 @@ function buildLineThreeCardMessage(
     const cardSectionRaw = extractCardSectionText(fullText, i);
     const { cardPoint, questionMeaning, cardAdvice } = parseCardFields(cardSectionRaw);
 
-    parts.push("", `${pos}｜${name}${ori}`);
-    const keywordText = cleanLineText(card.keywords || extractKeywordsFromSection(cardSectionRaw));
-    const oneLine = truncateLineText(
-      takeNSentences(cardPoint || questionMeaning || cardAdvice || keywordText || "這張牌提醒你先保留本次牌面的核心訊息。", 1),
-      90,
-    );
-    if (keywordText) parts.push(`關鍵字：${keywordText}`);
-    parts.push(`一句話：${oneLine}`);
+    parts.push("", `第${i + 1}張｜${pos}｜${name}${ori}`);
+
+    if (cardPoint) {
+      parts.push(`牌面重點：${truncateLineText(takeNSentences(cardPoint, 1), 90)}`);
+    }
+    if (questionMeaning) {
+      parts.push(`對你的問題：${truncateLineText(takeNSentences(questionMeaning, 1), 90)}`);
+    }
+    // 若以上兩欄皆空，顯示 fallback 一句話（來自 cardAdvice 或 keywords）
+    if (!cardPoint && !questionMeaning) {
+      const keywordText = cleanLineText(card.keywords || extractKeywordsFromSection(cardSectionRaw));
+      const fallback = truncateLineText(
+        takeNSentences(cardAdvice || keywordText || "這張牌的提示已收在完整解讀裡。", 1),
+        90,
+      );
+      parts.push(`一句話：${fallback}`);
+    }
   });
 
-  // ── 牌陣總結（精簡：整體答案 2 句、建議 1 句）────────────────────────────
+  // ── 牌陣總結（整體答案精簡版：2 句）──────────────────────────────────────────
   const { overallAnswer, actionAdvice, summaryRaw } = extractSpreadSummaryFields(fullText);
   const summaryText =
     truncateLineText(takeNSentences(overallAnswer || summaryRaw || actionAdvice || fullText, 2), 220) ||
@@ -536,7 +548,7 @@ function buildLineThreeCardMessage(
   parts.push("", D, "", "✨ 牌陣總結");
   parts.push("", summaryText);
 
-  // ── 心靈收束（1 句）──────────────────────────────────────────────────────────
+  // ── 心靈收束（精簡版：1 句）──────────────────────────────────────────────────
   const spiritualClosing = extractSpiritualClosing(fullText);
   const closingText =
     truncateLineText(takeNSentences(spiritualClosing || actionAdvice || overallAnswer || summaryRaw, 1), 180) ||
@@ -544,7 +556,7 @@ function buildLineThreeCardMessage(
   parts.push("", D, "", "🧘 心靈收束");
   parts.push("", closingText);
 
-  parts.push("", D, `📚 收藏版完整排版：\n${resultUrl}`);
+  parts.push("", D, `📚 查看完整解讀：\n${resultUrl}`);
 
   return cleanLineText(parts.join("\n"));
 }
