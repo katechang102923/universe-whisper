@@ -14,6 +14,7 @@ import { BIRTH_CITIES } from "@/lib/birthCities";
 import type { BirthCity } from "@/lib/birthCities";
 import { calcVenusSign, calcRisingSign, calcMoonSign } from "@/lib/astroCalc";
 import { useAuth } from "@/contexts/AuthContext";
+import { generateAstroStoryImage } from "@/lib/astroProfileStoryImage";
 
 // ── Birth time options ─────────────────────────────────────────────────────────
 
@@ -802,39 +803,24 @@ function PostUnlockActions({
     setDlLoading(true);
     setDlError("");
     try {
-      const res = await fetch("/api/astro-profile/share-image", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sunSign,
-          moonSign: moonSign ?? null,
-          risingSign: risingSign ?? null,
-          venusSign: venusSign ?? null,
-          shortSummary: sunTexts.shortSummary,
-          siteUrl,
-        }),
+      const blob = await generateAstroStoryImage({
+        sunSign,
+        moonSign: moonSign ?? null,
+        risingSign: risingSign ?? null,
+        venusSign: venusSign ?? null,
+        shortSummary: sunTexts.shortSummary,
+        siteUrl: typeof window !== "undefined" ? window.location.hostname : "universe-whisper.vercel.app",
       });
-      if (!res.ok) {
-        const errText = await res.text().catch(() => "");
-        setDlError(`圖片產生失敗，請稍後再試。${errText ? `（${errText.slice(0, 60)}）` : ""}`);
-        return;
-      }
-      // 確認回傳的是 PNG；若非 PNG 則顯示錯誤而非下載損毀檔案
-      const contentType = res.headers.get("content-type") ?? "";
-      if (!contentType.includes("image/png")) {
-        const errText = await res.text().catch(() => "");
-        setDlError(`圖片格式錯誤（${contentType || "未知"}），請稍後再試。${errText ? ` ${errText.slice(0, 60)}` : ""}`);
-        return;
-      }
-      const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = `三重星座_${sunSign}.png`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 10000);
-    } catch {
-      setDlError("下載失敗，請稍後再試。");
+    } catch (err) {
+      setDlError(err instanceof Error ? err.message : "下載失敗，請稍後再試。");
     } finally {
       setDlLoading(false);
     }
