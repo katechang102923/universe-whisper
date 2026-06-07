@@ -466,6 +466,34 @@ function parseOverallSummary(text: string): OverallSummaryParsed {
 }
 
 /**
+ * 從 overallSummary 只擷取「整體答案」段落（限動圖用）。
+ * - 找到「整體答案：」/「整體答案:」後的內容
+ * - 遇到後續標題（為什麼會這樣／接下來的方向／心靈收束／牌面提醒／分隔線）即停止
+ * - 移除標題文字、trim 多餘空白與換行
+ * 擷取不到時回傳空字串，交由呼叫端 fallback。
+ */
+function extractVerdictForStory(overallSummary: string): string {
+  if (!overallSummary?.trim()) return "";
+  const normalized = overallSummary.replace(/\r/g, "");
+
+  // 「整體答案」或舊標籤「核心判斷」之後的內容
+  const startM = normalized.match(/(?:整體答案|核心判斷)[：:]\s*/);
+  // 即使找不到「整體答案」標題，也從整段開頭開始嘗試切到第一個停止標題
+  const startIdx = startM && startM.index != null ? startM.index + startM[0].length : 0;
+  const tail = normalized.slice(startIdx);
+
+  // 遇到任一後續標題就停止（不需依賴換行）
+  const stopRe = /(?:為什麼會這樣|接下來的方向|心靈收束|牌面提醒)[：:]|━{3,}|─{3,}/;
+  const stopM = tail.match(stopRe);
+  const verdict = (stopM && stopM.index != null ? tail.slice(0, stopM.index) : tail).trim();
+
+  // 若開頭沒有「整體答案」標題且整段沒有任何停止標題，視為擷取失敗
+  if (!startM && !stopM) return "";
+
+  return verdict.replace(/\n{2,}/g, "\n").trim();
+}
+
+/**
  * 將 actionSteps 文字分組，每個 "Day X～Y｜" 開頭算一組
  */
 function groupActionSteps(text: string): Array<{ dayLabel?: string; actionLabel?: string; content: string }> {
@@ -2130,14 +2158,22 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
     });
   }, [cards, fullReading]);
 
-  // ── 三張牌限動圖用：完整牌陣總結（overallSummary）─────────────────────────
-  // 來源：parseThreeCardSections(fullReading).overallSummary 完整文字
-  // fallback：freeSummary.message → 固定提示
+  // ── 三張牌限動圖用：只取牌陣總結中的「整體答案」段落 ─────────────────────
+  // 來源：parseThreeCardSections(fullReading).overallSummary → 擷取「整體答案」
+  // 不含「為什麼會這樣／接下來的方向」，也不含標題文字
+  // fallback：overallSummary 前 2 句 → freeSummary.message → 固定提示
   const threeCardOverallAnswer = useMemo(() => {
     if (fullReading && cards.length >= 3) {
-      const s = parseThreeCardSections(fullReading);
-      const summary = s.overallSummary.trim();
-      if (summary) return summary;
+      const summary = parseThreeCardSections(fullReading).overallSummary.trim();
+      if (summary) {
+        const verdict = extractVerdictForStory(summary);
+        if (verdict) return verdict;
+        // 擷取不到「整體答案」段落 → 退回前 2 句
+        const sentMs = [...summary.replace(/\n+/g, " ").matchAll(/[\s\S]*?[。！？]/g)];
+        const twoSents = sentMs.slice(0, 2).map((m) => m[0].trim()).join("").trim();
+        if (twoSents) return twoSents;
+        if (summary) return summary;
+      }
     }
     const msg = freeSummary.message.trim();
     return msg || "目前無法產生總結，請稍後再試。";
