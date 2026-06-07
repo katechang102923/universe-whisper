@@ -1130,6 +1130,63 @@ async function generateStoryImage(
 
 // ── 三張牌限動分享圖（9:16，1080x1920）─────────────────────────────────────────
 
+/**
+ * 自動換行 + 自動縮放，將 text 完整填入 Canvas 矩形區域。
+ * 從 maxFontSize 開始，逐步縮小直到所有行都能放入 boxH。
+ */
+function fitTextToBox(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  boxX: number,
+  boxY: number,
+  boxW: number,
+  boxH: number,
+  options: {
+    fontFamily: string;
+    maxFontSize?: number;
+    minFontSize?: number;
+    color?: string;
+    fontWeight?: string;
+  },
+): void {
+  const {
+    fontFamily,
+    maxFontSize = 34,
+    minFontSize = 20,
+    color = "rgba(255,247,230,0.95)",
+    fontWeight = "500",
+  } = options;
+
+  const clean = text.replace(/\*\*/g, "").replace(/\s+/g, " ").trim();
+  if (!clean) return;
+
+  let fontSize = maxFontSize;
+  let lines: string[] = [];
+
+  while (fontSize >= minFontSize) {
+    ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+    lines = wrapCanvasText(ctx, clean, boxW);
+    const lineH = Math.round(fontSize * 1.65);
+    const totalH = lines.length * lineH;
+    if (totalH <= boxH) break;
+    fontSize -= 1;
+  }
+
+  const lineH = Math.round(fontSize * 1.65);
+  const totalH = lines.length * lineH;
+  const startY = boxY + Math.round((boxH - totalH) / 2) + Math.round(fontSize * 0.85);
+
+  ctx.save();
+  ctx.font      = `${fontWeight} ${fontSize}px ${fontFamily}`;
+  ctx.fillStyle = color;
+  ctx.textAlign = "center";
+  const cx = boxX + Math.round(boxW / 2);
+  lines.forEach((line, i) => {
+    ctx.fillText(line, cx, startY + i * lineH);
+  });
+  ctx.restore();
+}
+
 async function generateThreeCardStoryImage(
   questionText: string,
   spreadCards: TarotCardFaceData[],
@@ -1332,31 +1389,20 @@ async function generateThreeCardStoryImage(
   ctx.fillStyle = "rgba(216,189,112,0.55)";
   ctx.fillText("✦", W / 2, PANEL_Y + 34);
 
-  // 中間解讀文字：固定寬度、最多 4 行、超出加省略號，避免壓到底部元素
-  ctx.font      = "500 34px " + ff;
-  ctx.fillStyle = MOON;
-  const quoteMaxW = PANEL_W - 132;
-  const quoteAreaX = PANEL_X + 58;
-  const quoteAreaY = PANEL_Y + 74;
-  const quoteAreaW = PANEL_W - 116;
-  const quoteAreaH = 218;
-  const safeAnswer = overallAnswer
-    .replace(/\*\*/g, "")
-    .replace(/\s+/g, " ")
-    .trim() || "這三張牌正在提醒你：先把眼前最重要的事情整理清楚，再慢慢走向下一步。";
-  const quoteLines = wrapCanvasText(ctx, safeAnswer, quoteMaxW, { maxLines: 4, ellipsis: true });
-  const LINE_H_Q = 52;
-  const fontSizeQ = 34;
-  const totalQH = (quoteLines.length - 1) * LINE_H_Q + fontSizeQ;
-  const quoteStartY = quoteAreaY + Math.round((quoteAreaH - totalQH) / 2) + fontSizeQ;
+  // 中間解讀文字：自動換行 + 自動縮放，完整顯示 overallSummary
+  const quoteAreaX = PANEL_X + 48;
+  const quoteAreaY = PANEL_Y + 52;
+  const quoteAreaW = PANEL_W - 96;
+  const quoteAreaH = PANEL_H - 72;
+  const safeAnswer = overallAnswer.trim() || "這三張牌正在提醒你：先把眼前最重要的事情整理清楚，再慢慢走向下一步。";
 
-  ctx.save();
-  canvasRoundRect(ctx, quoteAreaX, quoteAreaY, quoteAreaW, quoteAreaH, 18);
-  ctx.clip();
-  quoteLines.forEach((line, i) => {
-    ctx.fillText(line, W / 2, quoteStartY + i * LINE_H_Q);
+  fitTextToBox(ctx, safeAnswer, quoteAreaX, quoteAreaY, quoteAreaW, quoteAreaH, {
+    fontFamily: ff,
+    maxFontSize: 34,
+    minFontSize: 20,
+    color: MOON,
+    fontWeight: "500",
   });
-  ctx.restore();
 
   // ── 關鍵字 Chip ───────────────────────────────────────────────────────────
   const CHIPS_Y = PANEL_Y + PANEL_H + 38; // ~1210
@@ -2084,43 +2130,17 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
     });
   }, [cards, fullReading]);
 
-  // ── 三張牌限動圖用：整體答案前 2 句（目前狀態 + 核心提醒）─────────────────────
-  // 來源優先：整體答案（verdict）→ overallSummary raw → freeSummary.message
-  // 策略：從同一段落取前 2 句，確保內容連貫且具體；
-  //       若只有 1 句才嘗試補上「接下來的方向」第 1 句
+  // ── 三張牌限動圖用：完整牌陣總結（overallSummary）─────────────────────────
+  // 來源：parseThreeCardSections(fullReading).overallSummary 完整文字
+  // fallback：freeSummary.message → 固定提示
   const threeCardOverallAnswer = useMemo(() => {
-    if (!fullReading || cards.length < 3) {
-      const msg = freeSummary.message || "";
-      const sentMs = [...msg.matchAll(/[\s\S]*?[。！？]/g)];
-      const twoSents = sentMs.slice(0, 2).map((m) => m[0].trim()).join("\n").trim();
-      return (twoSents || msg).slice(0, 130);
+    if (fullReading && cards.length >= 3) {
+      const s = parseThreeCardSections(fullReading);
+      const summary = s.overallSummary.trim();
+      if (summary) return summary;
     }
-    const s = parseThreeCardSections(fullReading);
-    const parsed = parseOverallSummary(s.overallSummary);
-
-    // 優先取 整體答案 子段落，fallback 至整個 overallSummary raw
-    const verdictRaw = (parsed.verdict || parsed.raw || freeSummary.message || "")
-      .replace(/\n+/g, " ").trim();
-
-    // 取前 2 句
-    const sentMs = [...verdictRaw.matchAll(/[\s\S]*?[。！？]/g)];
-    const sentences = sentMs.map((m) => m[0].trim()).filter(Boolean);
-
-    let result: string;
-    if (sentences.length >= 2) {
-      const combined = `${sentences[0]}\n${sentences[1]}`;
-      result = combined.length <= 130 ? combined : sentences[0];
-    } else if (sentences.length === 1) {
-      // 只有 1 句：補「接下來的方向」第 1 句
-      const directionRaw = (parsed.direction || "").replace(/\n+/g, " ").trim();
-      const dm = directionRaw.match(/^[\s\S]*?[。！？]/);
-      const s2 = dm ? dm[0].trim() : "";
-      result = s2 ? `${sentences[0]}\n${s2}` : sentences[0];
-    } else {
-      result = verdictRaw.slice(0, 80);
-    }
-
-    return result.length > 130 ? `${result.slice(0, 128)}…` : result;
+    const msg = freeSummary.message.trim();
+    return msg || "目前無法產生總結，請稍後再試。";
   }, [cards, fullReading, freeSummary]);
 
   // Cleanup timers
