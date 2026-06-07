@@ -668,21 +668,25 @@ function drawUnlockIncludesCard(
   ctx: CanvasRenderingContext2D,
   startY: number,
 ): number {
-  const items = [
-    "人格核心",
-    "情感模式",
-    "外在人設",
-    "三重能量分析",
-    "愛情需求",
-    "感情吸引力",
-    "工作與金錢模式",
-    "人際關係提醒",
-    "宇宙偷偷話",
+  const sections = [
+    {
+      title: "工作與金錢模式",
+      body: "看見你適合怎麼累積安全感、怎麼做選擇，以及金錢上容易卡住的地方。",
+    },
+    {
+      title: "人際關係提醒",
+      body: "理解你在人際裡容易給人的第一印象，以及最需要留意的溝通盲點。",
+    },
+    {
+      title: "專屬宇宙提醒",
+      body: "整理太陽、月亮、上升三種能量，給你一段最貼近現在狀態的提醒。",
+    },
   ];
-  const cardH = 244;
+  const cardH = 312;
   const padX = 38;
-  const colGap = 28;
-  const colW = (INNER_W - padX * 2 - colGap) / 2;
+  const titleY = startY + 50;
+  const firstSectionY = startY + 96;
+  const sectionGap = 72;
 
   ctx.save();
   roundRectPath(ctx, MARGIN_X, startY, INNER_W, cardH, 32);
@@ -696,19 +700,26 @@ function drawUnlockIncludesCard(
   ctx.textAlign = "left";
   ctx.font = "bold 30px sans-serif";
   ctx.fillStyle = "#f7d987";
-  ctx.fillText("解鎖完整解析包含", MARGIN_X + padX, startY + 50);
+  ctx.fillText("解鎖後會看到", MARGIN_X + padX, titleY);
 
-  ctx.font = "400 25px sans-serif";
-  items.forEach((item, index) => {
-    const col = index < 5 ? 0 : 1;
-    const row = col === 0 ? index : index - 5;
-    const x = MARGIN_X + padX + col * (colW + colGap);
-    const y = startY + 94 + row * 30;
+  sections.forEach((section, index) => {
+    const y = firstSectionY + index * sectionGap;
 
-    ctx.fillStyle = "rgba(247,217,135,0.92)";
-    ctx.fillText("✓", x, y);
-    ctx.fillStyle = "rgba(255,247,230,0.90)";
-    ctx.fillText(item, x + 30, y);
+    ctx.font = "bold 25px sans-serif";
+    ctx.fillStyle = "rgba(247,217,135,0.94)";
+    ctx.fillText(section.title, MARGIN_X + padX, y);
+
+    ctx.font = "400 22px sans-serif";
+    drawWrappedSummaryLines(
+      ctx,
+      [section.body],
+      MARGIN_X + padX,
+      y + 34,
+      INNER_W - padX * 2,
+      30,
+      2,
+      "rgba(255,247,230,0.90)",
+    );
   });
 
   return startY + cardH;
@@ -782,7 +793,7 @@ function render(
 
   // 底部保留給「解鎖包含」區塊與 footer
   const FOOTER_RESERVED = 148;
-  const UNLOCK_CARD_H = 244;
+  const UNLOCK_CARD_H = 312;
   const contentAreaBottom = H - FOOTER_RESERVED;
   const GAP = 24;
 
