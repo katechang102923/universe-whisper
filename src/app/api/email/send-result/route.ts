@@ -17,6 +17,343 @@ function validateEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+type EmailResultRecord = LineResultData & Record<string, unknown>;
+
+type ResolvedEmailContent = {
+  text: string;
+  source: string;
+  usedFallback: boolean;
+  missingFields: string[];
+};
+
+const EMAIL_TEXT_FIELD_ORDER = [
+  "fullText",
+  "fullReading",
+  "completeReading",
+  "resultText",
+  "content",
+  "reading",
+  "fullResult",
+  "resultJson",
+] as const;
+
+const NESTED_TEXT_KEYS = [
+  "fullText",
+  "fullReading",
+  "completeReading",
+  "resultText",
+  "content",
+  "reading",
+  "fullResult",
+  "message",
+  "text",
+  "summary",
+  "overallAnswer",
+  "whyThisHappens",
+  "actionAdvice",
+  "spiritualClosing",
+  "cardPoint",
+  "questionMeaning",
+  "cardAdvice",
+  "detail",
+  "details",
+  "description",
+  "fullDescription",
+  "meaning",
+  "meanings",
+  "cards",
+] as const;
+
+const CARD_DETAIL_KEYS = [
+  "detail",
+  "details",
+  "fullDescription",
+  "description",
+  "meaning",
+  "message",
+  "content",
+  "reading",
+  "resultText",
+  "cardPoint",
+  "questionMeaning",
+  "cardAdvice",
+] as const;
+
+function cleanEmailText(value: string): string {
+  const cleaned = normalizePlainText(value.replace(/\*\*/g, ""))
+    .replace(/<[^>]+>/g, "")
+    .replace(/\[object Object\]/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    .trim();
+
+  if (cleaned === "undefined" || cleaned === "null") return "";
+  return cleaned;
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseMaybeJson(value: string): unknown | null {
+  const trimmed = value.trim();
+  if (!trimmed || !/^[{[]/.test(trimmed)) return null;
+
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function uniqueTexts(texts: string[]): string[] {
+  const seen = new Set<string>();
+  return texts.filter((text) => {
+    const normalized = text.trim();
+    if (!normalized || seen.has(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  });
+}
+
+function collectReadableText(value: unknown, depth = 0): string[] {
+  if (depth > 4 || value == null) return [];
+
+  if (typeof value === "string") {
+    const parsed = parseMaybeJson(value);
+    if (parsed !== null) return collectReadableText(parsed, depth + 1);
+
+    const cleaned = cleanEmailText(value);
+    return cleaned ? [cleaned] : [];
+  }
+
+  if (Array.isArray(value)) {
+    return uniqueTexts(value.flatMap((item) => collectReadableText(item, depth + 1)));
+  }
+
+  if (!isRecord(value)) return [];
+
+  const preferredTexts = NESTED_TEXT_KEYS.flatMap((key) => (
+    key in value ? collectReadableText(value[key], depth + 1) : []
+  ));
+  if (preferredTexts.length > 0) return uniqueTexts(preferredTexts);
+
+  const fallbackTexts = Object.entries(value)
+    .filter(([key]) => !/^(id|resultId|url|resultUrl|createdAt|updatedAt|pushedAt)$/i.test(key))
+    .flatMap(([, entry]) => (
+      typeof entry === "string" && entry.trim().length >= 40
+        ? collectReadableText(entry, depth + 1)
+        : []
+    ));
+
+  return uniqueTexts(fallbackTexts);
+}
+
+function readStringField(record: EmailResultRecord, key: string): string {
+  return collectReadableText(record[key]).join("\n\n").trim();
+}
+
+function getCardKeywords(card: Record<string, unknown>): string {
+  const keywords = card.keywords;
+  if (Array.isArray(keywords)) {
+    return keywords
+      .filter((keyword): keyword is string => typeof keyword === "string" && keyword.trim().length > 0)
+      .map((keyword) => keyword.trim())
+      .join("、");
+  }
+  return typeof keywords === "string" ? cleanEmailText(keywords) : "";
+}
+
+function getCardTitle(card: Record<string, unknown>, index: number, defaultPositions: string[]) {
+  const pos =
+    typeof card.position === "string" && card.position.trim()
+      ? card.position.trim()
+      : defaultPositions[index] ?? `第${index + 1}張`;
+  const name =
+    (typeof card.nameZh === "string" && card.nameZh.trim()) ||
+    (typeof card.name === "string" && card.name.trim()) ||
+    "塔羅牌";
+  const orientation = typeof card.orientationLabel === "string" && card.orientationLabel.trim()
+    ? `（${card.orientationLabel.trim()}）`
+    : "";
+
+  return { pos, name, orientation, title: `${pos}｜${name}${orientation}` };
+}
+
+function getCardDetail(card: Record<string, unknown>): string {
+  const detail = CARD_DETAIL_KEYS
+    .flatMap((key) => collectReadableText(card[key]))
+    .find((text) => text.trim().length > 0);
+  if (detail) return detail;
+
+  const keywords = getCardKeywords(card);
+  if (keywords) return `這張牌的關鍵字是：${keywords}。請把它當成本次解讀中最需要先留意的訊息。`;
+
+  return "這張牌提醒你先回到問題本身，觀察當下最明顯的感受、阻力與下一步。";
+}
+
+function buildFallbackFullText(
+  result: LineResultData,
+  resultUrl: string,
+  partialText: string,
+): string {
+  const record = result as EmailResultRecord;
+  const cards = Array.isArray(result.cards) ? result.cards : [];
+  const question = cleanEmailText(result.question || "") || "未填寫問題";
+  const shortText = readStringField(record, "shortText");
+  const summarySource =
+    cleanEmailText(partialText) ||
+    shortText ||
+    "本次完整解讀內容未完整同步，以下先整理本次抽牌紀錄、可用摘要與線上結果連結，方便你保存與回看。";
+
+  if (!cards.length && !summarySource) return "";
+
+  const defaultPositions = cards.length === 3 ? ["過去", "現在", "未來"] : [];
+  const normalizedCards = cards.map((card) => (
+    isRecord(card) ? card : {}
+  ));
+  const cardLines = normalizedCards.map((card, index) => {
+    const { title } = getCardTitle(card, index, defaultPositions);
+    return `${index + 1}. ${title}`;
+  });
+
+  const parts: string[] = [
+    "你的問題",
+    question,
+    "",
+    "你抽到的牌",
+    cardLines.join("\n") || "本次抽牌資料未完整同步。",
+    "",
+  ];
+
+  if (normalizedCards.length === 3) {
+    normalizedCards.forEach((card, index) => {
+      const { title } = getCardTitle(card, index, defaultPositions);
+      const detail = getCardDetail(card);
+      parts.push(
+        `第${index + 1}張牌｜${title}`,
+        `牌面重點：\n${detail}`,
+        `對你的問題代表：\n${detail}`,
+        `這張牌提醒你：\n${detail}`,
+        "",
+      );
+    });
+
+    parts.push(
+      "牌陣總結",
+      `整體答案：\n${summarySource}`,
+      `接下來的方向：\n你可以回到線上結果頁再次查看本次解讀，並把這段訊息當作整理想法的參考：${resultUrl}`,
+    );
+  } else {
+    const card = normalizedCards[0] ?? {};
+    const detail = getCardDetail(card);
+    parts.push(
+      "這張牌正在說什麼",
+      detail,
+      "",
+      "針對你的問題",
+      summarySource,
+      "",
+      "今天可以怎麼做",
+      `先保留這次抽牌帶來的提醒，再回到線上結果頁確認完整內容：${resultUrl}`,
+      "",
+      "解讀總結",
+      summarySource,
+    );
+  }
+
+  parts.push(
+    "",
+    "心靈收束",
+    "這封信先為你保存目前能讀取到的結果內容；若你需要更完整的協助，也可以回到網站結果頁再次確認。",
+    "",
+    "一句專屬祝福",
+    "願這次訊息陪你把心裡的問題放慢一點看清楚。",
+  );
+
+  return cleanEmailText(parts.join("\n"));
+}
+
+function hasEmailFormatterStructure(result: LineResultData, text: string): boolean {
+  if (result.cards.length === 3) {
+    const { overallAnswer, summaryRaw } = extractSpreadSummaryFields(text);
+    return !!extractCardSectionText(text, 0) && !!(overallAnswer || summaryRaw);
+  }
+
+  if (result.cards.length === 1) {
+    const { cardPoint, overallAnswer } = extractSingleCardFields(text);
+    return !!(cardPoint || overallAnswer);
+  }
+
+  return text.length >= 100;
+}
+
+function resolveEmailContent(
+  result: LineResultData,
+  resultUrl: string,
+): ResolvedEmailContent {
+  const record = result as EmailResultRecord;
+  const missingFields: string[] = [];
+  const partialCandidates: Array<{ source: string; text: string }> = [];
+
+  for (const field of EMAIL_TEXT_FIELD_ORDER) {
+    const text = readStringField(record, field);
+    if (text.length >= 100) {
+      if (hasEmailFormatterStructure(result, text)) {
+        return {
+          text,
+          source: field,
+          usedFallback: field !== "fullText",
+          missingFields,
+        };
+      }
+
+      const structuredText = buildFallbackFullText(result, resultUrl, text);
+      return {
+        text: structuredText || text,
+        source: `${field}+cardsFallback`,
+        usedFallback: true,
+        missingFields,
+      };
+    }
+
+    if (text) {
+      partialCandidates.push({ source: field, text });
+    } else {
+      missingFields.push(field);
+    }
+  }
+
+  const partialText = partialCandidates.map((candidate) => candidate.text).join("\n\n");
+  const fallbackText = buildFallbackFullText(result, resultUrl, partialText);
+  if (fallbackText.length >= 100) {
+    return {
+      text: fallbackText,
+      source: partialCandidates.length > 0
+        ? `${partialCandidates.map((candidate) => candidate.source).join("+")}+cardsFallback`
+        : "shortText+cardsFallback",
+      usedFallback: true,
+      missingFields,
+    };
+  }
+
+  return {
+    text: fallbackText,
+    source: "none",
+    usedFallback: true,
+    missingFields: [...missingFields, "shortText", "cards"],
+  };
+}
+
 // ── Email 專屬內容驗證（以 fullText 完整性為主要判斷）─────────────────────────
 // 不依賴 structured overallAnswer 是否存在；只要 fullText 夠長且有牌段落即可。
 // LINE 驗證（validateLineContent）維持原樣，此函式僅用於 email 流程。
@@ -121,20 +458,20 @@ function card(content: string, accent = false): string {
 }
 
 function label(text: string): string {
-  return `<p style="font-size:11px;letter-spacing:0.22em;color:${S.purple};margin:0 0 12px;text-transform:uppercase;">${text}</p>`;
+  return `<p style="font-size:11px;letter-spacing:0.22em;color:${S.purple};margin:0 0 12px;text-transform:uppercase;">${escapeHtml(text)}</p>`;
 }
 
 function h3(text: string): string {
-  return `<p style="font-size:14px;font-weight:600;color:${S.purple};margin:0 0 10px;">${text}</p>`;
+  return `<p style="font-size:14px;font-weight:600;color:${S.purple};margin:0 0 10px;">${escapeHtml(text)}</p>`;
 }
 
 function para(text: string, mt = "0"): string {
-  const safe = text.replace(/\n/g, "<br/>");
+  const safe = escapeHtml(text).replace(/\n/g, "<br/>");
   return `<p style="font-size:15px;line-height:1.85;color:${S.text};margin:${mt} 0 0;">${safe}</p>`;
 }
 
 function subPara(text: string): string {
-  const safe = text.replace(/\n/g, "<br/>");
+  const safe = escapeHtml(text).replace(/\n/g, "<br/>");
   return `<p style="font-size:14px;line-height:1.8;color:${S.textDim};margin:10px 0 0;">${safe}</p>`;
 }
 
@@ -460,8 +797,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
     }
 
-    const result   = snap.data() as LineResultData;
-    const fullText = normalizePlainText((result.fullText || "").replace(/\*\*/g, ""));
+    const result = snap.data() as LineResultData;
 
     // ── 只允許已解鎖的結果寄送 ─────────────────────────────────────────────
     // unlocked: 付費/兌換碼解鎖；unlockStatus:"line_verified": LINE 解鎖成功
@@ -492,11 +828,37 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const siteUrl = (
+      process.env.NEXT_PUBLIC_SITE_URL || "https://universe-whisper.vercel.app"
+    ).replace(/\/$/, "");
+
+    const resultUrl = result.resultUrl || `${siteUrl}/share/${resultId}`;
+    const dateStr   = new Date().toLocaleDateString("zh-TW", {
+      year: "numeric", month: "long", day: "numeric",
+    });
+
+    const resolvedContent = resolveEmailContent(result, resultUrl);
+    const fullText = resolvedContent.text;
+
     // ── Email 內容完整性驗證（以 fullText 為主要判斷；question 為選填不阻擋）────
     const validation = validateEmailContent(result, fullText, resultId);
     if (!validation.valid) {
+      console.error(`[email/send-result] unable to resolve email content resultId=${resultId}`, {
+        resultId,
+        contentSource: resolvedContent.source,
+        contentFallbackUsed: resolvedContent.usedFallback,
+        missingFields: resolvedContent.missingFields,
+        fullTextLength: fullText.length,
+        cardCount: result.cards?.length ?? 0,
+        hasShortText: !!result.shortText?.trim(),
+      });
       return NextResponse.json(
-        { ok: false, error: "CONTENT_INCOMPLETE", detail: validation.errors },
+        {
+          ok: false,
+          error: "CONTENT_INCOMPLETE",
+          detail: validation.errors,
+          missingFields: resolvedContent.missingFields,
+        },
         { status: 422 },
       );
     }
@@ -507,17 +869,10 @@ export async function POST(req: NextRequest) {
       cardCount: result.cards.length,
       questionFallbackUsed,
       fullTextLength: fullText.length,
+      contentSource: resolvedContent.source,
+      contentFallbackUsed: resolvedContent.usedFallback,
       unlocked: result.unlocked ?? false,
       unlockStatus: result.unlockStatus ?? "",
-    });
-
-    const siteUrl = (
-      process.env.NEXT_PUBLIC_SITE_URL || "https://universe-whisper.vercel.app"
-    ).replace(/\/$/, "");
-
-    const resultUrl = result.resultUrl || `${siteUrl}/share/${resultId}`;
-    const dateStr   = new Date().toLocaleDateString("zh-TW", {
-      year: "numeric", month: "long", day: "numeric",
     });
 
     const html =
