@@ -40,6 +40,34 @@ interface CalcResult {
 
 const LS_PREFIX = "astroProfile_";
 const LS_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const MIN_BIRTH_YEAR = 1920;
+const CURRENT_YEAR = new Date().getFullYear();
+const BIRTH_YEARS = Array.from(
+  { length: CURRENT_YEAR - MIN_BIRTH_YEAR + 1 },
+  (_, i) => String(CURRENT_YEAR - i),
+);
+const BIRTH_MONTHS = Array.from({ length: 12 }, (_, i) => String(i + 1));
+
+function padDatePart(value: string): string {
+  return value.padStart(2, "0");
+}
+
+function daysInMonth(year: string, month: string): number {
+  const y = Number(year);
+  const m = Number(month);
+  if (!y || !m) return 31;
+  return new Date(y, m, 0).getDate();
+}
+
+function parseBirthDate(value: string): { year: string; month: string; day: string } {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return { year: "", month: "", day: "" };
+  return {
+    year: match[1],
+    month: String(Number(match[2])),
+    day: String(Number(match[3])),
+  };
+}
 
 function saveResultToStorage(sessionId: string, result: CalcResult) {
   try {
@@ -245,13 +273,7 @@ export function AstroProfileClient() {
             出生日期
             <span className="ml-1.5 text-xs text-aurora/70">（必填）</span>
           </label>
-          <input
-            type="date"
-            value={birthDate}
-            onChange={(e) => setBirthDate(e.target.value)}
-            required
-            className="w-full rounded-xl border border-white/14 bg-[#0a1028] px-4 py-3 text-moon outline-none transition focus:border-lavender/60 focus:ring-2 focus:ring-lavender/20"
-          />
+          <BirthDateSelect value={birthDate} onChange={setBirthDate} />
           {birthDate && sunSign && (
             <p className="mt-2 text-xs text-lavender/70">
               {ZODIAC_SYMBOLS[sunSign]}&nbsp;太陽星座：{sunSign}
@@ -1192,6 +1214,112 @@ function ResultCard({
 }
 
 // ── Custom dropdown (CosmicSelect) ────────────────────────────────────────────
+
+function BirthDateSelect({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const parsed = useMemo(() => parseBirthDate(value), [value]);
+  const [year, setYear] = useState(parsed.year);
+  const [month, setMonth] = useState(parsed.month);
+  const [day, setDay] = useState(parsed.day);
+
+  useEffect(() => {
+    setYear(parsed.year);
+    setMonth(parsed.month);
+    setDay(parsed.day);
+  }, [parsed.year, parsed.month, parsed.day]);
+
+  const dayOptions = useMemo(() => {
+    const count = daysInMonth(year, month);
+    return Array.from({ length: count }, (_, i) => String(i + 1));
+  }, [year, month]);
+
+  const updateDate = useCallback((nextYear: string, nextMonth: string, nextDay: string) => {
+    const maxDay = daysInMonth(nextYear, nextMonth);
+    const adjustedDay = nextDay && Number(nextDay) > maxDay ? String(maxDay) : nextDay;
+
+    setYear(nextYear);
+    setMonth(nextMonth);
+    setDay(adjustedDay);
+
+    if (nextYear && nextMonth && adjustedDay) {
+      onChange(`${nextYear}-${padDatePart(nextMonth)}-${padDatePart(adjustedDay)}`);
+      return;
+    }
+
+    onChange("");
+  }, [onChange]);
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      <BirthDatePartSelect
+        ariaLabel="Birth year"
+        value={year}
+        onChange={(nextYear) => updateDate(nextYear, month, day)}
+        placeholder="年"
+        options={BIRTH_YEARS}
+        className="min-w-[7.5rem] flex-[1.15]"
+      />
+      <BirthDatePartSelect
+        ariaLabel="Birth month"
+        value={month}
+        onChange={(nextMonth) => updateDate(year, nextMonth, day)}
+        placeholder="月"
+        options={BIRTH_MONTHS}
+        className="min-w-[5.5rem] flex-1"
+      />
+      <BirthDatePartSelect
+        ariaLabel="Birth day"
+        value={day}
+        onChange={(nextDay) => updateDate(year, month, nextDay)}
+        placeholder="日"
+        options={dayOptions}
+        className="min-w-[5.5rem] flex-1"
+      />
+    </div>
+  );
+}
+
+function BirthDatePartSelect({
+  value,
+  onChange,
+  placeholder,
+  options,
+  ariaLabel,
+  className,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  options: string[];
+  ariaLabel: string;
+  className?: string;
+}) {
+  return (
+    <select
+      aria-label={ariaLabel}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={[
+        "min-h-[3rem] rounded-xl border border-white/14 bg-[#0a1028] px-3 py-3 text-sm text-moon outline-none transition",
+        "focus:border-lavender/60 focus:ring-2 focus:ring-lavender/20",
+        value ? "text-moon" : "text-moon/40",
+        className ?? "",
+      ].join(" ")}
+    >
+      <option value="">{placeholder}</option>
+      {options.map((option) => (
+        <option key={option} value={option}>
+          {option}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 function CosmicSelect({
   options, value, onChange, placeholder,
