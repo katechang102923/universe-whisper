@@ -560,6 +560,12 @@ function ThreeCardReadingDisplay({
   cards: TarotCardFaceData[];
 }) {
   const s = parseThreeCardSections(text);
+  const [openCards, setOpenCards] = useState<Record<number, boolean>>({});
+  const overall = s.overallSummary ? parseOverallSummary(s.overallSummary) : null;
+  const oneLineConclusion =
+    overall?.verdict?.trim() ||
+    extractStoryVerdictFromOverallSummary(s.overallSummary).trim() ||
+    clientFirstSentence(s.overallSummary, 90);
 
   const cardSections = [
     { data: s.card1, card: spreadCards[0], idx: 0 },
@@ -574,19 +580,81 @@ function ThreeCardReadingDisplay({
 
   return (
     <div className="space-y-4">
+      {s.overallSummary && overall ? (
+        <article
+          className="reading-fade-in rounded-2xl border border-[#d8bd70]/30 bg-gradient-to-br from-[#d8bd70]/10 to-midnight/60 p-5 shadow-[0_0_28px_rgba(216,189,112,0.10)]"
+          style={{ animationDelay: "0.1s" }}
+        >
+          <p className="mb-3 text-xs tracking-[0.22em] text-[#d8bd70]/75 uppercase">一句話結論</p>
+          {oneLineConclusion ? (
+            <p className="text-lg font-semibold leading-8 text-moon">{oneLineConclusion}</p>
+          ) : null}
+
+          <div className="mt-4 border-t border-white/10 pt-4">
+            <p className="mb-2 text-xs tracking-[0.22em] text-[#d8bd70]/70 uppercase">整體答案</p>
+            {overall.verdict && overall.reason ? (
+              <div className="space-y-4">
+                {overall.verdict && overall.verdict !== oneLineConclusion ? (
+                  <div>
+                    <p className="mb-1 text-xs font-semibold tracking-wide text-[#d8bd70]/65">核心判斷</p>
+                    <p className="text-base leading-[1.85] text-moon/84">{overall.verdict}</p>
+                  </div>
+                ) : null}
+                <div>
+                  <p className="mb-1 text-xs font-semibold tracking-wide text-[#d8bd70]/65">為什麼會這樣</p>
+                  <p className="text-base leading-[1.85] text-moon/78">{overall.reason}</p>
+                </div>
+                {overall.direction && (
+                  <div className="border-t border-white/10 pt-3">
+                    <p className="mb-1 text-xs font-semibold tracking-wide text-[#d8bd70]/65">接下來的方向</p>
+                    <p className="text-base leading-[1.85] text-moon/82">{overall.direction}</p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="whitespace-pre-line text-base font-medium leading-[1.85] text-moon/86">{overall.raw}</p>
+            )}
+          </div>
+        </article>
+      ) : null}
 
       {/* ── 逐張牌解讀：每張分三小段（牌陣總結已移到行動建議之後）── */}
       {cardSections.map(({ data, card, idx }) => {
         if (!data.body) return null;
         const sub = parseCardSubsections(data.body);
         const hasSubs = !!(sub.core || sub.question || sub.reminder);
+        const isOpen = openCards[idx] === true;
 
         return (
           <article
             key={idx}
-            className={baseCard}
+            className={`${baseCard} overflow-hidden !p-0`}
             style={{ animationDelay: `${(idx + 1) * 0.2}s` }}
           >
+            <button
+              type="button"
+              onClick={() => setOpenCards((current) => ({ ...current, [idx]: !current[idx] }))}
+              className="flex w-full items-center gap-3 px-4 py-4 text-left transition hover:bg-white/[0.035] sm:px-5"
+              aria-expanded={isOpen}
+            >
+              <span className="shrink-0 rounded-full border border-[#d8bd70]/35 bg-midnight/60 px-2.5 py-0.5 text-xs font-medium tracking-wide text-[#d8bd70]">
+                第 {idx + 1} 張
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-semibold text-moon">
+                  {card?.name ?? data.subtitle ?? `第 ${idx + 1} 張牌`}
+                </span>
+                {(data.subtitle || card?.position || card?.orientationLabel) && (
+                  <span className="mt-1 block truncate text-xs text-moon/48">
+                    {[data.subtitle || card?.position, card?.orientationLabel].filter(Boolean).join(" · ")}
+                  </span>
+                )}
+              </span>
+              <span className={`shrink-0 text-lg leading-none text-lavender/70 transition-transform ${isOpen ? "rotate-180" : ""}`}>
+                ▾
+              </span>
+            </button>
+            <div className={isOpen ? "border-t border-white/8 px-4 py-4 sm:px-5" : "hidden"}>
             {/* 卡片 header：第N張 + 位置 + 牌名 */}
             <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-white/8 pb-3">
               <span className="rounded-full border border-[#d8bd70]/35 bg-midnight/60 px-2.5 py-0.5 text-xs font-medium tracking-wide text-[#d8bd70]">
@@ -637,6 +705,7 @@ function ThreeCardReadingDisplay({
               /* fallback：純文字 */
               <p className="whitespace-pre-line text-base leading-[1.85] text-moon/80">{sub.rawContent || data.body}</p>
             )}
+            </div>
           </article>
         );
       })}
@@ -663,7 +732,7 @@ function ThreeCardReadingDisplay({
       ) : null}
 
       {/* 牌陣總結：移到行動建議之後，閱讀完三張牌再看整體答案更自然 */}
-      {s.overallSummary ? (() => {
+      {false && s.overallSummary ? (() => {
         const parsed = parseOverallSummary(s.overallSummary);
         return (
           <article
@@ -3825,13 +3894,13 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
                   ? cards.map((card, index) => (
                       <article
                         key={`${card.id}-${index}`}
-                        className="reading-fade-in sm:min-w-0"
+                        className="reading-fade-in mx-auto w-full max-w-[280px] sm:max-w-none sm:min-w-0"
                       >
                         <TarotCardFaceCompact card={card} topic={topic} cardIndex={index} />
                       </article>
                     ))
                   : visibleBacks.map((_, index) => (
-                      <div key={`back-${index}`} className="sm:min-w-0">
+                      <div key={`back-${index}`} className="mx-auto w-full max-w-[280px] sm:max-w-none sm:min-w-0">
                         <TarotCardBack compact />
                       </div>
                     ))}
