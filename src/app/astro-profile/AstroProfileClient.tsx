@@ -895,10 +895,13 @@ function PostUnlockActions({
     try {
       const blob = await generateAstroStoryImage({
         sunSign,
-        moonSign: moonSign ?? null,
-        risingSign: risingSign ?? null,
-        venusSign: venusSign ?? null,
-        shortSummary: sunTexts.shortSummary,
+        moonSign:       moonSign       ?? null,
+        risingSign:     risingSign     ?? null,
+        venusSign:      venusSign      ?? null,
+        shortSummary:   sunTexts.shortSummary   ?? null,
+        overallSummary: sunTexts.overallSummary ?? null,
+        whisper:        sunTexts.whisper        ?? null,
+        advice:         sunTexts.advice         ?? null,
         siteUrl: typeof window !== "undefined" ? window.location.hostname : "universe-whisper.vercel.app",
       });
       const url = URL.createObjectURL(blob);
