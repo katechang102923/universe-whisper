@@ -10,6 +10,13 @@ export const runtime = "nodejs";
 
 type SnapshotPeriod = "full" | "am";
 
+type BreakdownRow = { label: string; count: number; ratio: string };
+type PaymentBreakdownRow = { label: string; count: number; ratio: string; revenue: number };
+type ConversionRates = {
+  visitorToDraw: string;
+  drawToPaid: string;
+  visitorToPaid: string;
+};
 type DailyMetrics = {
   date: string;
   period: SnapshotPeriod;
@@ -20,6 +27,10 @@ type DailyMetrics = {
   freeDraws: number;
   paidSuccess: number;
   revenue: number;
+  conversionRates: ConversionRates;
+  visitorSources: BreakdownRow[];
+  featureRanking: BreakdownRow[];
+  paymentSources: PaymentBreakdownRow[];
 };
 
 type SnapshotDoc = {
@@ -75,6 +86,30 @@ function numberValue(value: unknown) {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
+function calcRatio(num: number, den: number) {
+  if (!den) return "0%";
+  return `${Math.round((num / den) * 1000) / 10}%`;
+}
+
+function safeBreakdownRows(value: unknown): BreakdownRow[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((row) => ({
+    label: String((row as Partial<BreakdownRow>).label ?? ""),
+    count: numberValue((row as Partial<BreakdownRow>).count),
+    ratio: String((row as Partial<BreakdownRow>).ratio ?? "0%"),
+  })).filter((row) => row.label);
+}
+
+function safePaymentRows(value: unknown): PaymentBreakdownRow[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((row) => ({
+    label: String((row as Partial<PaymentBreakdownRow>).label ?? ""),
+    count: numberValue((row as Partial<PaymentBreakdownRow>).count),
+    ratio: String((row as Partial<PaymentBreakdownRow>).ratio ?? "0%"),
+    revenue: numberValue((row as Partial<PaymentBreakdownRow>).revenue),
+  })).filter((row) => row.label);
+}
+
 function funnelUsers(snapshot: SnapshotDoc, label: string) {
   return snapshot.statsPayload?.funnel?.find((row) => row.label === label)?.users ?? 0;
 }
@@ -90,20 +125,39 @@ function metricsFromDoc(doc: DocumentSnapshot, fallbackDate: string, fallbackPer
     numberValue(data.tarotDraws) ||
     numberValue(funnelUsers(data, "完成抽牌人數"));
 
+  const visitors = numberValue(dailyMetrics.visitors) || numberValue(data.visitors) || numberValue(data.statsPayload?.traffic?.today?.visitors);
+  const pageViews = numberValue(dailyMetrics.pageViews) || numberValue(data.statsPayload?.traffic?.today?.pageViews);
+  const freeDraws = numberValue(dailyMetrics.freeDraws) || numberValue(data.freeDraws);
+  const paidSuccess =
+    numberValue(dailyMetrics.paidSuccess) ||
+    numberValue(data.orderStats?.todayPaid) ||
+    numberValue(data.orderStats?.paid) ||
+    numberValue(data.paidUnlocks);
+  const revenue = numberValue(dailyMetrics.revenue) || numberValue(data.revenue) || numberValue(data.orderStats?.todayRevenue);
+  const conversionRates = dailyMetrics.conversionRates ?? {
+    visitorToDraw: calcRatio(completedDraws, visitors),
+    drawToPaid: calcRatio(paidSuccess, completedDraws),
+    visitorToPaid: calcRatio(paidSuccess, visitors),
+  };
+
   return {
     date,
     period,
     label: dailyMetrics.label ?? (period === "am" ? "今日 00:00-12:00" : "昨日 00:00-23:59"),
-    visitors: numberValue(dailyMetrics.visitors) || numberValue(data.visitors) || numberValue(data.statsPayload?.traffic?.today?.visitors),
-    pageViews: numberValue(dailyMetrics.pageViews) || numberValue(data.statsPayload?.traffic?.today?.pageViews),
+    visitors,
+    pageViews,
     tarotDraws: completedDraws,
-    freeDraws: numberValue(dailyMetrics.freeDraws) || numberValue(data.freeDraws),
-    paidSuccess:
-      numberValue(dailyMetrics.paidSuccess) ||
-      numberValue(data.orderStats?.todayPaid) ||
-      numberValue(data.orderStats?.paid) ||
-      numberValue(data.paidUnlocks),
-    revenue: numberValue(dailyMetrics.revenue) || numberValue(data.revenue) || numberValue(data.orderStats?.todayRevenue),
+    freeDraws,
+    paidSuccess,
+    revenue,
+    conversionRates: {
+      visitorToDraw: conversionRates.visitorToDraw ?? "0%",
+      drawToPaid: conversionRates.drawToPaid ?? "0%",
+      visitorToPaid: conversionRates.visitorToPaid ?? "0%",
+    },
+    visitorSources: safeBreakdownRows(dailyMetrics.visitorSources),
+    featureRanking: safeBreakdownRows(dailyMetrics.featureRanking),
+    paymentSources: safePaymentRows(dailyMetrics.paymentSources),
   };
 }
 
@@ -119,17 +173,16 @@ export async function GET() {
   const trendDates = Array.from({ length: 7 }, (_, index) => addDays(yesterday, -index));
 
   try {
-    const [yesterdaySnap, todayAmSnap, ...trendSnaps] = await Promise.all([
-      db.collection("daily_admin_stats").doc(`${yesterday}_full`).get(),
+    const [todayAmSnap, ...trendSnaps] = await Promise.all([
       db.collection("daily_admin_stats").doc(`${today}_am`).get(),
       ...trendDates.map((date) => db.collection("daily_admin_stats").doc(`${date}_full`).get()),
     ]);
 
-    const yesterdayMetrics = metricsFromDoc(yesterdaySnap, yesterday, "full");
-    const todayAmMetrics = todayAmAvailable ? metricsFromDoc(todayAmSnap, today, "am") : null;
     const trends = trendSnaps
       .map((doc, index) => metricsFromDoc(doc, trendDates[index], "full"))
       .filter((row): row is DailyMetrics => Boolean(row));
+    const yesterdayMetrics = trends.find((row) => row.date === yesterday) ?? null;
+    const todayAmMetrics = todayAmAvailable ? metricsFromDoc(todayAmSnap, today, "am") : null;
 
     return NextResponse.json({
       ok: true,

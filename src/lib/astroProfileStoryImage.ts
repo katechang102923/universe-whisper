@@ -52,8 +52,11 @@ export async function generateAstroStoryImage(params: StoryImageParams): Promise
     throw new Error("瀏覽器不支援 Canvas，無法產生圖片。");
   }
 
-  const backgroundImage = await loadStoryBackgroundImage();
-  render(ctx, params, backgroundImage);
+  const [backgroundImage, qrImage] = await Promise.all([
+    loadStoryBackgroundImage(),
+    loadQrCodeImage(),
+  ]);
+  render(ctx, params, backgroundImage, qrImage);
 
   return new Promise((resolve, reject) => {
     canvas.toBlob(
@@ -68,6 +71,7 @@ export async function generateAstroStoryImage(params: StoryImageParams): Promise
 const W = 1080;
 const H = 1920;
 const STORY_BG_SRC = "/images/astro-profile-story-bg.png";
+const OFFICIAL_SITE_URL = "https://universe-whisper.vercel.app/";
 
 // 左右邊距
 const MARGIN_X = 96;
@@ -317,6 +321,29 @@ function loadStoryBackgroundImage(): Promise<HTMLImageElement | null> {
   });
 }
 
+async function loadQrCodeImage(): Promise<HTMLImageElement | null> {
+  try {
+    const { default: QRCode } = await import("qrcode");
+    const qrDataUrl = await QRCode.toDataURL(OFFICIAL_SITE_URL, {
+      width: 124,
+      margin: 2,
+      errorCorrectionLevel: "M",
+      color: {
+        dark: "#12142d",
+        light: "#fff8ed",
+      },
+    });
+    return await new Promise<HTMLImageElement | null>((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = qrDataUrl;
+    });
+  } catch {
+    return null;
+  }
+}
+
 // ── 裝飾 ─────────────────────────────────────────────────────────────────────
 
 function drawBackground(ctx: CanvasRenderingContext2D, backgroundImage: HTMLImageElement | null) {
@@ -385,6 +412,37 @@ function drawDivider(ctx: CanvasRenderingContext2D, y: number) {
   ctx.moveTo(MARGIN_X, y);
   ctx.lineTo(W - MARGIN_X, y);
   ctx.stroke();
+  ctx.restore();
+}
+
+function drawOfficialSiteQr(ctx: CanvasRenderingContext2D, qrImage: HTMLImageElement | null) {
+  if (!qrImage) return;
+
+  const qrSize = 124;
+  const pad = 10;
+  const labelH = 30;
+  const boxW = qrSize + pad * 2;
+  const boxH = qrSize + pad * 2 + labelH;
+  const x = W - MARGIN_X - boxW + 2;
+  const y = H - 274;
+
+  ctx.save();
+  roundRectPath(ctx, x, y, boxW, boxH, 18);
+  ctx.fillStyle = "rgba(7,11,30,0.72)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(247,217,135,0.26)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  roundRectPath(ctx, x + pad - 2, y + pad - 2, qrSize + 4, qrSize + 4, 10);
+  ctx.fillStyle = "rgba(255,248,237,0.96)";
+  ctx.fill();
+  ctx.drawImage(qrImage, x + pad, y + pad, qrSize, qrSize);
+
+  ctx.textAlign = "center";
+  ctx.font = "500 17px sans-serif";
+  ctx.fillStyle = "rgba(255,247,230,0.72)";
+  ctx.fillText("掃描看你的宇宙訊息", x + boxW / 2, y + pad * 2 + qrSize + 17);
   ctx.restore();
 }
 
@@ -887,6 +945,7 @@ function render(
   ctx: CanvasRenderingContext2D,
   params: StoryImageParams,
   backgroundImage: HTMLImageElement | null,
+  qrImage: HTMLImageElement | null,
 ) {
   drawBackground(ctx, backgroundImage);
   drawStarDots(ctx);
@@ -985,4 +1044,6 @@ function render(
     W / 2,
     footerDivY + 56,
   );
+
+  drawOfficialSiteQr(ctx, qrImage);
 }

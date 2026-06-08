@@ -26,6 +26,13 @@ type AnalyticsEvent = {
   isAdmin?: boolean;
 };
 
+type BreakdownRow = { label: string; count: number; ratio: string };
+type PaymentBreakdownRow = { label: string; count: number; ratio: string; revenue: number };
+type ConversionRates = {
+  visitorToDraw: string;
+  drawToPaid: string;
+  visitorToPaid: string;
+};
 type PeriodUnlock = { free: number; paid: number; total: number; ratio: string };
 type TrafficPeriod = { visitors: number; sessions: number; pageViews: number; avgActiveSeconds: number; bounceRate: string };
 type LineSavePeriod = { count: number; users: number };
@@ -49,6 +56,10 @@ type DailyMetrics = {
   freeDraws: number;
   paidSuccess: number;
   revenue: number;
+  conversionRates: ConversionRates;
+  visitorSources: BreakdownRow[];
+  featureRanking: BreakdownRow[];
+  paymentSources: PaymentBreakdownRow[];
 };
 
 function calcRatio(num: number, den: number) {
@@ -158,14 +169,111 @@ function sourceFrom(referrer?: string, url?: string, utmSource?: string | null):
   const urlStr = (url ?? "").toLowerCase();
   if (urlStr.includes("fbclid")) return "Facebook";
   if (urlStr.includes("igshid")) return "Instagram";
-  if (!ref) return "Direct";
+  if (!ref) return "直接進入";
   if (ref.includes("facebook.com") || ref.includes("fb.com")) return "Facebook";
   if (ref.includes("instagram.com")) return "Instagram";
   if (ref.includes("threads.net")) return "Threads";
   if (ref.includes("line.me") || ref.includes("liff.line.me")) return "LINE";
   if (ref.includes("google.com")) return "Google";
-  if (ref.includes("x.com") || ref.includes("twitter.com") || ref.includes("t.co")) return "X";
-  return "Other";
+  return "其他";
+}
+
+function featureFromPath(path?: string) {
+  const normalized = normalizePath(path);
+  if (normalized === "/") return "首頁";
+  if (
+    normalized.startsWith("/tarot") ||
+    normalized.startsWith("/tarot/result") ||
+    normalized.startsWith("/single") ||
+    normalized.startsWith("/three-card")
+  ) {
+    return "塔羅抽牌";
+  }
+  if (
+    normalized.startsWith("/triple-zodiac") ||
+    normalized.startsWith("/astro-profile") ||
+    normalized.startsWith("/zodiac-report")
+  ) {
+    return "三重星座";
+  }
+  if (
+    normalized.startsWith("/daily-zodiac") ||
+    normalized.startsWith("/horoscope") ||
+    normalized.startsWith("/daily-horoscope") ||
+    normalized.startsWith("/daily")
+  ) {
+    return "每日星座";
+  }
+  return "其他頁面";
+}
+
+function paymentSourceFromOrder(order: Record<string, unknown>, fallback: string) {
+  const values = [
+    order.productType,
+    order.product,
+    order.type,
+    order.resultType,
+    order.mode,
+    order.planId,
+    order.planName,
+    order.path,
+    order.source,
+  ]
+    .map((value) => String(value ?? "").toLowerCase())
+    .join(" ");
+  if (values.includes("astro") || values.includes("triple") || values.includes("zodiac-profile")) return "三重星座";
+  if (values.includes("daily") || values.includes("horoscope")) return "每日星座";
+  if (values.includes("tarot") || values.includes("redeem") || values.includes("card")) return "塔羅抽牌";
+  return fallback;
+}
+
+function rowsFromCounts(counts: Map<string, number>, total: number, labels?: string[]): BreakdownRow[] {
+  const source = labels ?? Array.from(counts.keys());
+  return source
+    .map((label) => ({ label, count: counts.get(label) ?? 0, ratio: calcRatio(counts.get(label) ?? 0, total) }))
+    .sort((a, b) => b.count - a.count);
+}
+
+function paymentRowsFromMap(rows: Map<string, { count: number; revenue: number }>): PaymentBreakdownRow[] {
+  const labels = ["塔羅抽牌", "三重星座", "每日星座", "其他"];
+  const total = labels.reduce((sum, label) => sum + (rows.get(label)?.count ?? 0), 0);
+  return labels
+    .map((label) => {
+      const row = rows.get(label) ?? { count: 0, revenue: 0 };
+      return { label, count: row.count, ratio: calcRatio(row.count, total), revenue: row.revenue };
+    })
+    .sort((a, b) => b.count - a.count);
+}
+
+function buildVisitorSources(events: AnalyticsEvent[]) {
+  const labels = ["Facebook", "Instagram", "Threads", "LINE", "Google", "直接進入", "其他"];
+  const sourceVisitors = new Map<string, Set<string>>();
+
+  for (const event of events) {
+    if (event.eventType !== "session_start" && event.eventType !== "page_view") continue;
+    const uid = visitorKey(event);
+    if (!uid) continue;
+    const source = sourceFrom(event.referrer, event.url, event.utmSource);
+    const current = sourceVisitors.get(source) ?? new Set<string>();
+    current.add(uid);
+    sourceVisitors.set(source, current);
+  }
+
+  const counts = new Map(labels.map((label) => [label, sourceVisitors.get(label)?.size ?? 0]));
+  const total = Array.from(new Set(events.map(visitorKey).filter(Boolean))).length;
+  return rowsFromCounts(counts, total, labels);
+}
+
+function buildFeatureRanking(events: AnalyticsEvent[]) {
+  const counts = new Map<string, number>();
+  let total = 0;
+  for (const event of events) {
+    if (event.eventType !== "page_view") continue;
+    const feature = featureFromPath(event.path ?? event.url);
+    counts.set(feature, (counts.get(feature) ?? 0) + 1);
+    total += 1;
+  }
+  return rowsFromCounts(counts, total, ["首頁", "塔羅抽牌", "三重星座", "每日星座", "其他頁面"]);
 }
 
 function buildUnlock(free: number, paid: number): PeriodUnlock {
@@ -367,10 +475,17 @@ export async function GET(req: NextRequest) {
     }
 
     let revenue = 0;
+    const paymentSourceMap = new Map<string, { count: number; revenue: number }>();
+    const addPaymentSource = (label: string, amount: number) => {
+      const current = paymentSourceMap.get(label) ?? { count: 0, revenue: 0 };
+      current.count += 1;
+      current.revenue += amount;
+      paymentSourceMap.set(label, current);
+    };
     const orderStats = { total: 0, paid: 0, failed: 0, pending: 0, todayRevenue: 0, todayPaid: 0, todayTest: 0, noCode: 0, emailUnsent: 0 };
     if (orderSnap) {
       for (const doc of orderSnap.docs) {
-        const order = doc.data() as { status?: string; amount?: number; isTest?: boolean; redeemCode?: string; emailSent?: boolean; buyerEmail?: string };
+        const order = doc.data() as { status?: string; amount?: number; isTest?: boolean; redeemCode?: string; emailSent?: boolean; buyerEmail?: string } & Record<string, unknown>;
         if (order.isTest) {
           if (order.status === "paid") orderStats.todayTest += 1;
           continue;
@@ -382,6 +497,7 @@ export async function GET(req: NextRequest) {
           orderStats.todayPaid += 1;
           orderStats.todayRevenue += order.amount ?? 0;
           revenue += order.amount ?? 0;
+          addPaymentSource(paymentSourceFromOrder(order, "塔羅抽牌"), order.amount ?? 0);
           if (!order.redeemCode) orderStats.noCode += 1;
           if (!order.emailSent) orderStats.emailUnsent += 1;
         }
@@ -409,14 +525,19 @@ export async function GET(req: NextRequest) {
     }
 
     let astroProfileCount = 0;
+    let astroProfileRevenue = 0;
     if (astroSnap) {
       for (const doc of astroSnap.docs) {
-        const order = doc.data() as { isTest?: boolean; buyerEmail?: string; status?: string };
+        const order = doc.data() as { isTest?: boolean; buyerEmail?: string; status?: string; amount?: number } & Record<string, unknown>;
         if (order.isTest || order.status === "failed") continue;
         if (order.buyerEmail && adminEmails.has(order.buyerEmail.toLowerCase())) continue;
         astroProfileCount += 1;
+        astroProfileRevenue += order.amount ?? 0;
+        addPaymentSource(paymentSourceFromOrder(order, "三重星座"), order.amount ?? 0);
       }
     }
+    revenue += astroProfileRevenue;
+    const paidSuccess = orderStats.todayPaid + astroProfileCount;
 
     const sortedEntries = (map: Record<string, number>) =>
       Object.entries(map).map(([key, count]) => ({ key, count })).sort((a, b) => b.count - a.count);
@@ -434,8 +555,16 @@ export async function GET(req: NextRequest) {
       pageViews: statsPayload.traffic.today.pageViews,
       tarotDraws,
       freeDraws,
-      paidSuccess: orderStats.todayPaid || paidUnlocks,
+      paidSuccess: paidSuccess || paidUnlocks,
       revenue,
+      conversionRates: {
+        visitorToDraw: calcRatio(tarotDraws, visitors.size),
+        drawToPaid: calcRatio(paidSuccess || paidUnlocks, tarotDraws),
+        visitorToPaid: calcRatio(paidSuccess || paidUnlocks, visitors.size),
+      },
+      visitorSources: buildVisitorSources(analyticsEvents),
+      featureRanking: buildFeatureRanking(analyticsEvents),
+      paymentSources: paymentRowsFromMap(paymentSourceMap),
     };
     const docData = {
       date,
