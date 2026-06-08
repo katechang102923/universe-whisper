@@ -458,12 +458,17 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // 管理員識別集合（供後續多個 collection 過濾使用）
+  const adminLineIds = new Set(getAdminUserIds());
+
   const downloadSnap = await db.collection("share_image_downloads").limit(1000).get().catch(() => null);
   const downloadEntries: Array<{ spreadType: string; dateKey: string; monthKey: string }> = [];
   if (downloadSnap) {
     for (const doc of downloadSnap.docs) {
-      const event = doc.data() as { spreadType?: string; dateKey?: string; createdAt?: unknown; isTest?: boolean };
+      const event = doc.data() as { spreadType?: string; dateKey?: string; createdAt?: unknown; isTest?: boolean; isAdmin?: boolean; lineUserId?: string | null };
       if (event.isTest) continue;
+      if (event.isAdmin === true) continue;
+      if (event.lineUserId && adminLineIds.has(event.lineUserId)) continue;
       const dateKey = event.dateKey ?? (resolveTs(event.createdAt) ? toTaipeiDate(resolveTs(event.createdAt)!) : "");
       if (dateKey) downloadEntries.push({ spreadType: event.spreadType ?? "", dateKey, monthKey: dateKey.slice(0, 7) });
     }
@@ -473,7 +478,6 @@ export async function GET(req: NextRequest) {
   // 排除管理員事件：
   //   1. 新格式：寫入時已標記 isAdmin: true
   //   2. 舊格式（回溯）：LINE 管理員 lineUserId 在 admin 清單中
-  const adminLineIds = new Set(getAdminUserIds());
   const analyticsEvents: AnalyticsEvent[] = analyticsSnap
     ? analyticsSnap.docs
         .map((doc) => doc.data() as AnalyticsEvent)

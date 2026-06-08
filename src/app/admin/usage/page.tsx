@@ -434,18 +434,22 @@ export default async function AdminUsagePage({
       usageData    = (usageSnap.data()   as Partial<DailyUsageDoc>)   ?? {};
       fortuneStats = (fortuneSnap.data() as Partial<FortuneStatsDoc>) ?? {};
 
-      // 通行碼彙總
+      // 通行碼彙總（test 碼單獨計數，不混入 total/active/usedUp）
       const codeSnap = await db.collection(REDEEM_CODES_COLLECTION).get();
       codeSnap.docs.forEach((d) => {
         const c = d.data() as RedeemCodeData;
+        if (c.isTest) {
+          redeemStats.test++;
+          return;  // 測試碼不計入正式統計
+        }
         redeemStats.total++;
         if (c.status === "active")  redeemStats.active++;
         if (c.status === "used_up") redeemStats.usedUp++;
-        if (c.isTest)               redeemStats.test++;
       });
 
       // 分享圖下載彙總
       try {
+        const adminDlLineIds = new Set(getAdminUserIds());
         const dlSnap = await db.collection("share_image_downloads").get();
         const userCounterAll  = new Set<string>();
         const userCounterToday = new Set<string>();
@@ -454,8 +458,13 @@ export default async function AdminUsagePage({
         dlSnap.docs.forEach((d) => {
           const ev = d.data() as {
             dateKey?: string; lineUserId?: string; anonymousId?: string; ip?: string;
-            createdAt?: unknown; spreadType?: string;
+            createdAt?: unknown; spreadType?: string; isAdmin?: boolean; isTest?: boolean;
           };
+          // 排除管理員與測試下載
+          if (ev.isAdmin === true) return;
+          if (ev.isTest === true) return;
+          if (ev.lineUserId && adminDlLineIds.has(ev.lineUserId)) return;
+
           shareDownloadStats.allCount++;
           const isToday = ev.dateKey === today;
           if (isToday) shareDownloadStats.todayCount++;
@@ -509,7 +518,7 @@ export default async function AdminUsagePage({
           .map(([key, v]) => ({ display: key, count: v.count, lastAt: v.lastAt, type: v.type }));
       } catch { /* share_image_downloads 不存在時忽略 */ }
 
-      // 付款訂單彙總
+      // 付款訂單彙總（isTest 訂單只計入 todayTest，不混入正式統計）
       try {
         const orderSnap = await db.collection(PAYMENT_ORDERS_COLLECTION).get();
         orderSnap.docs.forEach((d) => {
@@ -518,17 +527,22 @@ export default async function AdminUsagePage({
             paidAt?: unknown; isTest?: boolean;
             redeemCode?: string; emailSent?: boolean;
           };
-          orderStats.total++;
           const paidDate = toDate(o.paidAt);
           const isToday  = paidDate?.toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" }) === today;
           const isTest   = Boolean(o.isTest);
 
+          // 測試訂單：只記錄 todayTest，不計入 total / paid / failed / pending / revenue
+          if (isTest) {
+            if (isToday && o.status === "paid") orderStats.todayTest++;
+            return;
+          }
+
+          orderStats.total++;
           if (o.status === "paid") {
             orderStats.paid++;
             if (isToday) {
               orderStats.todayPaid++;
-              if (isTest) orderStats.todayTest++;
-              else orderStats.todayRevenue += o.amount ?? 0;
+              orderStats.todayRevenue += o.amount ?? 0;
             }
             if (!o.redeemCode) orderStats.noCode++;
             if (!o.emailSent)  orderStats.emailUnsent++;
