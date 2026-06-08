@@ -105,7 +105,7 @@ export default function Home() {
           {/* ── Right: cat illustration + today's cosmic message ─── */}
           <div className="flex flex-col items-center gap-3 sm:gap-4">
             {/* Hero cat photo — 手機版中等尺寸，桌機維持原尺寸 */}
-            <div className="cat-float relative mx-auto w-[clamp(170px,52vw,220px)] sm:w-[360px] lg:w-[430px] xl:w-[460px]">
+            <div className="cat-float relative mx-auto w-[clamp(220px,62vw,260px)] sm:w-[360px] lg:w-[430px] xl:w-[460px]">
               <div className="pointer-events-none absolute inset-[-8%] rounded-full bg-[radial-gradient(circle,rgba(216,189,112,0.22),rgba(109,77,242,0.18)_38%,transparent_68%)] blur-2xl" />
               <Image
                 src="/images/hero/main-cosmic-cat.webp"
@@ -191,8 +191,8 @@ export default function Home() {
             </div>
           </div>
 
-          {/* 範例結果卡（靜態展示，不呼叫 AI） */}
-          <div>
+          {/* 範例結果卡（靜態展示，不呼叫 AI）— 手機版隱藏，桌機版保留 */}
+          <div className="hidden sm:block">
             <h2 className="text-lg font-semibold text-moon">抽完你會看到</h2>
 
             {/* 手機版：精簡短卡 */}
@@ -258,7 +258,6 @@ export default function Home() {
             { href: "/daily", label: "今日運勢", icon: "🌙" },
             { href: "/astro-profile", label: "我的三重星座", icon: "✦" },
             { href: "/tarot-cards", label: "塔羅牌庫", icon: "🃏" },
-            { href: "/redeem/check", label: "查詢次數", icon: "🔍" },
           ].map((item) => (
             <Link
               key={item.href}
