@@ -15,6 +15,7 @@ import {
   SESSION_COOKIE_NAME,
   verifyAdminSessionCookie,
 } from "@/lib/verifyAdmin";
+import { jsonServerError } from "@/lib/apiErrors";
 
 export const runtime = "nodejs";
 
@@ -95,6 +96,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     console.error("[redeem/generate] error:", err);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return jsonServerError(err, "Server error");
   }
 }

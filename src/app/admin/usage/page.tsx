@@ -445,35 +445,43 @@ export default async function AdminUsagePage({
         anonRanking?: { display: string; count: number }[];
         lineRanking?: { display: string; count: number }[];
         date?: string;
+        period?: string;
       };
 
       // 嘗試今天和昨天的快照
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
       const yesterdayStr = yesterday.toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" });
-      const [todaySnap, yesterdaySnap, usageSnap, fortuneSnap] = await Promise.all([
-        db.collection("daily_admin_stats").doc(today).get(),
-        db.collection("daily_admin_stats").doc(yesterdayStr).get(),
-        db.collection("rate_limits").doc(today).get(),
-        db.collection("fortune_stats").doc(today).get(),
+      const [todaySnap, yesterdaySnap] = await Promise.all([
+        db.collection("daily_admin_stats").doc(`${today}_am`).get(),
+        db.collection("daily_admin_stats").doc(`${yesterdayStr}_full`).get(),
       ]);
 
       // 優先用今天快照，否則用昨天
-      const bestSnap = todaySnap.exists ? todaySnap : yesterdaySnap.exists ? yesterdaySnap : null;
+      const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone: "Asia/Taipei",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).formatToParts(new Date());
+      const currentMinutes =
+        Number(parts.find((part) => part.type === "hour")?.value ?? "0") * 60 +
+        Number(parts.find((part) => part.type === "minute")?.value ?? "0");
+      const bestSnap = currentMinutes >= 12 * 60 + 5 && todaySnap.exists ? todaySnap : yesterdaySnap.exists ? yesterdaySnap : null;
       if (bestSnap) {
         const s = bestSnap.data() as SnapshotDoc;
-        usageData           = s.usageData ?? (usageSnap.data() as Partial<DailyUsageDoc>) ?? {};
-        fortuneStats        = (fortuneSnap.data() as Partial<FortuneStatsDoc>) ?? {};
+        usageData           = s.usageData ?? {};
+        fortuneStats        = { generated_zodiacs: ZODIAC_SIGNS.slice(0, s.fortuneCoverage ?? 0) } as Partial<FortuneStatsDoc>;
         redeemStats         = s.redeemStats ?? redeemStats;
         orderStats          = s.orderStats ?? orderStats;
         shareDownloadStats  = s.shareDownloadStats ?? shareDownloadStats;
         shareDownloadRanking = s.shareDownloadRanking ?? [];
-        snapshotNote = `統計資料來自 ${s.date ?? yesterdayStr} 快照，每日 00:05 更新`;
+        snapshotNote = `統計資料來自 ${s.date ?? yesterdayStr} ${s.period ?? ""} 快照，每日 00:05 與 12:05 更新`;
       } else {
         // 尚未有快照：只讀兩個單一文件，不掃全集
-        usageData    = (usageSnap.data()   as Partial<DailyUsageDoc>)   ?? {};
-        fortuneStats = (fortuneSnap.data() as Partial<FortuneStatsDoc>) ?? {};
-        snapshotNote = "統計快照尚未產生，資料每日 00:05 更新（可手動呼叫 /api/admin/daily-stats/generate 補跑）";
+        usageData    = {};
+        fortuneStats = {};
+        snapshotNote = "統計快照尚未產生，資料每日 00:05 與 12:05 更新（可手動呼叫 /api/admin/daily-stats/generate 補跑）";
       }
     }
 

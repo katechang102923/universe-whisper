@@ -171,6 +171,7 @@ export async function checkAndIncrementLimit(params: RateLimitParams, collection
   const docRef = db.collection(collectionName).doc(today);
   let isAllowed = false;
 
+  try {
   await db.runTransaction(async (tx) => {
     isAllowed = false;
     const snap = await tx.get(docRef);
@@ -236,6 +237,10 @@ export async function checkAndIncrementLimit(params: RateLimitParams, collection
     );
     isAllowed = true;
   });
+  } catch (error) {
+    console.error("[rate-limit] Firestore transaction failed, allowing request:", error);
+    return { allowed: true };
+  }
 
   if (!isAllowed) {
     return { allowed: false, message: "今日免費宇宙訊息已使用完畢 ✨", remaining: 0 };

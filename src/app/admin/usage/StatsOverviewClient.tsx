@@ -446,7 +446,7 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
 
       {props.snapshotNote && !props.fetchError ? (
         <div className="rounded-2xl border border-white/10 bg-midnight/50 px-4 py-3 text-xs text-moon/50">
-          📅 {props.snapshotNote}
+          統計資料每日 00:05 與 12:05 更新。{props.snapshotNote}
         </div>
       ) : null}
 

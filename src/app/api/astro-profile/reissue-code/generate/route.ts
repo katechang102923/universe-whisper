@@ -13,6 +13,7 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { verifyAdminSessionCookie, SESSION_COOKIE_NAME } from "@/lib/verifyAdmin";
+import { jsonServerError } from "@/lib/apiErrors";
 
 export const runtime = "nodejs";
 
@@ -47,6 +48,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
   }
 
+  try {
   const body = await request.json().catch(() => ({})) as { note?: string };
   const note = typeof body.note === "string" ? body.note.slice(0, 200).trim() : "";
 
@@ -81,4 +83,8 @@ export async function POST(request: Request) {
     code,
     expiresAt: expiresAt.toISOString(),
   });
+  } catch (err) {
+    console.error("[astro-profile/reissue-code/generate] failed:", err);
+    return jsonServerError(err, "REISSUE_CODE_FAILED");
+  }
 }

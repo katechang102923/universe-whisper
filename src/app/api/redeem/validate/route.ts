@@ -7,6 +7,7 @@ import {
   type RedeemErrorCode,
 } from "@/lib/redeemCodes";
 import { LINE_RESULTS_COLLECTION } from "@/lib/lineResults";
+import { DB_BUSY_MESSAGE, isQuotaError } from "@/lib/apiErrors";
 
 export const runtime = "nodejs";
 
@@ -142,6 +143,12 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     console.error("[redeem/validate] error:", err);
+    if (isQuotaError(err)) {
+      return NextResponse.json(
+        { ok: false, errorCode: "SERVER_ERROR" as RedeemErrorCode, error: DB_BUSY_MESSAGE },
+        { status: 503 },
+      );
+    }
     return NextResponse.json(
       { ok: false, errorCode: "SERVER_ERROR" as RedeemErrorCode },
       { status: 500 },

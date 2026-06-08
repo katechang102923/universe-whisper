@@ -10,6 +10,7 @@ import { getAdminDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
 import { getTaipeiDate, getAdminUserIds } from "@/lib/rateLimit";
 import { SESSION_COOKIE_NAME, verifyAdminSessionCookie } from "@/lib/verifyAdmin";
+import { isQuotaError } from "@/lib/apiErrors";
 
 export const runtime = "nodejs";
 
@@ -36,7 +37,7 @@ async function detectAdminFromCookies(): Promise<boolean> {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as {
+    const body = (await req.json().catch(() => ({}))) as {
       anonymousId?: string | null;
       lineUserId?:  string | null;
       spreadType?:  string | null;
@@ -69,7 +70,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error("[analytics/share-image-download] error:", err);
-    return NextResponse.json({ ok: false }, { status: 500 });
+    const level = isQuotaError(err) ? "warn" : "error";
+    console[level]("[analytics/share-image-download] best-effort write skipped:", err);
+    return NextResponse.json({ ok: true, skipped: true });
   }
 }

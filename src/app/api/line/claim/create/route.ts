@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebaseAdmin";
+import { jsonServerError } from "@/lib/apiErrors";
 
 // -------------------------------------------------------------------
 // POST /api/line/claim/create
@@ -56,6 +57,7 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   }
+  try {
   const col = db.collection(CLAIM_COLLECTION);
   const now = new Date();
   const expiryThreshold = new Date(now.getTime() + 1000); // 稍微往後，避免時間誤差
@@ -139,4 +141,8 @@ export async function POST(request: Request) {
 
   console.info("[line/claim/create] Created claim", { claimCode, resultId });
   return NextResponse.json({ ok: true, claimCode, expiresAt: expiresAt.toISOString() });
+  } catch (err) {
+    console.error("[line/claim/create] failed:", err);
+    return jsonServerError(err, "CLAIM_CREATE_FAILED");
+  }
 }

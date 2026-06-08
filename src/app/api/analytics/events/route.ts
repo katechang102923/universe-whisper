@@ -5,6 +5,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { SESSION_COOKIE_NAME, verifyAdminSessionCookie } from "@/lib/verifyAdmin";
 import { getAdminUserIds } from "@/lib/rateLimit";
+import { isQuotaError } from "@/lib/apiErrors";
 
 export const runtime = "nodejs";
 
@@ -163,7 +164,8 @@ export async function POST(req: NextRequest) {
     await getAdminDb().collection("analytics_events").add(event);
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error("[analytics/events] failed:", err);
-    return NextResponse.json({ ok: false, error: "SERVER_ERROR" }, { status: 500 });
+    const level = isQuotaError(err) ? "warn" : "error";
+    console[level]("[analytics/events] best-effort write skipped:", err);
+    return NextResponse.json({ ok: true, skipped: true });
   }
 }

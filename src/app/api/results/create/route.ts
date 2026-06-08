@@ -8,6 +8,7 @@ import {
   type LineResultType,
 } from "@/lib/lineResults";
 import { getAdminDb, getFirebaseAdminEnvStatus } from "@/lib/firebaseAdmin";
+import { DB_BUSY_MESSAGE, isQuotaError } from "@/lib/apiErrors";
 
 const validTypes = ["tarot", "daily", "whisper"] as const;
 
@@ -112,6 +113,9 @@ export async function POST(request: Request) {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown Firestore error.";
     console.error("[results/create] Failed to save result:", { resultId, errorMessage, envStatus });
+    if (isQuotaError(error)) {
+      return NextResponse.json({ ok: false, error: DB_BUSY_MESSAGE, envStatus }, { status: 503 });
+    }
     return NextResponse.json(
       {
         ok: false,
