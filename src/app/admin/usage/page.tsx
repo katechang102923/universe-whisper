@@ -297,6 +297,7 @@ function OverviewTab({
   shareDownloadRanking,
   fetchError,
   snapshotNote,
+  noSnapshot,
   ipRanking,
   anonRanking,
   lineRanking,
@@ -315,6 +316,7 @@ function OverviewTab({
   shareDownloadRanking: { display: string; count: number; lastAt: string; type: string }[];
   fetchError:    boolean;
   snapshotNote:  string;
+  noSnapshot:    boolean;
   ipRanking:   { display: string; count: number }[];
   anonRanking: { display: string; count: number }[];
   lineRanking: { display: string; count: number }[];
@@ -335,6 +337,7 @@ function OverviewTab({
       shareDownloadRanking={shareDownloadRanking}
       fetchError={fetchError}
       snapshotNote={snapshotNote}
+      noSnapshot={noSnapshot}
       ipRanking={ipRanking}
       anonRanking={anonRanking}
       lineRanking={lineRanking}
@@ -427,6 +430,7 @@ export default async function AdminUsagePage({
   let shareDownloadRanking: { display: string; count: number; lastAt: string; type: string }[] = [];
   let fetchError = false;
   let snapshotNote = "";
+  let noSnapshot = false;
 
   try {
     const db = getAdminDb();
@@ -467,7 +471,11 @@ export default async function AdminUsagePage({
       const currentMinutes =
         Number(parts.find((part) => part.type === "hour")?.value ?? "0") * 60 +
         Number(parts.find((part) => part.type === "minute")?.value ?? "0");
-      const bestSnap = currentMinutes >= 12 * 60 + 5 && todaySnap.exists ? todaySnap : yesterdaySnap.exists ? yesterdaySnap : null;
+      // 12:05+ 台灣時間 → 優先今天 am 快照；否則優先昨天 full，再 fallback 今天 am
+      const bestSnap =
+        currentMinutes >= 12 * 60 + 5
+          ? todaySnap.exists ? todaySnap : yesterdaySnap.exists ? yesterdaySnap : null
+          : yesterdaySnap.exists ? yesterdaySnap : todaySnap.exists ? todaySnap : null;
       if (bestSnap) {
         const s = bestSnap.data() as SnapshotDoc;
         usageData           = s.usageData ?? {};
@@ -481,7 +489,8 @@ export default async function AdminUsagePage({
         // 尚未有快照：只讀兩個單一文件，不掃全集
         usageData    = {};
         fortuneStats = {};
-        snapshotNote = "統計資料整理中";
+        noSnapshot   = true;
+        snapshotNote = "NO_SNAPSHOT";
       }
     }
 
@@ -602,6 +611,7 @@ export default async function AdminUsagePage({
               shareDownloadRanking={shareDownloadRanking}
               fetchError={fetchError}
               snapshotNote={snapshotNote}
+              noSnapshot={noSnapshot}
               ipRanking={ipRanking}
               anonRanking={anonRanking}
               lineRanking={lineRanking}

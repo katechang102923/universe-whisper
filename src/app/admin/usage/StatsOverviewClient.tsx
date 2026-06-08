@@ -116,6 +116,7 @@ interface UsageOverviewProps {
   shareDownloadRanking: { display: string; count: number; lastAt: string; type: string }[];
   fetchError: boolean;
   snapshotNote?: string;
+  noSnapshot?: boolean;
   ipRanking: SimpleRank[];
   anonRanking: SimpleRank[];
   lineRanking: SimpleRank[];
@@ -447,9 +448,14 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
         </div>
       ) : null}
 
-      {props.snapshotNote && !props.fetchError ? (
+      {props.noSnapshot && !props.fetchError ? (
+        <div className="rounded-2xl border border-amber-400/30 bg-amber-400/8 px-5 py-4 text-sm text-amber-200">
+          <p className="font-semibold">尚未產生統計快照</p>
+          <p className="mt-1 text-xs text-amber-200/70">統計資料整理中，下一次更新時間 00:05 / 12:05（台灣時間）</p>
+        </div>
+      ) : props.snapshotNote && props.snapshotNote !== "NO_SNAPSHOT" && !props.fetchError ? (
         <div className="rounded-2xl border border-white/10 bg-midnight/50 px-4 py-3 text-xs text-moon/50">
-          統計資料每日 00:05 與 12:05 更新。{props.snapshotNote}
+          {props.snapshotNote}
         </div>
       ) : null}
 
@@ -571,57 +577,61 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
         </div>
       </Section>
 
-      <Section
-        id="payment"
-        title="付款訂單統計"
-        summary={`成功 ${props.orderStats.paid}｜待付款 ${props.orderStats.pending}｜失敗 ${props.orderStats.failed}`}
-        openSections={openSections}
-        toggle={toggle}
-      >
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="付款訂單總筆數" value={props.orderStats.total} />
-          <StatCard label="成功付款" value={props.orderStats.paid} sub="status = paid" />
-          <StatCard label="待付款" value={props.orderStats.pending} sub="status = pending" />
-          <StatCard label="付款失敗" value={props.orderStats.failed} sub="status = failed" />
-        </div>
-      </Section>
+      {!props.noSnapshot && (
+        <>
+          <Section
+            id="payment"
+            title="付款訂單統計"
+            summary={`成功 ${props.orderStats.paid}｜待付款 ${props.orderStats.pending}｜失敗 ${props.orderStats.failed}`}
+            openSections={openSections}
+            toggle={toggle}
+          >
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <StatCard label="付款訂單總筆數" value={props.orderStats.total} />
+              <StatCard label="成功付款" value={props.orderStats.paid} sub="status = paid" />
+              <StatCard label="待付款" value={props.orderStats.pending} sub="status = pending" />
+              <StatCard label="付款失敗" value={props.orderStats.failed} sub="status = failed" />
+            </div>
+          </Section>
 
-      <Section
-        id="redeem"
-        title="通行碼統計"
-        summary={`總數 ${props.redeemStats.total}｜使用中 ${props.redeemStats.active}｜已用完 ${props.redeemStats.usedUp}`}
-        openSections={openSections}
-        toggle={toggle}
-      >
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="通行碼總數" value={props.redeemStats.total} />
-          <StatCard label="使用中" value={props.redeemStats.active} />
-          <StatCard label="已用完" value={props.redeemStats.usedUp} />
-          <StatCard label="測試資料" value={props.redeemStats.test} sub="isTest = true" />
-        </div>
-      </Section>
+          <Section
+            id="redeem"
+            title="通行碼統計"
+            summary={`總數 ${props.redeemStats.total}｜使用中 ${props.redeemStats.active}｜已用完 ${props.redeemStats.usedUp}`}
+            openSections={openSections}
+            toggle={toggle}
+          >
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <StatCard label="通行碼總數" value={props.redeemStats.total} />
+              <StatCard label="使用中" value={props.redeemStats.active} />
+              <StatCard label="已用完" value={props.redeemStats.usedUp} />
+              <StatCard label="測試資料" value={props.redeemStats.test} sub="isTest = true" />
+            </div>
+          </Section>
 
-      <Section
-        id="download"
-        title="分享圖下載統計"
-        summary={`今日 ${props.shareDownloadStats.todayCount}｜全期 ${props.shareDownloadStats.allCount}`}
-        openSections={openSections}
-        toggle={toggle}
-      >
-        <div className="mb-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="今日下載次數" value={props.shareDownloadStats.todayCount} />
-          <StatCard label="今日下載人數" value={props.shareDownloadStats.todayUsers} />
-          <StatCard label="全期下載次數" value={props.shareDownloadStats.allCount} />
-          <StatCard label="全期下載人數" value={props.shareDownloadStats.allUsers} />
-        </div>
-        <DataTable
-          emptyText="尚無下載紀錄"
-          headers={["排名", "使用者識別", "次數", "最近下載", "類型"]}
-          rows={props.shareDownloadRanking.map((row, index) => [index + 1, row.display, row.count, row.lastAt, row.type])}
-        />
-      </Section>
+          <Section
+            id="download"
+            title="分享圖下載統計"
+            summary={`今日 ${props.shareDownloadStats.todayCount}｜全期 ${props.shareDownloadStats.allCount}`}
+            openSections={openSections}
+            toggle={toggle}
+          >
+            <div className="mb-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <StatCard label="今日下載次數" value={props.shareDownloadStats.todayCount} />
+              <StatCard label="今日下載人數" value={props.shareDownloadStats.todayUsers} />
+              <StatCard label="全期下載次數" value={props.shareDownloadStats.allCount} />
+              <StatCard label="全期下載人數" value={props.shareDownloadStats.allUsers} />
+            </div>
+            <DataTable
+              emptyText="尚無下載紀錄"
+              headers={["排名", "使用者識別", "次數", "最近下載", "類型"]}
+              rows={props.shareDownloadRanking.map((row, index) => [index + 1, row.display, row.count, row.lastAt, row.type])}
+            />
+          </Section>
+        </>
+      )}
 
-      <Section
+      {!props.noSnapshot && <Section
         id="freeDraw"
         title="今日免費抽牌"
         summary={`成功 ${props.usageData.total_requests ?? 0}｜阻擋 ${props.usageData.total_blocked ?? 0}`}
@@ -642,7 +652,7 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
             sub={props.fortuneCoverage === props.zodiacCount ? "全部完成" : "今日已生成"}
           />
         </div>
-      </Section>
+      </Section>}
 
       <Section
         id="sources"
@@ -744,7 +754,7 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
         </div>
       </Section>
 
-      <Section
+      {!props.noSnapshot && <Section
         id="debug"
         title="進階偵錯資料"
         summary={`IP ${props.ipRanking.length}｜匿名 ${props.anonRanking.length}｜LINE ${props.lineRanking.length}`}
@@ -760,7 +770,7 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
           <RankingTable title="匿名識別碼使用排行（前 20）" keyLabel="Anonymous ID" rows={props.anonRanking} limit={props.unauthDailyLimit} />
           <RankingTable title="LINE 用戶使用排行（前 20）" keyLabel="LINE User ID" rows={props.lineRanking} limit={props.lineDailyLimit} />
         </div>
-      </Section>
+      </Section>}
     </div>
   );
 }
