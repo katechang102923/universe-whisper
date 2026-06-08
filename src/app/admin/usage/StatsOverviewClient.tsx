@@ -187,19 +187,19 @@ function Section({
 }) {
   const isOpen = openSections.has(id);
   return (
-    <section className="overflow-hidden rounded-2xl border border-white/10 bg-midnight/42">
+    <section className="overflow-hidden rounded-2xl border border-white/10 bg-midnight/62">
       <button
         type="button"
         onClick={() => toggle(id)}
-        className="flex w-full flex-col gap-2 px-4 py-4 text-left transition hover:bg-white/5 sm:flex-row sm:items-center sm:justify-between sm:px-5"
+        className="flex w-full flex-col gap-1.5 px-4 py-3 text-left transition hover:bg-white/5 sm:flex-row sm:items-center sm:justify-between sm:px-5"
       >
         <span className="flex items-center gap-3">
           <span className={`text-sm text-lavender transition ${isOpen ? "rotate-90" : ""}`}>▶</span>
-          <span className="text-sm font-semibold tracking-[0.16em] text-moon">{title}</span>
+          <span className="text-sm font-semibold tracking-[0.12em] text-moon">{title}</span>
         </span>
         {summary ? <span className="text-xs leading-6 text-moon/48 sm:text-right">{summary}</span> : null}
       </button>
-      {isOpen ? <div className="border-t border-white/8 p-4 sm:p-5">{children}</div> : null}
+      {isOpen ? <div className="border-t border-white/8 p-3 sm:p-4">{children}</div> : null}
     </section>
   );
 }
@@ -218,14 +218,14 @@ function StatCard({
   return (
     <div
       className={[
-        "rounded-2xl border p-5",
-        highlight ? "border-[#d8bd70]/30 bg-[#d8bd70]/8" : "border-white/10 bg-midnight/50",
+        "rounded-2xl border p-4",
+        highlight ? "border-[#d8bd70]/35 bg-[#d8bd70]/10" : "border-white/10 bg-midnight/68",
       ].join(" ")}
     >
       <p className={`text-xs uppercase tracking-[0.22em] ${highlight ? "text-[#d8bd70]/70" : "text-moon/48"}`}>
         {label}
       </p>
-      <p className={`mt-2 text-3xl font-semibold ${highlight ? "text-[#d8bd70]" : "text-moon"}`}>{value}</p>
+      <p className={`mt-1.5 text-3xl font-semibold ${highlight ? "text-[#d8bd70]" : "text-moon"}`}>{value}</p>
       {sub ? <p className="mt-1 text-xs text-moon/44">{sub}</p> : null}
     </div>
   );
@@ -339,6 +339,61 @@ function TrafficCards({ row, label }: { row: TrafficPeriod; label: string }) {
   );
 }
 
+function KpiOverview({
+  items,
+}: {
+  items: Array<{ label: string; value: string | number; sub?: string; highlight?: boolean }>;
+}) {
+  return (
+    <section className="rounded-3xl border border-white/10 bg-midnight/72 p-4 shadow-[0_18px_60px_rgba(0,0,0,0.24)] sm:p-5">
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-[0.24em] text-[#d8bd70]/70">今日總覽 KPI</p>
+          <h2 className="mt-1 text-xl font-semibold text-moon">營運數據儀表板</h2>
+        </div>
+        <p className="max-w-xl text-xs leading-6 text-moon/48">
+          統計資料每日 00:05 與 12:05 更新，避免即時統計造成系統流量過高。
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {items.map((item) => (
+          <StatCard key={item.label} label={item.label} value={item.value} sub={item.sub} highlight={item.highlight} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function FunnelFlow({
+  steps,
+}: {
+  steps: Array<{ label: string; value: number; sub?: string }>;
+}) {
+  return (
+    <section className="rounded-3xl border border-white/10 bg-midnight/68 p-4 sm:p-5">
+      <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-[0.22em] text-lavender/70">Conversion Funnel</p>
+          <h2 className="mt-1 text-lg font-semibold text-moon">流量轉換漏斗</h2>
+        </div>
+        <p className="text-xs text-moon/42">網站訪客 → 進抽牌 → 完成抽牌 → 免費解鎖 → 付費 → LINE 保存</p>
+      </div>
+      <div className="grid gap-2 md:grid-cols-6">
+        {steps.map((step, index) => (
+          <div key={step.label} className="relative rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+            <p className="text-[11px] font-medium text-moon/50">{step.label}</p>
+            <p className="mt-1 text-2xl font-semibold text-moon">{step.value}</p>
+            {step.sub ? <p className="mt-1 text-[11px] leading-4 text-moon/36">{step.sub}</p> : null}
+            {index < steps.length - 1 ? (
+              <span className="absolute -right-1.5 top-1/2 hidden -translate-y-1/2 text-lavender/50 md:block">→</span>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function StatsOverviewClient(props: UsageOverviewProps) {
   const [data, setData] = useState<StatsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -404,10 +459,17 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
   const core = useMemo(() => {
     const todayTraffic = data?.traffic.today ?? { visitors: 0, sessions: 0, pageViews: 0, avgActiveSeconds: 0, bounceRate: "0%" };
     const drawDone = getFunnelUsers(data, "完成抽牌人數");
+    const drawStart =
+      getFunnelUsers(data, "進入抽牌頁人數") ||
+      getFunnelUsers(data, "進抽牌人數") ||
+      getFunnelUsers(data, "開始抽牌人數") ||
+      getFunnelUsers(data, "抽牌頁訪客") ||
+      drawDone;
     const freeUnlock = data?.unlock.today.free ?? 0;
     const paidUnlock = data?.unlock.today.paid ?? 0;
     const paidRatio = data?.unlock.today.ratio ?? "0%";
-    return { todayTraffic, drawDone, freeUnlock, paidUnlock, paidRatio };
+    const lineSave = data?.lineSave.today.count ?? 0;
+    return { todayTraffic, drawStart, drawDone, freeUnlock, paidUnlock, paidRatio, lineSave };
   }, [data]);
 
   const featureUsage = props.usageData.feature_usage ?? {};
@@ -416,13 +478,34 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
   const questionRows = data?.questionTypes[questionPeriod] ?? [];
   const spreadRows = data?.spread[spreadPeriod] ?? [];
   const lineRow = data?.lineSave[linePeriod] ?? { count: 0, users: 0 };
+  const kpiItems = [
+    { label: "今日訪客", value: core.todayTraffic.visitors },
+    { label: "今日 PV", value: core.todayTraffic.pageViews },
+    { label: "完成抽牌", value: core.drawDone },
+    { label: "免費抽牌成功", value: props.usageData.total_requests ?? core.freeUnlock },
+    { label: "付費成功", value: props.orderStats.todayPaid, highlight: props.orderStats.todayPaid > 0 },
+    { label: "今日收入", value: formatMoney(props.orderStats.todayRevenue), highlight: props.orderStats.todayRevenue > 0 },
+    { label: "分享圖下載", value: props.shareDownloadStats.todayCount },
+    { label: "LINE 保存", value: core.lineSave },
+  ];
+  const funnelSteps = [
+    { label: "網站訪客", value: core.todayTraffic.visitors, sub: "今日 UV" },
+    { label: "進抽牌", value: core.drawStart, sub: "進入抽牌流程" },
+    { label: "完成抽牌", value: core.drawDone, sub: "抽牌完成" },
+    { label: "免費解鎖", value: core.freeUnlock, sub: "免費查看" },
+    { label: "付費", value: props.orderStats.todayPaid, sub: formatMoney(props.orderStats.todayRevenue) },
+    { label: "LINE 保存", value: core.lineSave, sub: "傳送或保存" },
+  ];
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-midnight/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+      <KpiOverview items={kpiItems} />
+      <FunnelFlow steps={funnelSteps} />
+
+      <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-midnight/64 p-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm font-semibold tracking-[0.18em] text-moon">使用統計總覽</p>
-          <p className="mt-1 text-xs text-moon/42">預設展開核心營運指標，其餘資料可依需要打開。</p>
+          <p className="mt-1 text-xs text-moon/42">上方顯示核心營運數字，下方保留詳細統計展開區。</p>
         </div>
         <div className="flex gap-2">
           <button

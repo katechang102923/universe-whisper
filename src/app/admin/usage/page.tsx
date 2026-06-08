@@ -35,14 +35,13 @@ export const runtime = "nodejs";
 
 // ── 型別 ──────────────────────────────────────────────────────────────────────
 
-type AdminTab = "overview" | "revenue" | "orders" | "redeem" | "astro" | "fortune" | "cleanup";
+type AdminTab = "overview" | "revenue" | "orders" | "codes" | "fortune" | "cleanup";
 
 const TABS: { id: AdminTab; label: string }[] = [
   { id: "overview", label: "使用統計" },
   { id: "revenue",  label: "收入統計" },
   { id: "orders",   label: "付款訂單" },
-  { id: "redeem",   label: "通行碼管理" },
-  { id: "astro",    label: "三重星座補發" },
+  { id: "codes",    label: "補發與通行碼" },
   { id: "fortune",  label: "今日星座" },
   { id: "cleanup",  label: "測試清理" },
 ];
@@ -410,7 +409,9 @@ export default async function AdminUsagePage({
 
   // ── Tab 解析 ────────────────────────────────────────────────────────────────
   const params     = await searchParams;
-  const tab        = (params.tab ?? "overview") as AdminTab;
+  const requestedTab = params.tab;
+  const normalizedTab = requestedTab === "redeem" || requestedTab === "astro" ? "codes" : requestedTab;
+  const tab        = (normalizedTab ?? "overview") as AdminTab;
   const validTabs  = TABS.map((t) => t.id);
   const currentTab: AdminTab = validTabs.includes(tab) ? tab : "overview";
 
@@ -507,7 +508,7 @@ export default async function AdminUsagePage({
       }
     }
 
-    if (currentTab === "redeem") {
+    if (currentTab === "codes") {
       const snap = await db
         .collection(REDEEM_CODES_COLLECTION)
         .orderBy("createdAt", "desc")
@@ -555,8 +556,8 @@ export default async function AdminUsagePage({
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <AppShell>
-      <section className="mx-auto w-full max-w-6xl py-8 sm:py-12">
+    <AppShell adminMode>
+      <section className="mx-auto w-full max-w-6xl py-6 sm:py-10">
 
         {/* Header */}
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -574,7 +575,8 @@ export default async function AdminUsagePage({
         </div>
 
         {/* Tab 導覽 */}
-        <div className="mt-6 flex flex-wrap gap-1 rounded-2xl border border-white/10 bg-midnight/50 p-1.5">
+        <div className="mt-6 overflow-x-auto rounded-2xl border border-white/10 bg-midnight/70 p-1.5">
+          <div className="flex min-w-max gap-1">
           {TABS.map((t) => (
             <Link
               key={t.id}
@@ -596,6 +598,7 @@ export default async function AdminUsagePage({
           >
             付費測試
           </Link>
+          </div>
         </div>
 
         {/* Tab 內容 */}
@@ -622,23 +625,20 @@ export default async function AdminUsagePage({
 
           {currentTab === "orders" && <OrdersTabClient orders={orders} />}
 
-          {currentTab === "redeem" && (
-            <div className="space-y-8">
-              <div>
-                <h2 className="mb-4 text-lg font-semibold text-moon">產生新宇宙通行碼</h2>
+          {currentTab === "codes" && (
+            <div className="space-y-6">
+              <div className="rounded-2xl border border-white/10 bg-midnight/60 p-5 sm:p-6">
+                <p className="text-xs uppercase tracking-[0.24em] text-[#d8bd70]/70">A. 通行碼管理</p>
+                <h2 className="mt-2 text-lg font-semibold text-moon">產生新宇宙通行碼</h2>
                 <RedeemCodeGenerator />
               </div>
-              <div>
+              <div className="rounded-2xl border border-white/10 bg-midnight/60 p-5 sm:p-6">
                 <h2 className="mb-4 text-lg font-semibold text-moon">最近通行碼（前 50 筆）</h2>
                 <RedeemCodeList codes={serializeCodes(codes)} />
               </div>
-            </div>
-          )}
-
-          {currentTab === "astro" && (
-            <div className="space-y-4">
-              <div>
-                <h2 className="mb-1 text-lg font-semibold text-moon">三重星座補發序號</h2>
+              <div className="rounded-2xl border border-white/10 bg-midnight/60 p-5 sm:p-6">
+                <p className="text-xs uppercase tracking-[0.24em] text-lavender/70">B. 三重星座手動補發</p>
+                <h2 className="mt-2 text-lg font-semibold text-moon">三重星座補發序號</h2>
                 <p className="mb-6 text-sm text-moon/50">
                   產生單次使用的補發序號（AP-XXXXXXXX），寄給需要補發的用戶。用戶在 /astro-profile 解鎖頁輸入序號即可免費解鎖，序號 30 天內有效。
                 </p>

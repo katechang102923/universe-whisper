@@ -13,9 +13,15 @@ const footerLinks = [
   { href: "/disclaimer", label: "娛樂聲明" },
 ];
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  adminMode = false,
+}: {
+  children: React.ReactNode;
+  adminMode?: boolean;
+}) {
   return (
-    <main className="star-field min-h-screen overflow-hidden">
+    <main className={`star-field min-h-screen overflow-hidden ${adminMode ? "admin-shell" : ""}`}>
       <TrafficAnalyticsTracker />
       <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-4 sm:px-8">
         <header className="glass-card sticky top-3 z-20 flex items-center justify-between gap-3 rounded-full px-4 py-3">
@@ -25,29 +31,39 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <SiteNav />
         </header>
         {children}
-        <footer className="mt-auto border-t border-white/10 py-8 text-sm text-moon/62">
-          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div>
-              <p className="font-semibold tracking-[0.18em] text-moon">宇宙偷偷話 Universe Whisper</p>
-              <p className="mt-2 max-w-2xl leading-7">
-                本網站內容僅供娛樂與自我探索參考，不作為醫療、法律、投資等專業建議。
-              </p>
-              <p className="mt-2 text-moon/60">
-                客服信箱：
-                <a href="mailto:ciut0000@gmail.com" className="underline underline-offset-2 transition hover:text-moon">
-                  ciut0000@gmail.com
-                </a>
-              </p>
-              <AdminFooterLink />
+        <footer className={`mt-auto border-t border-white/10 text-sm text-moon/62 ${adminMode ? "py-4" : "py-8"}`}>
+          {adminMode ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-moon/42">
+              <span>宇宙偷偷話 · 管理後台</span>
+              <nav className="flex gap-4">
+                <Link href="/" className="transition hover:text-moon">前台首頁</Link>
+                <Link href="/admin/usage" className="transition hover:text-moon">後台總覽</Link>
+              </nav>
             </div>
-            <nav className="flex flex-wrap gap-x-4 gap-y-2 md:justify-end">
-              {footerLinks.map((item) => (
-                <Link key={item.href} href={item.href} className="transition hover:text-moon">
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
-          </div>
+          ) : (
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="font-semibold tracking-[0.18em] text-moon">宇宙偷偷話 Universe Whisper</p>
+                <p className="mt-2 max-w-2xl leading-7">
+                  本網站內容僅供娛樂與自我探索參考，不作為醫療、法律、投資等專業建議。
+                </p>
+                <p className="mt-2 text-moon/60">
+                  客服信箱：
+                  <a href="mailto:ciut0000@gmail.com" className="underline underline-offset-2 transition hover:text-moon">
+                    ciut0000@gmail.com
+                  </a>
+                </p>
+                <AdminFooterLink />
+              </div>
+              <nav className="flex flex-wrap gap-x-4 gap-y-2 md:justify-end">
+                {footerLinks.map((item) => (
+                  <Link key={item.href} href={item.href} className="transition hover:text-moon">
+                    {item.label}
+                  </Link>
+                ))}
+              </nav>
+            </div>
+          )}
         </footer>
       </div>
     </main>

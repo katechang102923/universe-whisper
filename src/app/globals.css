@@ -68,6 +68,16 @@ a {
   animation: sky-drift 16s ease-in-out infinite alternate;
 }
 
+.admin-shell {
+  background-image:
+    radial-gradient(circle, rgba(247, 241, 223, 0.28) 1px, transparent 1px),
+    radial-gradient(circle, rgba(203, 184, 255, 0.22) 1px, transparent 1px);
+}
+
+.admin-shell::before {
+  opacity: 0.22;
+}
+
 .moon-glow {
   background:
     radial-gradient(circle at 38% 34%, #fff8df 0 12%, #f7f1df 13% 30%, rgba(247, 241, 223, 0.24) 31% 52%, transparent 53%),

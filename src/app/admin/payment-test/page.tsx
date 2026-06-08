@@ -23,19 +23,20 @@ export default async function AdminPaymentTestPage() {
     { id: "overview", label: "使用統計" },
     { id: "revenue",  label: "收入統計" },
     { id: "orders",   label: "付款訂單" },
-    { id: "redeem",   label: "通行碼管理" },
+    { id: "codes",    label: "補發與通行碼" },
     { id: "fortune",  label: "今日星座" },
     { id: "cleanup",  label: "測試清理" },
   ];
 
   return (
-    <AppShell>
+    <AppShell adminMode>
       <section className="mx-auto w-full max-w-2xl py-8 sm:py-12">
         <p className="text-xs uppercase tracking-[0.28em] text-aurora/70">管理員專用</p>
         <h1 className="mt-2 text-2xl font-semibold text-moon sm:text-3xl">付費流程測試</h1>
 
         {/* Tab 導覽（與 /admin/usage 相同樣式，付費測試高亮） */}
-        <div className="mt-6 flex flex-wrap gap-1 rounded-2xl border border-white/10 bg-midnight/50 p-1.5">
+        <div className="mt-6 overflow-x-auto rounded-2xl border border-white/10 bg-midnight/70 p-1.5">
+          <div className="flex min-w-max gap-1">
           {USAGE_TABS.map((t) => (
             <Link
               key={t.id}
@@ -48,6 +49,7 @@ export default async function AdminPaymentTestPage() {
           <span className="rounded-xl px-4 py-2 text-sm font-medium bg-lavender/20 text-lavender">
             付費測試
           </span>
+          </div>
         </div>
 
         <p className="mt-6 text-sm leading-7 text-moon/55">
