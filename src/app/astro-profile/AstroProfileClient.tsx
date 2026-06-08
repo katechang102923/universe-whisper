@@ -295,14 +295,8 @@ export function AstroProfileClient() {
           />
           {!hasTime && (
             <div className="mt-3 space-y-1.5 rounded-xl border border-white/8 bg-white/3 px-4 py-3 text-xs">
-              <p className="text-moon/50">不提供出生時間也能產生完整解析。</p>
-              <p className="text-moon/35">但無法精準計算：</p>
-              <ul className="ml-1 space-y-0.5 text-moon/35">
-                <li>• 月亮星座</li>
-                <li>• 上升星座</li>
-                <li>• 金星星座</li>
-              </ul>
-              <p className="text-moon/35">系統將以通用人格模式進行分析，<br />內容仍可正常產出。</p>
+              <p className="text-moon/50">不提供出生時間也可以產生解析，<br />但月亮、上升、金星可能無法精準判定。</p>
+              <p className="text-moon/35">若未提供資料，系統會以你手動選擇的星座<br />或通用人格方向進行分析，<br />內容適合參考與自我探索，<br />不代表完整精準命盤。</p>
             </div>
           )}
         </div>
@@ -323,9 +317,9 @@ export function AstroProfileClient() {
             placeholder="不知道出生城市"
           />
           {!hasCity && (
-            <div className="mt-3 space-y-1 rounded-xl border border-white/8 bg-white/3 px-4 py-3 text-xs">
-              <p className="text-moon/50">不提供出生城市也能產生完整解析。</p>
-              <p className="text-moon/35">但上升星座可能略有誤差，<br />若知道出生城市建議填寫。</p>
+            <div className="mt-3 space-y-1.5 rounded-xl border border-white/8 bg-white/3 px-4 py-3 text-xs">
+              <p className="text-moon/50">不提供出生城市也可以產生解析，<br />但上升星座與部分延伸解讀可能產生誤差。</p>
+              <p className="text-moon/35">若知道出生城市，建議填寫，<br />結果會更貼近你的個人狀態。</p>
             </div>
           )}
         </div>
@@ -380,8 +374,8 @@ export function AstroProfileClient() {
         )}
 
         <div className="mb-4 space-y-1 text-center">
-          <p className="text-xs text-moon/45">✨ 只需出生日期即可開始解析</p>
-          <p className="text-xs text-moon/35">✨ 出生時間與城市可提升準確度</p>
+          <p className="text-xs text-moon/45">✨ 只需出生日期即可開始參考解析</p>
+          <p className="text-xs text-moon/35">✨ 出生時間與城市越完整，結果越接近個人命盤</p>
         </div>
 
         <button
