@@ -54,6 +54,11 @@ export interface AstroProfileClaimData {
   whisper?: string | null;
   advice?: string | null;
   shortSummary?: string | null;
+  /** 延伸深度解析四章節（已解鎖時傳入） */
+  careerWealthText?: string | null;
+  loveRelationshipText?: string | null;
+  yearlyFortuneText?: string | null;
+  soulLessonText?: string | null;
 }
 
 const SIGN_SUBLABELS: Record<string, string> = {
@@ -150,6 +155,38 @@ export function buildLineAstroProfileMessage(data: AstroProfileClaimData): strin
     parts.push("🌿 給你的提醒");
     parts.push(adviceText);
     parts.push("");
+  }
+
+  // ── 延伸深度解析四章節（已解鎖時才有資料）────────────────────────────────────
+  const career      = sliceText(clean(data.careerWealthText),    200);
+  const loveRel     = sliceText(clean(data.loveRelationshipText),200);
+  const yearly      = sliceText(clean(data.yearlyFortuneText),   200);
+  const soulLesson  = sliceText(clean(data.soulLessonText),      200);
+  const hasExtended = career || loveRel || yearly || soulLesson;
+
+  if (hasExtended) {
+    parts.push(DIVIDER);
+    parts.push("");
+    if (career) {
+      parts.push("💰 個人事業與財富天賦報告");
+      parts.push(career);
+      parts.push("");
+    }
+    if (loveRel) {
+      parts.push("❤️ 情感正緣與人際模式分析");
+      parts.push(loveRel);
+      parts.push("");
+    }
+    if (yearly) {
+      parts.push("🌙 流年與未來半年運勢");
+      parts.push(yearly);
+      parts.push("");
+    }
+    if (soulLesson) {
+      parts.push("✨ 靈魂課題與人生方向");
+      parts.push(soulLesson);
+      parts.push("");
+    }
   }
 
   parts.push(DIVIDER);

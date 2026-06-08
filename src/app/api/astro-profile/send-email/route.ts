@@ -20,6 +20,11 @@ type AstroEmailPayload = {
   venusLoveText?: string;
   whisper?: string;
   advice?: string;
+  /** 延伸深度解析四章節（已解鎖時傳入） */
+  careerWealthText?: string | null;
+  loveRelationshipText?: string | null;
+  yearlyFortuneText?: string | null;
+  soulLessonText?: string | null;
   siteUrl?: string;
 };
 
@@ -93,6 +98,7 @@ function buildAstroEmailHtml(payload: AstroEmailPayload, dateStr: string, siteUr
     sunSign, moonSign, risingSign, venusSign,
     overallSummary, sunCoreText, moonInnerText, risingOuterText, venusLoveText,
     whisper, advice,
+    careerWealthText, loveRelationshipText, yearlyFortuneText, soulLessonText,
   } = payload;
 
   const signCard = `
@@ -104,6 +110,13 @@ function buildAstroEmailHtml(payload: AstroEmailPayload, dateStr: string, siteUr
       ${venusSign ? signBadge("♀ 金星星座", venusSign, "#c9a0dc") : ""}
     </div>`;
 
+  // 延伸深度解析區塊分隔標題（只在有至少一個欄位時才顯示）
+  const hasExtended = careerWealthText || loveRelationshipText || yearlyFortuneText || soulLessonText;
+  const extendedDivider = hasExtended ? `
+    <div style="border-top:1px solid ${S.divider};margin:24px 0 20px;">
+      <p style="font-size:11px;letter-spacing:0.26em;color:${S.gold};margin:16px 0 0;text-transform:uppercase;">延伸深度解析</p>
+    </div>` : "";
+
   const sections = [
     signCard,
     overallSummary ? sectionCard("三重星座整體解析", "✦", overallSummary, true) : "",
@@ -113,6 +126,11 @@ function buildAstroEmailHtml(payload: AstroEmailPayload, dateStr: string, siteUr
     venusSign && venusLoveText ? sectionCard(`感情吸引力｜${venusSign}`, "♀", venusLoveText) : "",
     whisper ? sectionCard("宇宙偷偷話", "🌌", whisper) : "",
     advice ? sectionCard("給你的提醒", "🌿", advice) : "",
+    extendedDivider,
+    careerWealthText ? sectionCard("個人事業與財富天賦報告", "💰", careerWealthText) : "",
+    loveRelationshipText ? sectionCard("情感正緣與人際模式分析", "❤️", loveRelationshipText) : "",
+    yearlyFortuneText ? sectionCard("流年與未來半年運勢", "🌙", yearlyFortuneText) : "",
+    soulLessonText ? sectionCard("靈魂課題與人生方向", "✨", soulLessonText) : "",
   ].join("");
 
   return `<!DOCTYPE html>
@@ -152,7 +170,9 @@ function buildAstroEmailHtml(payload: AstroEmailPayload, dateStr: string, siteUr
 
 function buildAstroEmailText(payload: AstroEmailPayload, dateStr: string, siteUrl: string): string {
   const { sunSign, moonSign, risingSign, venusSign,
-    overallSummary, sunCoreText, moonInnerText, risingOuterText, venusLoveText, whisper, advice } = payload;
+    overallSummary, sunCoreText, moonInnerText, risingOuterText, venusLoveText, whisper, advice,
+    careerWealthText, loveRelationshipText, yearlyFortuneText, soulLessonText,
+  } = payload;
   const D = "━━━━━━━━━━━━━━━━";
   const lines = [
     "宇宙偷偷話 · Universe Whisper",
@@ -172,6 +192,16 @@ function buildAstroEmailText(payload: AstroEmailPayload, dateStr: string, siteUr
   if (venusSign && venusLoveText) lines.push(`♀ 感情吸引力｜${venusSign}`, venusLoveText, "");
   if (whisper) lines.push("🌌 宇宙偷偷話", whisper, "");
   if (advice) lines.push("🌿 給你的提醒", advice, "");
+
+  // 延伸深度解析四章節
+  const hasExtended = careerWealthText || loveRelationshipText || yearlyFortuneText || soulLessonText;
+  if (hasExtended) {
+    lines.push("", D, "");
+    if (careerWealthText)    lines.push("💰 個人事業與財富天賦報告", careerWealthText, "");
+    if (loveRelationshipText) lines.push("❤️ 情感正緣與人際模式分析", loveRelationshipText, "");
+    if (yearlyFortuneText)   lines.push("🌙 流年與未來半年運勢", yearlyFortuneText, "");
+    if (soulLessonText)      lines.push("✨ 靈魂課題與人生方向", soulLessonText, "");
+  }
 
   lines.push(D, "", `重新查看解析：${siteUrl}/astro-profile`, "", "宇宙偷偷話 Universe Whisper");
   return lines.join("\n");

@@ -118,6 +118,11 @@ export async function POST(request: Request) {
     whisper: safeStr(body.whisper),
     advice: safeStr(body.advice),
     shortSummary: safeStr(body.shortSummary),
+    // 延伸深度解析四章節
+    careerWealthText:    safeStr(body.careerWealthText),
+    loveRelationshipText: safeStr(body.loveRelationshipText),
+    yearlyFortuneText:   safeStr(body.yearlyFortuneText),
+    soulLessonText:      safeStr(body.soulLessonText),
   });
 
   console.info("[astro-profile/line-claim] Created claim", { claimCode, sunSign });

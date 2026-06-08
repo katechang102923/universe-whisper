@@ -1024,6 +1024,10 @@ function PostUnlockActions({
           whisper: sunTexts.whisper,
           advice: sunTexts.advice,
           shortSummary: sunTexts.shortSummary,
+          careerWealthText: sunTexts.careerWealthText,
+          loveRelationshipText: sunTexts.loveRelationshipText,
+          yearlyFortuneText: sunTexts.yearlyFortuneText,
+          soulLessonText: sunTexts.soulLessonText,
         }),
       });
       const data = await res.json() as { ok: boolean; claimCode?: string; error?: string };
@@ -1072,6 +1076,10 @@ function PostUnlockActions({
           venusLoveText: venusSign ? ASTRO_PROFILE_TEXTS[venusSign].venusLoveText : undefined,
           whisper: sunTexts.whisper,
           advice: sunTexts.advice,
+          careerWealthText: sunTexts.careerWealthText,
+          loveRelationshipText: sunTexts.loveRelationshipText,
+          yearlyFortuneText: sunTexts.yearlyFortuneText,
+          soulLessonText: sunTexts.soulLessonText,
           siteUrl,
         }),
       });
