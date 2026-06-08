@@ -288,60 +288,15 @@ function serializeCodes(codes: RedeemCodeData[]): SerializableRedeemCode[] {
 
 function OverviewTab({
   today,
-  usageData,
-  fortuneStats,
-  redeemStats,
-  orderStats,
-  shareDownloadStats,
-  shareDownloadRanking,
   fetchError,
-  snapshotNote,
-  noSnapshot,
-  ipRanking,
-  anonRanking,
-  lineRanking,
 }: {
   today:       string;
-  usageData:   Partial<DailyUsageDoc>;
-  fortuneStats: Partial<FortuneStatsDoc>;
-  redeemStats: { total: number; active: number; usedUp: number; test: number };
-  orderStats:  {
-    total: number; paid: number; failed: number; pending: number;
-    todayRevenue: number; todayPaid: number; todayTest: number; noCode: number; emailUnsent: number;
-  };
-  shareDownloadStats: {
-    todayCount: number; todayUsers: number; allCount: number; allUsers: number;
-  };
-  shareDownloadRanking: { display: string; count: number; lastAt: string; type: string }[];
   fetchError:    boolean;
-  snapshotNote:  string;
-  noSnapshot:    boolean;
-  ipRanking:   { display: string; count: number }[];
-  anonRanking: { display: string; count: number }[];
-  lineRanking: { display: string; count: number }[];
 }) {
-  const fortuneCoverage = (fortuneStats.generated_zodiacs ?? []).length;
-
   return (
     <StatsOverviewClient
-      year={Number(today.slice(0, 4))}
-      month={Number(today.slice(5, 7))}
       today={today}
-      usageData={usageData}
-      fortuneCoverage={fortuneCoverage}
-      zodiacCount={ZODIAC_SIGNS.length}
-      redeemStats={redeemStats}
-      orderStats={orderStats}
-      shareDownloadStats={shareDownloadStats}
-      shareDownloadRanking={shareDownloadRanking}
       fetchError={fetchError}
-      snapshotNote={snapshotNote}
-      noSnapshot={noSnapshot}
-      ipRanking={ipRanking}
-      anonRanking={anonRanking}
-      lineRanking={lineRanking}
-      lineDailyLimit={LINE_DAILY_LIMIT}
-      unauthDailyLimit={UNAUTH_DAILY_LIMIT}
     />
   );
 }
@@ -435,65 +390,6 @@ export default async function AdminUsagePage({
 
   try {
     const db = getAdminDb();
-
-    if (currentTab === "overview") {
-      // ── 先嘗試讀取每日統計快照（避免大量即時 Firestore 讀取）─────────────────
-      // 快照由每日 00:05 Cron 產生，文件 id = 台灣日期（如 2026-06-08）
-      type SnapshotDoc = {
-        usageData?: Partial<DailyUsageDoc>;
-        fortuneCoverage?: number;
-        redeemStats?: typeof redeemStats;
-        orderStats?: typeof orderStats;
-        shareDownloadStats?: typeof shareDownloadStats;
-        shareDownloadRanking?: typeof shareDownloadRanking;
-        ipRanking?: { display: string; count: number }[];
-        anonRanking?: { display: string; count: number }[];
-        lineRanking?: { display: string; count: number }[];
-        date?: string;
-        period?: string;
-      };
-
-      // 嘗試今天和昨天的快照
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = yesterday.toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" });
-      const [todaySnap, yesterdaySnap] = await Promise.all([
-        db.collection("daily_admin_stats").doc(`${today}_am`).get(),
-        db.collection("daily_admin_stats").doc(`${yesterdayStr}_full`).get(),
-      ]);
-
-      // 優先用今天快照，否則用昨天
-      const parts = new Intl.DateTimeFormat("en-US", {
-        timeZone: "Asia/Taipei",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      }).formatToParts(new Date());
-      const currentMinutes =
-        Number(parts.find((part) => part.type === "hour")?.value ?? "0") * 60 +
-        Number(parts.find((part) => part.type === "minute")?.value ?? "0");
-      // 12:05+ 台灣時間 → 優先今天 am 快照；否則優先昨天 full，再 fallback 今天 am
-      const bestSnap =
-        currentMinutes >= 12 * 60 + 5
-          ? todaySnap.exists ? todaySnap : yesterdaySnap.exists ? yesterdaySnap : null
-          : yesterdaySnap.exists ? yesterdaySnap : todaySnap.exists ? todaySnap : null;
-      if (bestSnap) {
-        const s = bestSnap.data() as SnapshotDoc;
-        usageData           = s.usageData ?? {};
-        fortuneStats        = { generated_zodiacs: ZODIAC_SIGNS.slice(0, s.fortuneCoverage ?? 0) } as Partial<FortuneStatsDoc>;
-        redeemStats         = s.redeemStats ?? redeemStats;
-        orderStats          = s.orderStats ?? orderStats;
-        shareDownloadStats  = s.shareDownloadStats ?? shareDownloadStats;
-        shareDownloadRanking = s.shareDownloadRanking ?? [];
-        snapshotNote = `統計資料來自 ${s.date ?? yesterdayStr} ${s.period ?? ""} 快照，每日 00:05 與 12:05 更新`;
-      } else {
-        // 尚未有快照：只讀兩個單一文件，不掃全集
-        usageData    = {};
-        fortuneStats = {};
-        noSnapshot   = true;
-        snapshotNote = "NO_SNAPSHOT";
-      }
-    }
 
     if (currentTab === "orders") {
       try {
@@ -606,18 +502,7 @@ export default async function AdminUsagePage({
           {currentTab === "overview" && (
             <OverviewTab
               today={today}
-              usageData={usageData}
-              fortuneStats={fortuneStats}
-              redeemStats={redeemStats}
-              orderStats={orderStats}
-              shareDownloadStats={shareDownloadStats}
-              shareDownloadRanking={shareDownloadRanking}
               fetchError={fetchError}
-              snapshotNote={snapshotNote}
-              noSnapshot={noSnapshot}
-              ipRanking={ipRanking}
-              anonRanking={anonRanking}
-              lineRanking={lineRanking}
             />
           )}
 

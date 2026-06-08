@@ -1,11 +1,43 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import type { DocumentSnapshot } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { verifyAdminSessionCookie, SESSION_COOKIE_NAME } from "@/lib/verifyAdmin";
 import { getAdminUserIds, getTaipeiDate } from "@/lib/rateLimit";
 import { jsonServerError } from "@/lib/apiErrors";
 
 export const runtime = "nodejs";
+
+type SnapshotPeriod = "full" | "am";
+
+type DailyMetrics = {
+  date: string;
+  period: SnapshotPeriod;
+  label: string;
+  visitors: number;
+  pageViews: number;
+  tarotDraws: number;
+  freeDraws: number;
+  paidSuccess: number;
+  revenue: number;
+};
+
+type SnapshotDoc = {
+  date?: string;
+  period?: SnapshotPeriod;
+  generatedAt?: unknown;
+  dailyMetrics?: Partial<DailyMetrics>;
+  visitors?: number;
+  tarotDraws?: number;
+  freeDraws?: number;
+  paidUnlocks?: number;
+  revenue?: number;
+  orderStats?: { paid?: number; todayPaid?: number; todayRevenue?: number };
+  statsPayload?: {
+    traffic?: { today?: { pageViews?: number; visitors?: number } };
+    funnel?: Array<{ label?: string; users?: number }>;
+  };
+};
 
 async function verifyAdmin() {
   const cookieStore = await cookies();
@@ -38,68 +70,75 @@ function taipeiMinutes() {
   return hour * 60 + minute;
 }
 
-function snapshotCandidates(today: string) {
-  const yesterday = addDays(today, -1);
-  if (taipeiMinutes() >= 12 * 60 + 5) {
-    return [`${today}_am`, `${yesterday}_full`];
-  }
-  return [`${yesterday}_full`];
+function numberValue(value: unknown) {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
-export async function GET(req: NextRequest) {
+function funnelUsers(snapshot: SnapshotDoc, label: string) {
+  return snapshot.statsPayload?.funnel?.find((row) => row.label === label)?.users ?? 0;
+}
+
+function metricsFromDoc(doc: DocumentSnapshot, fallbackDate: string, fallbackPeriod: SnapshotPeriod): DailyMetrics | null {
+  if (!doc.exists) return null;
+  const data = doc.data() as SnapshotDoc;
+  const date = data.date ?? fallbackDate;
+  const period = data.period ?? fallbackPeriod;
+  const dailyMetrics = data.dailyMetrics ?? {};
+  const completedDraws =
+    numberValue(dailyMetrics.tarotDraws) ||
+    numberValue(data.tarotDraws) ||
+    numberValue(funnelUsers(data, "完成抽牌人數"));
+
+  return {
+    date,
+    period,
+    label: dailyMetrics.label ?? (period === "am" ? "今日 00:00-12:00" : "昨日 00:00-23:59"),
+    visitors: numberValue(dailyMetrics.visitors) || numberValue(data.visitors) || numberValue(data.statsPayload?.traffic?.today?.visitors),
+    pageViews: numberValue(dailyMetrics.pageViews) || numberValue(data.statsPayload?.traffic?.today?.pageViews),
+    tarotDraws: completedDraws,
+    freeDraws: numberValue(dailyMetrics.freeDraws) || numberValue(data.freeDraws),
+    paidSuccess:
+      numberValue(dailyMetrics.paidSuccess) ||
+      numberValue(data.orderStats?.todayPaid) ||
+      numberValue(data.orderStats?.paid) ||
+      numberValue(data.paidUnlocks),
+    revenue: numberValue(dailyMetrics.revenue) || numberValue(data.revenue) || numberValue(data.orderStats?.todayRevenue),
+  };
+}
+
+export async function GET() {
   if (!(await verifyAdmin())) {
     return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
   }
 
   const today = getTaipeiDate();
+  const yesterday = addDays(today, -1);
   const db = getAdminDb();
-  const candidates = snapshotCandidates(today);
+  const todayAmAvailable = taipeiMinutes() >= 12 * 60 + 5;
+  const trendDates = Array.from({ length: 7 }, (_, index) => addDays(yesterday, -index));
 
   try {
-    const snapDocs = await Promise.all(candidates.map((id) => db.collection("daily_admin_stats").doc(id).get()));
-    const found = snapDocs.find((doc) => doc.exists);
-    if (!found) {
-      return NextResponse.json({
-        ok: true,
-        today,
-        monthKey: today.slice(0, 7),
-        unlock: {
-          today: { free: 0, paid: 0, total: 0, ratio: "0%" },
-          month: { free: 0, paid: 0, total: 0, ratio: "0%" },
-          all: { free: 0, paid: 0, total: 0, ratio: "0%" },
-        },
-        questionTypes: { today: [], month: [], all: [] },
-        spread: { today: [], month: [], all: [] },
-        lineSave: {
-          today: { count: 0, users: 0 },
-          month: { count: 0, users: 0 },
-          all: { count: 0, users: 0 },
-        },
-        traffic: {
-          today: { visitors: 0, sessions: 0, pageViews: 0, avgActiveSeconds: 0, bounceRate: "0%" },
-          month: { visitors: 0, sessions: 0, pageViews: 0, avgActiveSeconds: 0, bounceRate: "0%" },
-          all: { visitors: 0, sessions: 0, pageViews: 0, avgActiveSeconds: 0, bounceRate: "0%" },
-        },
-        trafficSources: [],
-        pageStay: [],
-        funnel: [],
-        funnelFilter: { type: "today", date: today },
-        paymentOrderCount: 0,
-        _snapshotMissing: true,
-      });
-    }
+    const [yesterdaySnap, todayAmSnap, ...trendSnaps] = await Promise.all([
+      db.collection("daily_admin_stats").doc(`${yesterday}_full`).get(),
+      db.collection("daily_admin_stats").doc(`${today}_am`).get(),
+      ...trendDates.map((date) => db.collection("daily_admin_stats").doc(`${date}_full`).get()),
+    ]);
 
-    const snap = found.data() as { statsPayload?: Record<string, unknown>; date?: string; period?: string };
-    if (!snap.statsPayload) {
-      return NextResponse.json({ ok: false, error: "SNAPSHOT_INVALID" }, { status: 500 });
-    }
+    const yesterdayMetrics = metricsFromDoc(yesterdaySnap, yesterday, "full");
+    const todayAmMetrics = todayAmAvailable ? metricsFromDoc(todayAmSnap, today, "am") : null;
+    const trends = trendSnaps
+      .map((doc, index) => metricsFromDoc(doc, trendDates[index], "full"))
+      .filter((row): row is DailyMetrics => Boolean(row));
 
     return NextResponse.json({
       ok: true,
-      _snapshotId: found.id,
-      _snapshotDate: snap.date,
-      _snapshotPeriod: snap.period,
-      ...snap.statsPayload,
+      today,
+      yesterday: yesterdayMetrics,
+      todayAm: todayAmMetrics,
+      todayAmAvailable: Boolean(todayAmAvailable && todayAmMetrics),
+      todayAmMessage: todayAmAvailable ? "今日前半天快照尚未產生" : "今日前半天統計將於 12:05 更新",
+      trends,
     });
   } catch (error) {
     console.error("[admin/stats] snapshot read failed:", error);

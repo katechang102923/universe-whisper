@@ -39,6 +39,17 @@ type SourceRow = {
   paidSuccess: number;
   paidConversionRate: string;
 };
+type DailyMetrics = {
+  date: string;
+  period: SnapshotPeriod;
+  label: string;
+  visitors: number;
+  pageViews: number;
+  tarotDraws: number;
+  freeDraws: number;
+  paidSuccess: number;
+  revenue: number;
+};
 
 function calcRatio(num: number, den: number) {
   if (!den) return "0%";
@@ -257,6 +268,22 @@ function emptyStatsPayload(date: string, monthKey: string, freeDraws: number, pa
   };
 }
 
+async function cleanupOldSnapshots(db: FirebaseFirestore.Firestore, cutoffDate: string) {
+  const oldSnaps = await db
+    .collection("daily_admin_stats")
+    .where("date", "<", cutoffDate)
+    .limit(30)
+    .get()
+    .catch(() => null);
+  if (!oldSnaps || oldSnaps.empty) return;
+
+  const batch = db.batch();
+  for (const doc of oldSnaps.docs) {
+    batch.delete(doc.ref);
+  }
+  await batch.commit();
+}
+
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET ?? "";
   const auth = req.headers.get("authorization") ?? "";
@@ -399,6 +426,17 @@ export async function GET(req: NextRequest) {
     const lineRanking = sortedEntries(usageData.line_usage ?? {}).filter(({ key }) => !adminLineIds.has(key)).slice(0, 20).map(({ key, count }) => ({ display: key, count }));
 
     const statsPayload = emptyStatsPayload(date, date.slice(0, 7), freeDraws, paidUnlocks, analyticsEvents, lineSends);
+    const dailyMetrics: DailyMetrics = {
+      date,
+      period,
+      label: period === "am" ? "今日 00:00-12:00" : period === "pm" ? "今日 12:00-23:59" : "昨日 00:00-23:59",
+      visitors: visitors.size,
+      pageViews: statsPayload.traffic.today.pageViews,
+      tarotDraws,
+      freeDraws,
+      paidSuccess: orderStats.todayPaid || paidUnlocks,
+      revenue,
+    };
     const docData = {
       date,
       period,
@@ -406,6 +444,7 @@ export async function GET(req: NextRequest) {
       rangeStart,
       rangeEnd,
       generatedAt: FieldValue.serverTimestamp(),
+      dailyMetrics,
       visitors: visitors.size,
       freeDraws,
       paidUnlocks,
@@ -436,6 +475,7 @@ export async function GET(req: NextRequest) {
 
     const docId = `${date}_${period}`;
     await db.collection("daily_admin_stats").doc(docId).set(docData, { merge: true });
+    await cleanupOldSnapshots(db, addDays(date, -6));
 
     return NextResponse.json({
       ok: true,
@@ -449,6 +489,7 @@ export async function GET(req: NextRequest) {
       freeDraws,
       paidUnlocks,
       revenue,
+      dailyMetrics,
       paymentRate: docData.paymentRate,
       shareImageDownloads,
       lineSends,
