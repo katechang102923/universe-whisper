@@ -30,9 +30,17 @@ export interface StoryImageParams {
   venusLoveText?: string | null | undefined;
   venusText?:     string | null | undefined;
   loveText?:      string | null | undefined;
-  whisper:        string | null | undefined;
-  advice:         string | null | undefined;
-  siteUrl?:       string;
+  whisper:             string | null | undefined;
+  advice:              string | null | undefined;
+  /** 個人事業與財富天賦報告（已解鎖時傳入） */
+  careerWealthText?:   string | null | undefined;
+  /** 情感正緣與人際模式分析（已解鎖時傳入） */
+  loveRelationshipText?: string | null | undefined;
+  /** 流年與未來半年運勢（已解鎖時傳入） */
+  yearlyFortuneText?:  string | null | undefined;
+  /** 靈魂課題與人生方向（已解鎖時傳入） */
+  soulLessonText?:     string | null | undefined;
+  siteUrl?:            string;
 }
 
 export async function generateAstroStoryImage(params: StoryImageParams): Promise<Blob> {
@@ -728,11 +736,17 @@ function drawAspectSummaryGrid(
   return startY + rows * cardH + (rows - 1) * rowGap;
 }
 
-/** 解鎖引導卡：「🔓 完整版額外包含」四項功能預覽 */
+/**
+ * 底部摘要卡。
+ * - 已解鎖（items 有內容）：標題「本次完整解析摘要」，顯示真實解析摘要。
+ * - 未解鎖（items 為空）：標題「🔓 完整版額外包含」，顯示功能預告。
+ */
 function drawUnlockTeaserCard(
   ctx: CanvasRenderingContext2D,
   startY: number,
+  items?: Array<{ icon: string; title: string; desc: string }>,
 ): number {
+  const isUnlocked = items && items.length > 0;
   const CARD_H = 340;
   const padX = 38;
 
@@ -741,7 +755,9 @@ function drawUnlockTeaserCard(
   roundRectPath(ctx, MARGIN_X, startY, INNER_W, CARD_H, 32);
   ctx.fillStyle = "rgba(7,11,30,0.78)";
   ctx.fill();
-  ctx.strokeStyle = "rgba(247,217,135,0.30)";
+  ctx.strokeStyle = isUnlocked
+    ? "rgba(247,217,135,0.36)"
+    : "rgba(247,217,135,0.22)";
   ctx.lineWidth = 1.5;
   ctx.stroke();
   ctx.restore();
@@ -750,7 +766,11 @@ function drawUnlockTeaserCard(
   ctx.textAlign = "left";
   ctx.font = "bold 30px sans-serif";
   ctx.fillStyle = "#f7d987";
-  ctx.fillText("🔓 完整版額外包含", MARGIN_X + padX, startY + 52);
+  ctx.fillText(
+    isUnlocked ? "本次完整解析摘要" : "🔓 完整版額外包含",
+    MARGIN_X + padX,
+    startY + 52,
+  );
 
   // 標題下分隔線
   ctx.save();
@@ -762,27 +782,11 @@ function drawUnlockTeaserCard(
   ctx.stroke();
   ctx.restore();
 
-  const ITEMS = [
-    {
-      icon: "💰",
-      title: "個人事業與財富天賦報告",
-      desc: "分析工作模式、累積財富的方式與金錢盲點。",
-    },
-    {
-      icon: "❤️",
-      title: "情感正緣與人際模式分析",
-      desc: "了解你的吸引力、感情需求與人際互動模式。",
-    },
-    {
-      icon: "🌙",
-      title: "流年與未來半年運勢",
-      desc: "整理三重星座能量與未來半年的方向機會。",
-    },
-    {
-      icon: "✨",
-      title: "靈魂課題與人生方向",
-      desc: "找出太陽、月亮、上升三重能量的成長課題。",
-    },
+  const DISPLAY_ITEMS = isUnlocked ? items! : [
+    { icon: "💰", title: "個人事業與財富天賦報告", desc: "分析工作模式、累積財富的方式與金錢盲點。" },
+    { icon: "❤️", title: "情感正緣與人際模式分析", desc: "了解你的吸引力、感情需求與人際互動模式。" },
+    { icon: "🌙", title: "流年與未來半年運勢",     desc: "整理三重星座能量與未來半年的方向機會。" },
+    { icon: "✨", title: "靈魂課題與人生方向",     desc: "找出太陽、月亮、上升三重能量的成長課題。" },
   ];
 
   const colGap = 20;
@@ -792,7 +796,7 @@ function drawUnlockTeaserCard(
   const itemH = 106;
   const gridTop = startY + 82;
 
-  ITEMS.forEach((item, idx) => {
+  DISPLAY_ITEMS.forEach((item, idx) => {
     const col = idx % 2;
     const row = Math.floor(idx / 2);
     const ix = MARGIN_X + padX + col * (itemW + colGap);
@@ -803,7 +807,9 @@ function drawUnlockTeaserCard(
     roundRectPath(ctx, ix, iy, itemW, itemH, 16);
     ctx.fillStyle = "rgba(255,255,255,0.048)";
     ctx.fill();
-    ctx.strokeStyle = "rgba(247,217,135,0.16)";
+    ctx.strokeStyle = isUnlocked
+      ? "rgba(247,217,135,0.22)"
+      : "rgba(247,217,135,0.12)";
     ctx.lineWidth = 1;
     ctx.stroke();
     ctx.restore();
@@ -811,7 +817,9 @@ function drawUnlockTeaserCard(
     // icon + title
     ctx.textAlign = "left";
     ctx.font = "bold 22px sans-serif";
-    ctx.fillStyle = "rgba(255,247,230,0.94)";
+    ctx.fillStyle = isUnlocked
+      ? "rgba(255,247,230,0.96)"
+      : "rgba(255,247,230,0.72)";
     ctx.fillText(
       fitOneLine(ctx, `${item.icon} ${item.title}`, itemW - 28),
       ix + 14,
@@ -826,10 +834,12 @@ function drawUnlockTeaserCard(
       iy + 58,
       itemW - 28,
       itemH - 70,
-      20,
+      isUnlocked ? 21 : 20,
       15,
       1.40,
-      "rgba(255,247,230,0.62)",
+      isUnlocked
+        ? "rgba(255,247,230,0.80)"
+        : "rgba(255,247,230,0.55)",
     );
   });
 
@@ -911,7 +921,20 @@ function render(
   curY = drawOverallSummaryCard(ctx, overallParagraphs, curY);
   curY += overallParagraphs.length ? GAP : 0;
   curY = drawAspectSummaryGrid(ctx, aspects, curY, contentAreaBottom - SUMMARY_CARD_H - GAP);
-  drawUnlockTeaserCard(ctx, Math.min(curY + GAP, contentAreaBottom - SUMMARY_CARD_H));
+
+  // 已解鎖時傳入真實摘要，未解鎖傳 undefined → 顯示功能預告
+  const unlockedItems =
+    params.careerWealthText && params.loveRelationshipText &&
+    params.yearlyFortuneText && params.soulLessonText
+      ? [
+          { icon: "💰", title: "事業與財富", desc: params.careerWealthText.slice(0, 40) + (params.careerWealthText.length > 40 ? "⋯" : "") },
+          { icon: "❤️", title: "情感與人際", desc: params.loveRelationshipText.slice(0, 40) + (params.loveRelationshipText.length > 40 ? "⋯" : "") },
+          { icon: "🌙", title: "流年運勢",   desc: params.yearlyFortuneText.slice(0, 40) + (params.yearlyFortuneText.length > 40 ? "⋯" : "") },
+          { icon: "✨", title: "靈魂方向",   desc: params.soulLessonText.slice(0, 40) + (params.soulLessonText.length > 40 ? "⋯" : "") },
+        ]
+      : undefined;
+
+  drawUnlockTeaserCard(ctx, Math.min(curY + GAP, contentAreaBottom - SUMMARY_CARD_H), unlockedItems);
 
   // 4. 底部
   const footerDivY = H - FOOTER_RESERVED + 20;

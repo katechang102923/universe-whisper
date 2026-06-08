@@ -623,6 +623,34 @@ function PaidContent({
           <p className="leading-8">{sunTexts.advice}</p>
         </ResultCard>
       </div>
+
+      {/* ── 延伸解析四章節 ── */}
+      <div className="overflow-hidden rounded-[1.5rem] border border-[#d8bd70]/20 bg-midnight/40">
+        <div className="h-px bg-gradient-to-r from-[#d8bd70]/50 via-lavender/40 to-aurora/30" />
+        <div className="px-5 py-4 sm:px-6">
+          <p className="text-xs uppercase tracking-[0.24em] text-[#d8bd70]/60">延伸深度解析</p>
+        </div>
+      </div>
+
+      {/* 8. 個人事業與財富天賦報告 */}
+      <ResultCard label="個人事業與財富天賦報告" accent="from-[#d8bd70]/50 to-nebula/20" icon="💰">
+        <p className="leading-8">{sunTexts.careerWealthText}</p>
+      </ResultCard>
+
+      {/* 9. 情感正緣與人際模式分析 */}
+      <ResultCard label="情感正緣與人際模式分析" accent="from-lavender/40 to-nebula/24" icon="❤️">
+        <p className="leading-8">{sunTexts.loveRelationshipText}</p>
+      </ResultCard>
+
+      {/* 10. 流年與未來半年運勢 */}
+      <ResultCard label="流年與未來半年運勢" accent="from-aurora/36 to-nebula/22" icon="🌙">
+        <p className="leading-8">{sunTexts.yearlyFortuneText}</p>
+      </ResultCard>
+
+      {/* 11. 靈魂課題與人生方向 */}
+      <ResultCard label="靈魂課題與人生方向" accent="from-[#c9a0dc]/30 to-nebula/20" icon="✨">
+        <p className="leading-8">{sunTexts.soulLessonText}</p>
+      </ResultCard>
     </div>
   );
 }
@@ -949,6 +977,10 @@ function PostUnlockActions({
         venusLoveText:  venusSign ? ASTRO_PROFILE_TEXTS[venusSign].venusLoveText : null,
         whisper:        sunTexts.whisper        ?? null,
         advice:         sunTexts.advice         ?? null,
+        careerWealthText:    sunTexts.careerWealthText    ?? null,
+        loveRelationshipText: sunTexts.loveRelationshipText ?? null,
+        yearlyFortuneText:   sunTexts.yearlyFortuneText   ?? null,
+        soulLessonText:      sunTexts.soulLessonText      ?? null,
         siteUrl: typeof window !== "undefined" ? window.location.hostname : "universe-whisper.vercel.app",
       });
       const url = URL.createObjectURL(blob);
