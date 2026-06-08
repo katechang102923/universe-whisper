@@ -104,8 +104,8 @@ export default function Home() {
 
           {/* ── Right: cat illustration + today's cosmic message ─── */}
           <div className="flex flex-col items-center gap-3 sm:gap-4">
-            {/* Hero cat photo — 手機版縮小為裝飾尺寸，桌機維持原尺寸 */}
-            <div className="cat-float relative mx-auto w-[150px] sm:w-[360px] lg:w-[430px] xl:w-[460px]">
+            {/* Hero cat photo — 手機版中等尺寸，桌機維持原尺寸 */}
+            <div className="cat-float relative mx-auto w-[clamp(170px,52vw,220px)] sm:w-[360px] lg:w-[430px] xl:w-[460px]">
               <div className="pointer-events-none absolute inset-[-8%] rounded-full bg-[radial-gradient(circle,rgba(216,189,112,0.22),rgba(109,77,242,0.18)_38%,transparent_68%)] blur-2xl" />
               <Image
                 src="/images/hero/main-cosmic-cat.webp"
@@ -118,15 +118,7 @@ export default function Home() {
               />
             </div>
 
-            {/* Today's cosmic message — 手機版精簡單行 */}
-            <div className="w-full max-w-[340px] rounded-full border border-white/10 bg-midnight/48 px-4 py-2.5 backdrop-blur-sm sm:hidden">
-              <p className="truncate text-xs leading-6 text-moon/80">
-                <span className="mr-1 text-[#d8bd70]/70">✦</span>
-                {todayMessage}
-              </p>
-            </div>
-
-            {/* Today's cosmic message — 桌機版完整卡片 */}
+            {/* Today's cosmic message — 桌機版完整卡片（手機版隱藏） */}
             <div className="hidden w-full max-w-[340px] rounded-2xl border border-white/10 bg-midnight/48 p-4 backdrop-blur-sm sm:block">
               <p className="text-xs text-lavender/70">
                 <span className="mr-1 text-[#d8bd70]/70">✦</span>
@@ -143,8 +135,8 @@ export default function Home() {
       {/* ── 快捷問題 + 範例結果卡 ───────────────────────────────────── */}
       <section className="pt-2 pb-10 sm:pb-14">
         <div className="grid gap-6 lg:grid-cols-2 lg:gap-10">
-          {/* 不知道問什麼 */}
-          <div>
+          {/* 不知道問什麼 — 手機版隱藏（抽牌頁已有推薦問題），桌機版保留 */}
+          <div className="hidden sm:block">
             <h2 className="text-lg font-semibold text-moon">
               不知道問什麼？可以從這些開始
             </h2>
@@ -203,39 +195,15 @@ export default function Home() {
           <div>
             <h2 className="text-lg font-semibold text-moon">抽完你會看到</h2>
 
-            {/* 手機版：精簡卡片 */}
+            {/* 手機版：精簡短卡 */}
             <div className="mt-4 rounded-[1.5rem] border border-lavender/26 bg-gradient-to-br from-white/[0.08] via-midnight/62 to-lavender/[0.06] p-5 shadow-[0_18px_54px_rgba(4,7,26,0.28)] backdrop-blur-sm sm:hidden">
               <p className="text-sm leading-7 text-moon/85">
-                一句話結論、牌面重點、針對問題、3～7 天建議
+                一句話結論、牌面重點、針對你的問題、3～7 天建議
               </p>
               <div className="mt-3 flex items-center gap-2 rounded-xl border border-white/10 bg-midnight/40 px-4 py-2.5">
                 <span className="text-base">💚</span>
-                <p className="text-xs text-moon/60">可收藏到 LINE</p>
+                <p className="text-xs text-moon/60">可收藏到 LINE，想看完整再 NT$49</p>
               </div>
-              <details className="group mt-3">
-                <summary className="flex cursor-pointer list-none items-center justify-center rounded-xl border border-white/10 bg-midnight/30 px-4 py-2 text-xs font-medium text-moon/60 transition hover:bg-white/5">
-                  展開範例
-                  <span className="ml-1 transition-transform group-open:rotate-180">▾</span>
-                </summary>
-                <div className="mt-3 space-y-3">
-                  <div>
-                    <p className="text-xs font-semibold text-[#d8bd70]/80">一句話結論</p>
-                    <p className="mt-1 text-sm leading-7 text-moon/80">先別急著要答案，這幾天適合慢慢觀察，方向會自己浮現。</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-[#d8bd70]/80">牌面重點</p>
-                    <p className="mt-1 text-sm leading-7 text-moon/75">抽到的牌提醒你：現在的猶豫，是因為你還在等一個更確定的訊號。</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-[#d8bd70]/80">針對你的問題</p>
-                    <p className="mt-1 text-sm leading-7 text-moon/75">對方不是不在乎，而是也在觀望，與其追問，不如先穩住自己的節奏。</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-[#d8bd70]/80">3～7 天建議</p>
-                    <p className="mt-1 text-sm leading-7 text-moon/75">這週試著主動釋出一次善意，但不施壓，把空間留給彼此。</p>
-                  </div>
-                </div>
-              </details>
             </div>
 
             {/* 桌機版：完整卡片 */}
@@ -287,9 +255,10 @@ export default function Home() {
         {/* 手機版：2 欄精簡入口（不刪除任何功能） */}
         <div className="grid grid-cols-2 gap-3 sm:hidden">
           {[
-            { href: "/daily", label: "今日星座運勢", icon: "🌙" },
+            { href: "/daily", label: "今日運勢", icon: "🌙" },
             { href: "/astro-profile", label: "我的三重星座", icon: "✦" },
             { href: "/tarot-cards", label: "塔羅牌庫", icon: "🃏" },
+            { href: "/redeem/check", label: "查詢次數", icon: "🔍" },
           ].map((item) => (
             <Link
               key={item.href}
