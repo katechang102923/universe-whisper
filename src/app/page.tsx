@@ -104,8 +104,8 @@ export default function Home() {
 
           {/* ── Right: cat illustration + today's cosmic message ─── */}
           <div className="flex flex-col items-center gap-3 sm:gap-4">
-            {/* Hero cat photo — 手機版中等尺寸，桌機維持原尺寸 */}
-            <div className="cat-float relative mx-auto w-[clamp(220px,62vw,260px)] sm:w-[360px] lg:w-[430px] xl:w-[460px]">
+            {/* Hero cat photo — 手機版固定高度容器 + 放大貓咪本體，桌機維持原尺寸 */}
+            <div className="cat-float relative mx-auto flex h-[240px] w-[clamp(220px,62vw,260px)] items-center justify-center overflow-hidden sm:block sm:h-auto sm:w-[360px] sm:overflow-visible lg:w-[430px] xl:w-[460px]">
               <div className="pointer-events-none absolute inset-[-8%] rounded-full bg-[radial-gradient(circle,rgba(216,189,112,0.22),rgba(109,77,242,0.18)_38%,transparent_68%)] blur-2xl" />
               <Image
                 src="/images/hero/main-cosmic-cat.webp"
@@ -114,7 +114,7 @@ export default function Home() {
                 height={307}
                 priority
                 style={{ width: "100%", height: "auto" }}
-                className="relative h-auto w-full object-contain drop-shadow-[0_10px_52px_rgba(109,77,242,0.54)] [filter:drop-shadow(0_0_22px_rgba(216,189,112,0.24))]"
+                className="relative h-auto w-full origin-center scale-[1.3] object-contain drop-shadow-[0_10px_52px_rgba(109,77,242,0.54)] [filter:drop-shadow(0_0_22px_rgba(216,189,112,0.24))] sm:scale-100"
               />
             </div>
 
