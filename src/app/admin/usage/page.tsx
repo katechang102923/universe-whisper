@@ -586,8 +586,20 @@ export default async function AdminUsagePage({
       fortuneStats = (snap.data() as Partial<FortuneStatsDoc>) ?? {};
     }
 
-  } catch {
+  } catch (err) {
     fetchError = true;
+    const error = err instanceof Error ? err : new Error(String(err));
+    const pk = process.env.FIREBASE_PRIVATE_KEY ?? process.env.FIREBASE_ADMIN_PRIVATE_KEY ?? "";
+    console.error("[Admin Firebase Error]", {
+      name: error.name,
+      message: error.message,
+      hasProjectId: Boolean(process.env.FIREBASE_PROJECT_ID ?? process.env.FIREBASE_ADMIN_PROJECT_ID),
+      hasClientEmail: Boolean(process.env.FIREBASE_CLIENT_EMAIL ?? process.env.FIREBASE_ADMIN_CLIENT_EMAIL),
+      hasPrivateKey: Boolean(pk),
+      privateKeyStartsCorrectly: pk.replace(/^["']|["']$/g, "").trimStart().startsWith("-----BEGIN PRIVATE KEY-----"),
+      privateKeyHasLiteralBackslashN: pk.includes("\\n"),
+      runtime: typeof process !== "undefined" ? process.version : "unknown",
+    });
   }
 
   // 防濫用排行（overview 用）
