@@ -37,19 +37,19 @@ export default function Home() {
   return (
     <AppShell>
       {/* ── Hero ───────────────────────────────────────────────────── */}
-      <section className="relative flex flex-1 items-center py-6 sm:py-12 lg:min-h-[calc(100vh-96px)]">
+      <section className="relative flex items-center py-5 sm:py-8 lg:py-10">
         {/* Floating star decorations */}
         <span className="floating-star left-[10%] top-[12%]" />
         <span className="floating-star right-[18%] top-[18%] [animation-delay:1.2s]" />
         <span className="floating-star bottom-[18%] left-[28%] [animation-delay:2.4s]" />
         <span className="floating-star right-[8%] bottom-[28%] [animation-delay:3.6s]" />
 
-        <div className="grid w-full items-center gap-8 lg:grid-cols-2 lg:gap-12">
+        <div className="grid w-full items-center gap-6 lg:grid-cols-2 lg:gap-10">
           {/* ── Left: headline + CTAs ─────────────────────────── */}
           <div className="text-center lg:text-left">
             {/* 小標籤列 */}
             <div className="flex flex-wrap items-center justify-center gap-2 lg:justify-start">
-              {["每日免費一次", "可存到 LINE", "完整版 NT$49"].map((tag) => (
+              {["每日免費一次", "可存到 LINE", "想看完整再 NT$49"].map((tag) => (
                 <span
                   key={tag}
                   className="rounded-full border border-[#d8bd70]/30 bg-[#d8bd70]/10 px-3 py-1 text-xs font-medium text-aurora/90"
@@ -132,7 +132,7 @@ export default function Home() {
       </section>
 
       {/* ── 快捷問題 + 範例結果卡 ───────────────────────────────────── */}
-      <section className="pb-10 sm:pb-14">
+      <section className="pt-2 pb-10 sm:pb-14">
         <div className="grid gap-6 lg:grid-cols-2 lg:gap-10">
           {/* 不知道問什麼 */}
           <div>
