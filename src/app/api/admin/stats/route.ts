@@ -123,33 +123,42 @@ function normalizePath(path?: string) {
 function pageLabel(path: string) {
   if (path === "/") return "首頁";
   if (path === "/tarot") return "塔羅抽牌";
+  if (path === "/tarot-cards") return "塔羅牌介紹";
   if (path === "/daily-horoscope" || path === "/daily") return "今日星座";
-  return path;
+  if (path === "/astro-profile") return "三重星座";
+  if (path === "/disclaimer") return "使用聲明";
+  if (path === "/payment-info") return "付款說明";
+  if (path === "/payment/result") return "付款結果";
+  if (path === "/redeem/check") return "序號兌換";
+  if (path === "/admin") return "管理後台";
+  if (path.startsWith("/share/")) return "分享結果頁";
+  return "其他頁面";
 }
 
 function sourceFrom(referrer?: string, url?: string, utmSource?: string | null): string {
   // 1. utm_source 優先
   if (utmSource) {
     const s = utmSource.toLowerCase();
-    if (s === "facebook" || s === "fb") return "Facebook";
-    if (s === "instagram" || s === "ig") return "Instagram";
-    if (s === "threads") return "Threads";
-    if (s === "line") return "LINE";
+    if (["facebook", "fb", "meta", "fbad", "fbclid"].includes(s)) return "Facebook";
+    if (["instagram", "ig", "igshid", "l.instagram.com", "instagram.com"].includes(s)) return "Instagram";
+    if (["threads", "threads.net"].includes(s)) return "Threads";
+    if (["line", "line.me", "liff.line.me"].includes(s)) return "LINE";
     if (s === "google") return "Google";
   }
 
   const ref = (referrer ?? "").toLowerCase();
   const urlStr = (url ?? "").toLowerCase();
 
-  // 2. fbclid 表示 Facebook 廣告連結
+  // 2. URL 參數辨識：fbclid → Facebook，igshid → Instagram
   if (urlStr.includes("fbclid")) return "Facebook";
+  if (urlStr.includes("igshid")) return "Instagram";
 
   // 3. 無 referrer → Direct
   if (!ref) return "Direct";
 
   // 4. referrer domain 辨識
   if (ref.includes("facebook.com") || ref.includes("fb.com")) return "Facebook";
-  if (ref.includes("instagram.com")) return "Instagram";
+  if (ref.includes("l.instagram.com") || ref.includes("instagram.com")) return "Instagram";
   if (ref.includes("threads.net")) return "Threads";
   if (ref.includes("line.me") || ref.includes("liff.line.me")) return "LINE";
   if (ref.includes("t.co") || ref.includes("x.com") || ref.includes("twitter.com")) return "X";

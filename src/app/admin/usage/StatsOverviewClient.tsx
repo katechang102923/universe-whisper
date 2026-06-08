@@ -592,10 +592,11 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
       >
         <DataTable
           emptyText="尚無頁面停留資料"
-          headers={["排名", "頁面路徑", "瀏覽數", "平均停留時間", "離開率"]}
+          headers={["排名", "頁面名稱", "原始路由", "瀏覽數", "平均停留時間", "離開率"]}
           rows={(data?.pageStay ?? []).map((row, index) => [
             index + 1,
             row.label,
+            row.path,
             row.views,
             formatDuration(row.avgActiveSeconds),
             row.exitRate,
