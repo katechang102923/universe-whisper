@@ -382,7 +382,7 @@ function drawSignCard(
   startY: number,
   params: StoryImageParams,
 ): number {
-  const ROW_H  = 58;
+  const ROW_H  = 52;   // 縮小約 10%（原 58）
   const CARD_H = ROW_H * 4 + 18;
 
   ctx.save();
@@ -642,10 +642,10 @@ function drawOverallSummaryCard(
 ): number {
   if (!paragraphs.length) return startY;
 
-  const cardH = 274;
+  const cardH = 240;   // 縮小（原 274）
   const padX = 44;
-  const titleY = startY + 56;
-  const textY = startY + 112;
+  const titleY = startY + 48;
+  const textY  = startY + 96;
 
   ctx.save();
   roundRectPath(ctx, MARGIN_X, startY, INNER_W, cardH, 34);
@@ -657,7 +657,7 @@ function drawOverallSummaryCard(
   ctx.restore();
 
   ctx.textAlign = "left";
-  ctx.font = "bold 34px sans-serif";
+  ctx.font = "bold 30px sans-serif";   // 縮小（原 34px）
   ctx.fillStyle = "#f7d987";
   ctx.fillText("三重星座整體解析", MARGIN_X + padX, titleY);
 
@@ -667,9 +667,9 @@ function drawOverallSummaryCard(
     MARGIN_X + padX,
     textY,
     INNER_W - padX * 2,
-    cardH - 136,
-    30,
-    23,
+    cardH - 110,   // 動態高度
+    28,
+    21,
     1.38,
     "rgba(255,247,230,0.94)",
   );
@@ -693,10 +693,10 @@ function drawAspectSummaryGrid(
   if (!visible.length) return startY;
 
   const colGap = 22;
-  const rowGap = 22;
+  const rowGap = 20;
   const cardW = (INNER_W - colGap) / 2;
   const rows = Math.ceil(visible.length / 2);
-  const cardH = Math.min(236, Math.floor((bottomY - startY - rowGap * (rows - 1)) / rows));
+  const cardH = Math.min(200, Math.floor((bottomY - startY - rowGap * (rows - 1)) / rows));
   const padX = 24;
 
   visible.forEach((aspect, index) => {
@@ -747,7 +747,7 @@ function drawUnlockTeaserCard(
   items?: Array<{ icon: string; title: string; desc: string }>,
 ): number {
   const isUnlocked = items && items.length > 0;
-  const CARD_H = 340;
+  const CARD_H = 310;   // 縮小（原 340）
   const padX = 38;
 
   // 卡片背景
@@ -790,11 +790,11 @@ function drawUnlockTeaserCard(
   ];
 
   const colGap = 20;
-  const rowGap = 16;
+  const rowGap = 14;
   const contentW = INNER_W - padX * 2;
   const itemW = (contentW - colGap) / 2;
-  const itemH = 106;
-  const gridTop = startY + 82;
+  const itemH = 103;   // 縮小（原 106）
+  const gridTop = startY + 78;   // 往上移（原 82）
 
   DISPLAY_ITEMS.forEach((item, idx) => {
     const col = idx % 2;
@@ -814,29 +814,29 @@ function drawUnlockTeaserCard(
     ctx.stroke();
     ctx.restore();
 
-    // icon + title
+    // icon + title（最多 1 行）
     ctx.textAlign = "left";
-    ctx.font = "bold 22px sans-serif";
+    ctx.font = "bold 21px sans-serif";
     ctx.fillStyle = isUnlocked
       ? "rgba(255,247,230,0.96)"
       : "rgba(255,247,230,0.72)";
     ctx.fillText(
       fitOneLine(ctx, `${item.icon} ${item.title}`, itemW - 28),
       ix + 14,
-      iy + 33,
+      iy + 30,
     );
 
-    // desc（自動縮字）
+    // desc（自動縮字，最多 1～2 行）
     drawFittedSummaryLines(
       ctx,
       [item.desc],
       ix + 14,
-      iy + 58,
+      iy + 52,
       itemW - 28,
-      itemH - 70,
-      isUnlocked ? 21 : 20,
-      15,
-      1.40,
+      itemH - 62,   // 足夠放 2 行
+      19,
+      14,
+      1.38,
       isUnlocked
         ? "rgba(255,247,230,0.80)"
         : "rgba(255,247,230,0.55)",
@@ -911,13 +911,16 @@ function render(
       accent: "rgba(201,160,220,0.34)",
     },
   ];
-  // 底部保留給解鎖引導區塊與 footer
-  const FOOTER_RESERVED = 148;
-  const SUMMARY_CARD_H = 340;
-  const contentAreaBottom = H - FOOTER_RESERVED;
-  const GAP = 24;
+  // ── 版面安全區常數 ────────────────────────────────────────────────────────────
+  const FOOTER_RESERVED  = 220;   // footer div + 網址 + 底部留白（原 148）
+  const FOOTER_GAP       = 80;    // teaser 底部到 footer 分隔線的最小間距
+  const SUMMARY_CARD_H   = 310;   // 底部摘要卡固定高度（原 340）
+  const GAP              = 18;    // 各區塊間距（原 24）
 
-  let curY = signCardBottom + 40;
+  const footerDivY       = H - FOOTER_RESERVED + 20;          // 分隔線 Y
+  const contentAreaBottom = footerDivY - FOOTER_GAP;          // 摘要卡可用底邊
+
+  let curY = signCardBottom + 32;   // 縮小上方間距（原 40）
   curY = drawOverallSummaryCard(ctx, overallParagraphs, curY);
   curY += overallParagraphs.length ? GAP : 0;
   curY = drawAspectSummaryGrid(ctx, aspects, curY, contentAreaBottom - SUMMARY_CARD_H - GAP);
@@ -937,7 +940,6 @@ function render(
   drawUnlockTeaserCard(ctx, Math.min(curY + GAP, contentAreaBottom - SUMMARY_CARD_H), unlockedItems);
 
   // 4. 底部
-  const footerDivY = H - FOOTER_RESERVED + 20;
   drawDivider(ctx, footerDivY);
 
   ctx.textAlign = "center";
