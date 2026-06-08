@@ -285,7 +285,7 @@ export function AstroProfileClient() {
         <div className="mb-6">
           <label className="mb-2 block text-sm font-medium text-moon/80">
             出生時間
-            <span className="ml-1.5 text-xs text-moon/38">（選填，用於計算月亮與上升星座）</span>
+            <span className="ml-1.5 text-xs text-moon/38">（選填，可提升準確度）</span>
           </label>
           <CosmicSelect
             options={BIRTH_TIME_OPTIONS}
@@ -294,9 +294,16 @@ export function AstroProfileClient() {
             placeholder="不知道出生時間"
           />
           {!hasTime && (
-            <p className="mt-2 text-xs text-moon/40">
-              若不提供出生時間，月亮星座、上升星座與金星星座將無法自動計算。
-            </p>
+            <div className="mt-3 space-y-1.5 rounded-xl border border-white/8 bg-white/3 px-4 py-3 text-xs">
+              <p className="text-moon/50">不提供出生時間也能產生完整解析。</p>
+              <p className="text-moon/35">但無法精準計算：</p>
+              <ul className="ml-1 space-y-0.5 text-moon/35">
+                <li>• 月亮星座</li>
+                <li>• 上升星座</li>
+                <li>• 金星星座</li>
+              </ul>
+              <p className="text-moon/35">系統將以通用人格模式進行分析，<br />內容仍可正常產出。</p>
+            </div>
           )}
         </div>
 
@@ -304,7 +311,7 @@ export function AstroProfileClient() {
         <div className="mb-6">
           <label className="mb-2 block text-sm font-medium text-moon/80">
             出生城市
-            <span className="ml-1.5 text-xs text-moon/38">（選填，用於計算上升星座）</span>
+            <span className="ml-1.5 text-xs text-moon/38">（選填，可提升準確度）</span>
           </label>
           <CosmicSelect
             options={["不知道出生城市", ...BIRTH_CITIES.map((c) => c.name)]}
@@ -315,6 +322,12 @@ export function AstroProfileClient() {
             }}
             placeholder="不知道出生城市"
           />
+          {!hasCity && (
+            <div className="mt-3 space-y-1 rounded-xl border border-white/8 bg-white/3 px-4 py-3 text-xs">
+              <p className="text-moon/50">不提供出生城市也能產生完整解析。</p>
+              <p className="text-moon/35">但上升星座可能略有誤差，<br />若知道出生城市建議填寫。</p>
+            </div>
+          )}
         </div>
 
         {canCalcFull && (
@@ -366,12 +379,17 @@ export function AstroProfileClient() {
           </p>
         )}
 
+        <div className="mb-4 space-y-1 text-center">
+          <p className="text-xs text-moon/45">✨ 只需出生日期即可開始解析</p>
+          <p className="text-xs text-moon/35">✨ 出生時間與城市可提升準確度</p>
+        </div>
+
         <button
           type="submit"
           className="w-full rounded-full py-3.5 text-base font-semibold text-midnight transition hover:brightness-105 active:scale-[0.98]"
           style={{ background: "linear-gradient(135deg, #d8bd70 0%, #b89adf 60%, #d8bd70 100%)" }}
         >
-          查看三重星座概覽 ✦
+          開始解析我的三重星座 ✨
         </button>
 
         <div className="mt-5 text-center">
