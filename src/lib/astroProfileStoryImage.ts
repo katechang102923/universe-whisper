@@ -125,14 +125,67 @@ function pick(candidates: Array<string | null | undefined>, minLen = 4): string 
 function splitSentences(text: string): string[] {
   const normalized = clean(text);
   if (!normalized) return [];
-  const matches = normalized.match(/[^。！？!?]+[。！？!?]?/g) ?? [normalized];
+  const matches = normalized.match(/[^。！？；!?]+[。！？；!?]*/g) ?? [normalized];
   return matches.map((part) => part.trim()).filter(Boolean);
 }
 
 function trimToChars(text: string, maxChars: number): string {
   const s = clean(text);
   if (s.length <= maxChars) return s;
-  return `${[...s].slice(0, Math.max(0, maxChars - 3)).join("").trim()}...`;
+  return `${[...s].slice(0, Math.max(0, maxChars - 1)).join("").trim()}…`;
+}
+
+/**
+ * 依句號類標點分句，逐句累積直到超過 maxChars 或 maxSentences。
+ * 確保回傳完整句，不在句子中間截斷。
+ * 若第一句本身就超過 maxChars，嘗試在逗號/頓號處截斷並補「…」。
+ */
+function getCompleteSentenceSummary(
+  text: string,
+  maxChars: number,
+  maxSentences: number,
+): string {
+  const s = clean(text);
+  if (!s) return "";
+
+  const sentences = splitSentences(s);
+
+  if (!sentences.length) {
+    if (s.length <= maxChars) return s;
+    const sub = [...s].slice(0, maxChars).join("");
+    const m = sub.match(/^.*[，、：]/);
+    if (m && m[0].length >= 4) return m[0] + "…";
+    return [...s].slice(0, maxChars - 1).join("") + "…";
+  }
+
+  const result: string[] = [];
+  let total = 0;
+
+  for (const sentence of sentences) {
+    if (result.length >= maxSentences) break;
+    // 第一句不管多長都先嘗試加入
+    if (result.length > 0 && total + sentence.length > maxChars) break;
+    result.push(sentence);
+    total += sentence.length;
+  }
+
+  if (!result.length && sentences.length > 0) {
+    const first = sentences[0];
+    if (first.length <= maxChars) {
+      return first + (sentences.length > 1 ? "…" : "");
+    }
+    const sub = [...first].slice(0, maxChars).join("");
+    const m = sub.match(/^.*[，、：]/);
+    if (m && m[0].length >= 4) return m[0] + "…";
+    return [...first].slice(0, maxChars - 1).join("") + "…";
+  }
+
+  const joined = result.join("");
+  // 若還有未納入的句子，補省略號
+  const truncated = result.length < sentences.length || joined.length < s.length;
+  // 不以逗號、頓號、破折號、冒號結尾
+  const cleaned = joined.replace(/[，、：—]+$/, "");
+  return truncated ? cleaned + "…" : cleaned;
 }
 
 function summarizeSentences(
@@ -142,14 +195,8 @@ function summarizeSentences(
 ): string[] {
   const source = pick(candidates);
   if (!source) return [];
-  const sentences = splitSentences(source);
-  const selected = sentences.slice(0, sentenceCount);
-  const fallback = selected.length ? selected : [source];
-  const perSentenceMax = Math.max(20, Math.ceil(maxChars / Math.max(fallback.length, 1)));
-  return fallback
-    .map((sentence) => trimToChars(sentence, perSentenceMax))
-    .filter(Boolean)
-    .slice(0, sentenceCount);
+  const summary = getCompleteSentenceSummary(source, maxChars, sentenceCount);
+  return summary ? [summary] : [];
 }
 
 function summarizeParagraphs(
@@ -158,20 +205,8 @@ function summarizeParagraphs(
 ): string[] {
   const source = pick(candidates);
   if (!source) return [];
-  const sentences = splitSentences(source);
-  if (!sentences.length) return [];
-  const paragraphs = [
-    sentences.slice(0, 2).join(""),
-    sentences.slice(2, 4).join(""),
-  ].filter(Boolean);
-  const fallback = paragraphs.length >= 2
-    ? paragraphs
-    : [sentences[0] ?? "", sentences.slice(1, 3).join("")].filter(Boolean);
-  const perParagraphMax = Math.ceil(maxChars / Math.max(fallback.length, 1));
-  return fallback
-    .map((paragraph) => trimToChars(paragraph, perParagraphMax))
-    .filter(Boolean)
-    .slice(0, 2);
+  const summary = getCompleteSentenceSummary(source, maxChars, 3);
+  return summary ? [summary] : [];
 }
 
 /**
@@ -518,10 +553,10 @@ function fitOneLine(ctx: CanvasRenderingContext2D, text: string, maxWidth: numbe
   const s = clean(text);
   if (ctx.measureText(s).width <= maxWidth) return s;
   let fitted = s;
-  while (fitted && ctx.measureText(`${fitted}...`).width > maxWidth) {
+  while (fitted && ctx.measureText(`${fitted}…`).width > maxWidth) {
     fitted = [...fitted].slice(0, -1).join("");
   }
-  return fitted ? `${fitted}...` : "";
+  return fitted ? `${fitted}…` : "";
 }
 
 function drawWrappedSummaryLines(
@@ -930,10 +965,10 @@ function render(
     params.careerWealthText && params.loveRelationshipText &&
     params.yearlyFortuneText && params.soulLessonText
       ? [
-          { icon: "💰", title: "事業與財富", desc: params.careerWealthText.slice(0, 40) + (params.careerWealthText.length > 40 ? "⋯" : "") },
-          { icon: "❤️", title: "情感與人際", desc: params.loveRelationshipText.slice(0, 40) + (params.loveRelationshipText.length > 40 ? "⋯" : "") },
-          { icon: "🌙", title: "流年運勢",   desc: params.yearlyFortuneText.slice(0, 40) + (params.yearlyFortuneText.length > 40 ? "⋯" : "") },
-          { icon: "✨", title: "靈魂方向",   desc: params.soulLessonText.slice(0, 40) + (params.soulLessonText.length > 40 ? "⋯" : "") },
+          { icon: "💰", title: "事業與財富", desc: getCompleteSentenceSummary(params.careerWealthText,  60, 1) },
+          { icon: "❤️", title: "情感與人際", desc: getCompleteSentenceSummary(params.loveRelationshipText, 60, 1) },
+          { icon: "🌙", title: "流年運勢",   desc: getCompleteSentenceSummary(params.yearlyFortuneText, 60, 1) },
+          { icon: "✨", title: "靈魂方向",   desc: getCompleteSentenceSummary(params.soulLessonText,    60, 1) },
         ]
       : undefined;
 
