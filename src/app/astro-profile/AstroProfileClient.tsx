@@ -787,13 +787,15 @@ function UnlockGate({
           <div className="bg-midnight/50 p-5 sm:p-6">
             <p className="mb-3 text-xs uppercase tracking-[0.24em] text-moon/50">✦ 三重星座整體解析</p>
             <p className="text-sm leading-7 text-moon/60 line-clamp-2">
-              {ASTRO_PROFILE_TEXTS[result.sunSign].overallSummary}
+              {isChecking ? "正在整理完整訊息，請稍候..." : ASTRO_PROFILE_TEXTS[result.sunSign].overallSummary}
             </p>
           </div>
         </div>
         <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-midnight/20 to-midnight/80">
           <div className="text-center">
-            <p className="text-sm font-semibold text-moon/70">解鎖後可查看完整解析</p>
+            <p className="text-sm font-semibold text-moon/70">
+              {isChecking ? "正在整理完整訊息，請稍候..." : "解鎖後可查看完整解析"}
+            </p>
           </div>
         </div>
       </div>

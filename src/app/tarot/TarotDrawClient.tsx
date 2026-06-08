@@ -4354,27 +4354,27 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
                 </p>
               )}
               <div className="mt-5">
-                {/* Loading 預覽：僅在 AI 還沒回來（fullReading 為空）時才顯示 */}
-                {readingStatus === "loading" && !fullReading ? (
+                {readingStatus === "loading" ? (
                   <div className="mb-5">
                     <p className="mb-2 text-xs tracking-[0.18em] text-lavender/58">
                       完整版整理中…
                     </p>
                     <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
                       <p className="text-base leading-8 text-moon/68">
-                        {freeSummary.message || "宇宙正在整理這次抽牌的核心訊息。"}
+                        正在讀取完整宇宙訊息中...
                       </p>
                     </div>
                   </div>
                 ) : null}
                 {/* 三張牌用專屬元件，單張牌用通用元件 */}
-                {!isSingleResult
-                  ? <ThreeCardReadingDisplay text={fullReading} cards={cards} />
-                  : <ReadingSectionList text={fullReading} />
-                }
+                {readingStatus === "done" && fullReading ? (
+                  !isSingleResult
+                    ? <ThreeCardReadingDisplay text={fullReading} cards={cards} />
+                    : <ReadingSectionList text={fullReading} />
+                ) : null}
               </div>
               {/* 保存結果區塊 */}
-              <div className="mt-6 border-t border-white/10 pt-5">
+              {readingStatus === "done" && fullReading ? <div className="mt-6 border-t border-white/10 pt-5">
                 <p className="mb-1 text-sm font-semibold text-moon/80">將本次結果保存起來</p>
                 <p className="mb-4 text-xs leading-6 text-moon/50">
                   你可以把本次完整解讀傳送到 LINE，或寄到 Email 收藏，之後想回來看也找得到。
@@ -4404,7 +4404,7 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
                     <EmailResultBlock resultId={lineResultId} />
                   </div>
                 )}
-              </div>
+              </div> : null}
             </div>
           )}
 
