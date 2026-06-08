@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { readJsonResponse } from "@/lib/readJsonResponse";
 
 interface ReissueCode {
   code:      string;
@@ -45,7 +46,7 @@ export function AstroProfileReissueClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ note: note.trim() }),
       });
-      const data = await res.json() as { ok: boolean; code?: string; expiresAt?: string; error?: string };
+      const data = await readJsonResponse<{ ok: boolean; code?: string; expiresAt?: string; error?: string }>(res, { ok: false });
       if (!res.ok || !data.ok || !data.code) {
         throw new Error(data.error === "UNAUTHORIZED" ? "需要管理員權限。" : "產生失敗，請稍後再試。");
       }
@@ -73,7 +74,7 @@ export function AstroProfileReissueClient() {
     setLoadError("");
     try {
       const res = await fetch("/api/astro-profile/reissue-code/list");
-      const data = await res.json() as { ok: boolean; codes?: ReissueCode[]; error?: string };
+      const data = await readJsonResponse<{ ok: boolean; codes?: ReissueCode[]; error?: string }>(res, { ok: false });
       if (!res.ok || !data.ok) throw new Error(data.error ?? "載入失敗");
       setCodes(data.codes ?? []);
       setLoaded(true);

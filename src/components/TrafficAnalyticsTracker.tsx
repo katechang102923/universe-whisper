@@ -7,7 +7,8 @@ const ANON_ID_KEY = "cosmic_anon_id";
 const SESSION_KEY = "uw_traffic_session";
 const LAST_ACTIVITY_KEY = "uw_traffic_last_activity";
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
-const HEARTBEAT_MS = 15000;
+const HEARTBEAT_MS = 60000;
+const ANALYTICS_THROTTLE_PREFIX = "uw_analytics_sent:";
 
 type StoredSession = {
   sessionId: string;
@@ -71,7 +72,35 @@ function isFrontendPath(path: string) {
   );
 }
 
+function throttleWindowMs(eventType: string) {
+  if (eventType === "session_heartbeat") return 55000;
+  if (eventType === "page_view") return 30000;
+  if (eventType === "session_start") return SESSION_TIMEOUT_MS;
+  if (eventType === "tarot_draw_complete") return 5000;
+  if (eventType === "payment_success") return SESSION_TIMEOUT_MS;
+  return 10000;
+}
+
+function shouldSendAnalytics(payload: Record<string, unknown>) {
+  const eventType = typeof payload.eventType === "string" ? payload.eventType : "";
+  const path = typeof payload.path === "string" ? payload.path : "";
+  const sessionId = typeof payload.sessionId === "string" ? payload.sessionId : "";
+  if (!eventType) return false;
+
+  const key = `${ANALYTICS_THROTTLE_PREFIX}${eventType}:${sessionId}:${path}`;
+  const now = Date.now();
+  try {
+    const lastSentAt = Number(window.sessionStorage.getItem(key) ?? "0");
+    if (lastSentAt && now - lastSentAt < throttleWindowMs(eventType)) return false;
+    window.sessionStorage.setItem(key, String(now));
+  } catch {
+    // Storage may be unavailable; keep analytics best-effort.
+  }
+  return true;
+}
+
 function sendAnalytics(payload: Record<string, unknown>, beacon = false) {
+  if (!shouldSendAnalytics(payload)) return;
   const body = JSON.stringify(payload);
   if (beacon && typeof navigator !== "undefined" && "sendBeacon" in navigator) {
     const blob = new Blob([body], { type: "application/json" });

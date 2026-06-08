@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { readJsonResponse } from "@/lib/readJsonResponse";
 
 interface FortuneManagementClientProps {
   missingSigns: string[];
@@ -28,7 +29,7 @@ export function FortuneManagementClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ regenerate: false }),
       });
-      const data = await res.json() as { ok: boolean; generated: number; failed: number; failedZodiacs: string[] };
+      const data = await readJsonResponse<{ ok: boolean; generated: number; failed: number; failedZodiacs: string[] }>(res, { ok: false, generated: 0, failed: 0, failedZodiacs: [] });
       if (!data.ok) throw new Error("補齊失敗");
       setFillResult({ generated: data.generated, failed: data.failed, failedZodiacs: data.failedZodiacs ?? [] });
       setFillState("done");
@@ -47,7 +48,7 @@ export function FortuneManagementClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ regenerate: true }),
       });
-      const data = await res.json() as { ok: boolean; generated: number; failed: number };
+      const data = await readJsonResponse<{ ok: boolean; generated: number; failed: number }>(res, { ok: false, generated: 0, failed: 0 });
       if (!data.ok) throw new Error("重新生成失敗");
       setRegenResult({ generated: data.generated, failed: data.failed });
       setRegenState("done");

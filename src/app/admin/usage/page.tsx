@@ -481,7 +481,7 @@ export default async function AdminUsagePage({
         // 尚未有快照：只讀兩個單一文件，不掃全集
         usageData    = {};
         fortuneStats = {};
-        snapshotNote = "統計快照尚未產生，資料每日 00:05 與 12:05 更新（可手動呼叫 /api/admin/daily-stats/generate 補跑）";
+        snapshotNote = "統計資料整理中";
       }
     }
 

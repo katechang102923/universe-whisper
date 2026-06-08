@@ -8,6 +8,7 @@ import { TarotShuffleAnimation } from "./TarotShuffleAnimation";
 import { useAuth } from "@/contexts/AuthContext";
 import RedeemCodeBlock from "@/components/RedeemCodeBlock";
 import EmailResultBlock from "@/components/EmailResultBlock";
+import { readJsonResponse } from "@/lib/readJsonResponse";
 import { normalizePlainText } from "@/lib/textUtils";
 
 type DrawStatus = "idle" | "drawing" | "selecting" | "revealing" | "revealed";
@@ -2394,12 +2395,12 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
                 resultId: pending.resultId,
               }),
             });
-            const data = (await res.json()) as {
+            const data = await readJsonResponse<{
               ok: boolean;
               remainingUses?: number;
               fullText?: string;
               errorCode?: string;
-            };
+            }>(res, { ok: false });
             if (data.ok && data.fullText) {
               setFullReading(data.fullText);
               setPaidUnlocked(true);
@@ -3160,7 +3161,7 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
         body: JSON.stringify({ message }),
       });
       if (r.ok) {
-        const data = (await r.json()) as { pendingId?: string };
+        const data = await readJsonResponse<{ pendingId?: string }>(r, {});
         pendingId = typeof data.pendingId === "string" ? data.pendingId : "";
       }
     } catch {
@@ -3375,9 +3376,9 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: trimmed }),
       });
-      const data = await res.json() as {
+      const data = await readJsonResponse<{
         ok: boolean; status?: string; remainingUses?: number; error?: string;
-      };
+      }>(res, { ok: false });
       if (!data.ok || data.status !== "active" || (data.remainingUses ?? 0) <= 0) {
         setPreDrawCodeError(data.error ?? "此通行碼無效或已用完，請確認後再試");
         return;
@@ -3417,12 +3418,12 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
         }),
       });
 
-      const data = (await res.json()) as {
+      const data = await readJsonResponse<{
         ok: boolean;
         actionUrl?: string;
         params?: Record<string, string>;
         error?: string;
-      };
+      }>(res, { ok: false });
 
       if (!data.ok || !data.actionUrl || !data.params) {
         setPaymentStatus("idle");
@@ -4524,7 +4525,7 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
                               expiresAt: purchasedCode.expiresAt,
                             }),
                           })
-                            .then((r) => r.json() as Promise<{ ok: boolean; error?: string }>)
+                            .then((r) => readJsonResponse<{ ok: boolean; error?: string }>(r, { ok: false }))
                             .then((d) => setCodeEmailStatus(d.ok ? "sent" : d.error === "EMAIL_NOT_CONFIGURED" ? "not_configured" : "error"))
                             .catch(() => setCodeEmailStatus("error"));
                         }}

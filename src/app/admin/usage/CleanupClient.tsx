@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { readJsonResponse } from "@/lib/readJsonResponse";
 
 // ── 測試清理 ──────────────────────────────────────────────────────────────────
 
@@ -67,7 +68,7 @@ function TestEmailSection() {
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ email: trimmed }),
       });
-      const data = (await res.json()) as { ok: boolean; message?: string; errorCode?: string };
+      const data = await readJsonResponse<{ ok: boolean; message?: string; errorCode?: string }>(res, { ok: false });
       if (data.ok) {
         setTestStatus("sent");
         setTestMsg(data.message ?? `測試信已寄出到 ${trimmed}，請到信箱確認。`);
@@ -145,7 +146,7 @@ export function CleanupClient() {
     setStates((prev) => ({ ...prev, [type]: { ...prev[type], loading: true, confirming: false, error: null } }));
     try {
       const res  = await fetch(`/api/admin/cleanup?type=${type}`, { method: "DELETE" });
-      const data = (await res.json()) as { ok: boolean; deleted?: number; error?: string };
+      const data = await readJsonResponse<{ ok: boolean; deleted?: number; error?: string }>(res, { ok: false });
       if (!data.ok) throw new Error(data.error ?? "刪除失敗");
       setStates((prev) => ({ ...prev, [type]: { ...prev[type], loading: false, result: { deleted: data.deleted ?? 0 } } }));
     } catch (err) {

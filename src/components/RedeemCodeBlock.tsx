@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { getRedeemErrorMessage, type RedeemErrorCode } from "@/lib/redeemCodes";
+import { readJsonResponse } from "@/lib/readJsonResponse";
 
 interface Props {
   resultId: string;
@@ -32,12 +33,14 @@ export default function RedeemCodeBlock({ resultId, onUnlocked }: Props) {
         body: JSON.stringify({ code: trimmed, resultId }),
       });
 
-      const data = (await res.json()) as
+      const data = await readJsonResponse<
         | { ok: true; remainingUses: number; fullText: string }
-        | { ok: false; errorCode: RedeemErrorCode };
+        | { ok: false; errorCode: RedeemErrorCode }
+      >(res, { ok: false, errorCode: "SERVER_ERROR" });
 
-      if (!data.ok) {
-        setError(getRedeemErrorMessage(data.errorCode));
+      if (!res.ok || !data.ok) {
+        const errorCode = "errorCode" in data ? data.errorCode : "SERVER_ERROR";
+        setError(getRedeemErrorMessage(errorCode));
         return;
       }
 

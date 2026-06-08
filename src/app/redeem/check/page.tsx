@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
+import { readJsonResponse } from "@/lib/readJsonResponse";
 
 type CheckResult = {
   code: string;
@@ -56,8 +57,8 @@ function RedeemCheckForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: trimmed }),
       });
-      const data = await res.json() as { ok: boolean; error?: string } & Partial<CheckResult>;
-      if (!data.ok) {
+      const data = await readJsonResponse<{ ok: boolean; error?: string } & Partial<CheckResult>>(res, { ok: false });
+      if (!res.ok || !data.ok) {
         setError(data.error ?? "查詢失敗，請稍後再試");
         return;
       }

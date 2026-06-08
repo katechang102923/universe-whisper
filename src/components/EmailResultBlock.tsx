@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { readJsonResponse } from "@/lib/readJsonResponse";
 
 type SendStatus =
   | "idle"
@@ -47,9 +48,9 @@ export default function EmailResultBlock({ resultId }: Props) {
         body: JSON.stringify({ email: trimmed, resultId }),
       });
 
-      const data = (await res.json()) as { ok: boolean; error?: string };
+      const data = await readJsonResponse<{ ok: boolean; error?: string }>(res, { ok: false });
 
-      if (!data.ok) {
+      if (!res.ok || !data.ok) {
         const err = data.error ?? "";
         if (err === "EMAIL_NOT_CONFIGURED") {
           setStatus("not_configured");

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { readJsonResponse } from "@/lib/readJsonResponse";
 
 // ── 可序列化型別（由 Server Component 傳入） ─────────────────────────────────
 
@@ -368,7 +369,7 @@ export function RedeemCodeList({ codes: initialCodes }: { codes: SerializableRed
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: code.code }),
       });
-      const data = (await res.json()) as { ok: boolean; error?: string };
+      const data = await readJsonResponse<{ ok: boolean; error?: string }>(res, { ok: false });
       if (!data.ok) throw new Error(data.error ?? "刪除失敗");
       setCodes((prev) => prev.filter((c) => c.code !== code.code));
       showToast(`已刪除通行碼 ${code.code}`, "success");
@@ -384,7 +385,7 @@ export function RedeemCodeList({ codes: initialCodes }: { codes: SerializableRed
     setBulkLoading(true);
     try {
       const res = await fetch("/api/admin/cleanup?type=admin_codes", { method: "DELETE" });
-      const data = (await res.json()) as { ok: boolean; deleted?: number; error?: string };
+      const data = await readJsonResponse<{ ok: boolean; deleted?: number; error?: string }>(res, { ok: false });
       if (!data.ok) throw new Error(data.error ?? "刪除失敗");
       // 從列表中移除同條件的通行碼
       setCodes((prev) =>

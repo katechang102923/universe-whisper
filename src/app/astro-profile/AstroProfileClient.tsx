@@ -15,6 +15,7 @@ import type { BirthCity } from "@/lib/birthCities";
 import { calcVenusSign, calcRisingSign, calcMoonSign } from "@/lib/astroCalc";
 import { useAuth } from "@/contexts/AuthContext";
 import { generateAstroStoryImage } from "@/lib/astroProfileStoryImage";
+import { readJsonResponse } from "@/lib/readJsonResponse";
 
 // ── Birth time options ─────────────────────────────────────────────────────────
 
@@ -160,7 +161,7 @@ export function AstroProfileClient() {
     for (let attempt = 0; attempt < 12; attempt++) {
       try {
         const res = await fetch(`/api/astro-profile/order-status?merchantTradeNo=${encodeURIComponent(order)}`);
-        const data = await res.json() as { ok: boolean; paid?: boolean; status?: string };
+        const data = await readJsonResponse<{ ok: boolean; paid?: boolean; status?: string }>(res, { ok: false });
         if (data.paid) {
           setUnlockState("unlocked");
           return;
@@ -721,7 +722,7 @@ function UnlockGate({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId: sid, buyerEmail: email.trim() || undefined }),
       });
-      const data = await res.json() as { ok: boolean; actionUrl?: string; params?: Record<string, string>; merchantTradeNo?: string; error?: string };
+      const data = await readJsonResponse<{ ok: boolean; actionUrl?: string; params?: Record<string, string>; merchantTradeNo?: string; error?: string }>(res, { ok: false });
 
       if (!data.ok || !data.actionUrl || !data.params) {
         setUnlockError(data.error === "PAYMENT_NOT_CONFIGURED"
@@ -757,7 +758,7 @@ function UnlockGate({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code, sessionId: sid }),
       });
-      const data = await res.json() as { ok: boolean; error?: string };
+      const data = await readJsonResponse<{ ok: boolean; error?: string }>(res, { ok: false });
       if (!data.ok) {
         const msgMap: Record<string, string> = {
           CODE_NOT_FOUND:   "序號不存在，請確認是否輸入正確。",
@@ -1042,7 +1043,7 @@ function PostUnlockActions({
           soulLessonText: sunTexts.soulLessonText,
         }),
       });
-      const data = await res.json() as { ok: boolean; claimCode?: string; error?: string };
+      const data = await readJsonResponse<{ ok: boolean; claimCode?: string; error?: string }>(res, { ok: false });
       if (!res.ok || !data.ok || !data.claimCode) {
         throw new Error(data.error ?? "無法產生查詢碼，請稍後再試。");
       }
@@ -1095,7 +1096,7 @@ function PostUnlockActions({
           siteUrl,
         }),
       });
-      const data = await res.json() as { ok: boolean; error?: string };
+      const data = await readJsonResponse<{ ok: boolean; error?: string }>(res, { ok: false });
       if (data.ok) {
         setEmailMsg("✦ Email 已寄出，請查收。");
         setShowEmailPanel(false);

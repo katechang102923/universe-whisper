@@ -1,20 +1,13 @@
 import crypto from "crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { NextResponse } from "next/server";
+import { DB_BUSY_MESSAGE } from "@/lib/apiErrors";
 import { getAdminDb } from "@/lib/firebaseAdmin";
-import { jsonServerError } from "@/lib/apiErrors";
-
-// -------------------------------------------------------------------
-// POST /api/line/claim/create
-// 為某個 resultId 產生（或返回現有的）LINE 驗證碼
-// Body: { resultId: string, visitorId?: string }
-// -------------------------------------------------------------------
 
 export const CLAIM_COLLECTION = "lineResultClaims";
-const CLAIM_TTL_MS = 60 * 60 * 1000;       // 1 小時有效
-const MAX_CLAIMS_PER_30MIN = 3;             // 每 30 分鐘最多申請 3 次
+const CLAIM_TTL_MS = 60 * 60 * 1000;
+const MAX_CLAIMS_PER_30MIN = 3;
 
-/** 產生 UW-XXXXXXX 格式驗證碼（去除易混淆字元 0/O/1/I） */
 function generateClaimCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "UW-";
@@ -39,110 +32,96 @@ export async function POST(request: Request) {
 
   const resultId = typeof body?.resultId === "string" ? body.resultId.trim() : "";
   const visitorId = typeof body?.visitorId === "string" ? body.visitorId.trim() : "";
-  const purpose: ClaimPurpose =
-    body?.purpose === "line_unlock" ? "line_unlock" : "send_result";
+  const purpose: ClaimPurpose = body?.purpose === "line_unlock" ? "line_unlock" : "send_result";
 
   if (!resultId) {
     return NextResponse.json({ ok: false, error: "缺少 resultId。" }, { status: 400 });
   }
 
-  let db: ReturnType<typeof getAdminDb>;
   try {
-    db = getAdminDb();
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "Firebase Admin 初始化失敗。";
-    console.error("[line/claim/create] Firebase Admin unavailable:", msg);
-    return NextResponse.json(
-      { ok: false, error: "目前無法產生解鎖碼，請稍後再試。" },
-      { status: 500 },
-    );
-  }
-  try {
-  const col = db.collection(CLAIM_COLLECTION);
-  const now = new Date();
-  const expiryThreshold = new Date(now.getTime() + 1000); // 稍微往後，避免時間誤差
+    const db = getAdminDb();
+    const col = db.collection(CLAIM_COLLECTION);
+    const now = new Date();
 
-  // ── 1. 查詢此 resultId 的所有 claim 記錄（單一欄位查詢，不需複合索引）──────
-  const allClaimsSnap = await col.where("resultId", "==", resultId).get();
-  const allClaims = allClaimsSnap.docs.map((d) => ({ id: d.id, ...d.data() } as {
-    id: string;
-    claimCode: string;
-    status: string;
-    createdAt?: { toDate?: () => Date };
-    expiresAt?: { toDate?: () => Date };
-  }));
+    const allClaimsSnap = await col.where("resultId", "==", resultId).get();
+    const allClaims = allClaimsSnap.docs.map((d) => ({
+      id: d.id,
+      ...d.data(),
+    })) as Array<{
+      id: string;
+      claimCode?: string;
+      status?: string;
+      purpose?: unknown;
+      createdAt?: { toDate?: () => Date };
+      expiresAt?: { toDate?: () => Date };
+    }>;
 
-  // ── 2. 若已有相同 purpose 且 pending 未過期的碼，直接返回 ──────────────────
-  const existing = allClaims.find((c) => {
-    if (c.status !== "pending") return false;
-    // purpose 預設為 "send_result"（舊資料無此欄位視為 send_result）
-    const cPurpose: ClaimPurpose = (c as { purpose?: unknown }).purpose === "line_unlock" ? "line_unlock" : "send_result";
-    if (cPurpose !== purpose) return false;
-    const exp = c.expiresAt?.toDate?.();
-    return exp ? exp > now : false;
-  });
-  if (existing) {
-    const expDate = (existing.expiresAt as { toDate?: () => Date })?.toDate?.();
-    return NextResponse.json({
-      ok: true,
-      claimCode: existing.claimCode,
-      expiresAt: expDate?.toISOString() ?? null,
+    const existing = allClaims.find((claim) => {
+      if (claim.status !== "pending") return false;
+      const claimPurpose: ClaimPurpose = claim.purpose === "line_unlock" ? "line_unlock" : "send_result";
+      if (claimPurpose !== purpose) return false;
+      const expiresAt = claim.expiresAt?.toDate?.();
+      return expiresAt ? expiresAt > now : false;
     });
-  }
 
-  // ── 3. 速率限制：最近 30 分鐘內申請次數 ──────────────────────────────────
-  const thirtyMinAgo = new Date(now.getTime() - 30 * 60 * 1000);
-  const recentCount = allClaims.filter((c) => {
-    const created = c.createdAt?.toDate?.();
-    return created ? created > thirtyMinAgo : false;
-  }).length;
-
-  if (recentCount >= MAX_CLAIMS_PER_30MIN) {
-    return NextResponse.json(
-      { ok: false, error: "驗證碼申請過於頻繁，請稍後再試。" },
-      { status: 429 },
-    );
-  }
-
-  // ── 4. 產生唯一驗證碼（以驗證碼為 Document ID，O(1) 查詢）────────────────
-  let claimCode = "";
-  for (let attempt = 0; attempt < 10; attempt++) {
-    const candidate = generateClaimCode();
-    const dup = await col.doc(candidate).get();
-    if (!dup.exists) {
-      claimCode = candidate;
-      break;
+    if (existing?.claimCode) {
+      return NextResponse.json({
+        ok: true,
+        claimCode: existing.claimCode,
+        expiresAt: existing.expiresAt?.toDate?.()?.toISOString() ?? null,
+      });
     }
-  }
-  if (!claimCode) {
-    return NextResponse.json(
-      { ok: false, error: "無法產生驗證碼，請稍後再試。" },
-      { status: 500 },
-    );
-  }
 
-  const expiresAt = new Date(now.getTime() + CLAIM_TTL_MS);
-  const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("cf-connecting-ip") ?? "";
-  const ua = request.headers.get("user-agent") ?? "";
+    const thirtyMinAgo = new Date(now.getTime() - 30 * 60 * 1000);
+    const recentCount = allClaims.filter((claim) => {
+      const createdAt = claim.createdAt?.toDate?.();
+      return createdAt ? createdAt > thirtyMinAgo : false;
+    }).length;
 
-  await col.doc(claimCode).set({
-    claimCode,
-    resultId,
-    visitorId: visitorId || null,
-    purpose,
-    status: "pending",
-    createdAt: FieldValue.serverTimestamp(),
-    expiresAt,
-    claimedAt: null,
-    lineUserId: null,
-    ipHash: ip ? hashString(ip) : null,
-    userAgentHash: ua ? hashString(ua) : null,
-  });
+    if (recentCount >= MAX_CLAIMS_PER_30MIN) {
+      return NextResponse.json(
+        { ok: false, error: "驗證碼產生太頻繁，請稍後再試。" },
+        { status: 429 },
+      );
+    }
 
-  console.info("[line/claim/create] Created claim", { claimCode, resultId });
-  return NextResponse.json({ ok: true, claimCode, expiresAt: expiresAt.toISOString() });
+    let claimCode = "";
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const candidate = generateClaimCode();
+      const dup = await col.doc(candidate).get();
+      if (!dup.exists) {
+        claimCode = candidate;
+        break;
+      }
+    }
+
+    if (!claimCode) {
+      return NextResponse.json({ ok: false, error: DB_BUSY_MESSAGE }, { status: 503 });
+    }
+
+    const expiresAt = new Date(now.getTime() + CLAIM_TTL_MS);
+    const ip = request.headers.get("x-forwarded-for") ?? request.headers.get("cf-connecting-ip") ?? "";
+    const ua = request.headers.get("user-agent") ?? "";
+
+    await col.doc(claimCode).set({
+      claimCode,
+      resultId,
+      visitorId: visitorId || null,
+      purpose,
+      status: "pending",
+      createdAt: FieldValue.serverTimestamp(),
+      expiresAt,
+      claimedAt: null,
+      lineUserId: null,
+      ipHash: ip ? hashString(ip) : null,
+      userAgentHash: ua ? hashString(ua) : null,
+    });
+
+    console.info("[line/claim/create] Created claim", { claimCode, resultId });
+    return NextResponse.json({ ok: true, claimCode, expiresAt: expiresAt.toISOString() });
   } catch (err) {
-    console.error("[line/claim/create] failed:", err);
-    return jsonServerError(err, "CLAIM_CREATE_FAILED");
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn("[line/claim/create] failed:", message);
+    return NextResponse.json({ ok: false, error: DB_BUSY_MESSAGE }, { status: 503 });
   }
 }

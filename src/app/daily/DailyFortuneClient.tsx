@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import type { HoroscopeSign, HoroscopeSigns } from "@/lib/dailyHoroscope";
+import { readJsonResponse } from "@/lib/readJsonResponse";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -380,7 +381,7 @@ export function DailyFortuneClient() {
     fetch("/api/daily-horoscope")
       .then((r) => {
         if (!r.ok) throw new Error("daily horoscope request failed");
-        return r.json() as Promise<DailyHoroscopeData>;
+        return readJsonResponse<DailyHoroscopeData>(r, { date: "", signs: {} as HoroscopeSigns });
       })
       .then((d) => { setApiData(d); setApiLoading(false); })
       .catch(() => { setApiError("今天星光訊號有點微弱，稍後再試。"); setApiLoading(false); });

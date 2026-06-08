@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { readJsonResponse } from "@/lib/readJsonResponse";
 
 type TestResult = {
   orderId: string;
@@ -47,7 +48,7 @@ export default function PaymentTestClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, question, mode, amount: 49, sendEmail }),
       });
-      const data = await res.json() as { ok: boolean; error?: string; detail?: string } & Partial<TestResult>;
+      const data = await readJsonResponse<{ ok: boolean; error?: string; detail?: string } & Partial<TestResult>>(res, { ok: false });
       if (!data.ok) {
         setError(data.detail || data.error || "發生錯誤");
       } else {

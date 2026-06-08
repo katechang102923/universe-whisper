@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
+import { readJsonResponse } from "@/lib/readJsonResponse";
 
 // ── 型別 ──────────────────────────────────────────────────────────────────────
 
@@ -116,7 +117,7 @@ export default function PaymentResultClient() {
       const res  = await fetch(
         `/api/ecpay/order-status?merchantTradeNo=${encodeURIComponent(merchantTradeNo)}`,
       );
-      const data = (await res.json()) as {
+      const data = await readJsonResponse<{
         ok:               boolean;
         status?:          string;
         merchantTradeNo?: string;
@@ -131,9 +132,9 @@ export default function PaymentResultClient() {
         emailSent?:       boolean;
         emailSentAt?:     string | null;
         emailError?:      string | null;
-      };
+      }>(res, { ok: false });
 
-      if (!data.ok) {
+      if (!res.ok || !data.ok) {
         setOrder((prev) => ({ ...prev, status: "not_found" }));
         return;
       }
@@ -230,10 +231,10 @@ export default function PaymentResultClient() {
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ merchantTradeNo }),
       });
-      const data = (await res.json()) as {
+      const data = await readJsonResponse<{
         ok: boolean; status?: string; redeemCode?: string | null;
         codeDetail?: CodeDetail | null; message?: string; error?: string;
-      };
+      }>(res, { ok: false });
       if (data.ok && data.status === "paid" && data.redeemCode) {
         setSyncStatus("synced");
         setOrder((prev) => ({
@@ -321,9 +322,9 @@ export default function PaymentResultClient() {
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify(body),
       });
-      const data = (await res.json()) as {
+      const data = await readJsonResponse<{
         ok: boolean; message?: string; errorCode?: string;
-      };
+      }>(res, { ok: false });
 
       if (data.ok) {
         setEmailStatus("sent");

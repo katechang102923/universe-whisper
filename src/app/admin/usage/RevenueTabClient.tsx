@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { readJsonResponse } from "@/lib/readJsonResponse";
 
 // ── 型別 ──────────────────────────────────────────────────────────────────────
 
@@ -115,7 +116,7 @@ export function RevenueTabClient() {
     setError("");
     try {
       const res = await fetch(`/api/admin/revenue?year=${y}&month=${m}`);
-      const json = (await res.json()) as { ok: boolean; error?: string } & Partial<RevenueData>;
+      const json = await readJsonResponse<{ ok: boolean; error?: string } & Partial<RevenueData>>(res, { ok: false });
       if (!json.ok) { setError(json.error ?? "載入失敗"); return; }
       setData(json as RevenueData);
     } catch {

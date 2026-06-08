@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { readJsonResponse } from "@/lib/readJsonResponse";
 
 // ── 直列化訂單型別 ─────────────────────────────────────────────────────────────
 
@@ -141,7 +142,7 @@ function OrderRow({ o, idx, total }: { o: SerializableOrder; idx: number; total:
           email:           trimmed,
         }),
       });
-      const data = (await res.json()) as { ok: boolean; message?: string };
+      const data = await readJsonResponse<{ ok: boolean; message?: string }>(res, { ok: false });
       setEmailStatus(data.ok ? "sent" : "error");
     } catch {
       setEmailStatus("error");
@@ -158,9 +159,9 @@ function OrderRow({ o, idx, total }: { o: SerializableOrder; idx: number; total:
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ merchantTradeNo: o.merchantTradeNo }),
       });
-      const data = (await res.json()) as {
+      const data = await readJsonResponse<{
         ok: boolean; status?: string; redeemCode?: string; message?: string; error?: string;
-      };
+      }>(res, { ok: false });
       if (data.ok && data.status === "paid") {
         setSyncStatus("synced");
         if (data.redeemCode) setLocalCode(data.redeemCode);
@@ -188,7 +189,7 @@ function OrderRow({ o, idx, total }: { o: SerializableOrder; idx: number; total:
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ merchantTradeNo: o.merchantTradeNo, forceGenerate: true }),
       });
-      const data = (await res.json()) as { ok: boolean; redeemCode?: string; message?: string; error?: string };
+      const data = await readJsonResponse<{ ok: boolean; redeemCode?: string; message?: string; error?: string }>(res, { ok: false });
       if (data.ok && data.redeemCode) {
         setGenStatus("done");
         setLocalCode(data.redeemCode);

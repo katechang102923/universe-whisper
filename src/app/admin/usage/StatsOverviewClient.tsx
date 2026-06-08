@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { readJsonResponse } from "@/lib/readJsonResponse";
 
 type Period = "today" | "month" | "all";
 
@@ -370,7 +371,9 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
         params.set("funnelEnd", funnelEnd);
       }
       const res = await fetch(`/api/admin/stats?${params.toString()}`);
-      const json = (await res.json()) as { ok: boolean; error?: string } & Partial<StatsData>;
+      const json = await readJsonResponse<
+        { ok: boolean; error?: string } & Partial<Omit<StatsData, "ok">>
+      >(res, { ok: false });
       if (!json.ok) {
         setError(json.error ?? "讀取失敗");
         return;

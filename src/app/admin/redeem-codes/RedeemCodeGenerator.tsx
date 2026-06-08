@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { REDEEM_PLANS, type RedeemPlan } from "@/lib/redeemCodes";
+import { readJsonResponse } from "@/lib/readJsonResponse";
 
 type GenerateResult = {
   ok: true;
@@ -35,7 +36,7 @@ export default function RedeemCodeGenerator() {
         return;
       }
 
-      const data = await res.json();
+      const data = await readJsonResponse<({ ok: false; error?: string } | NonNullable<GenerateResult>)>(res, { ok: false });
       if (!data.ok) {
         setError(data.error ?? "產生失敗");
         return;

@@ -86,6 +86,19 @@ function cleanSeconds(value: unknown) {
   return Math.min(Math.round(n), 7200);
 }
 
+function makeEventId(event: Record<string, unknown>, now: Date) {
+  const eventType = cleanString(event.eventType, 64);
+  const sessionId = cleanString(event.sessionId, 160);
+  const anonymousId = cleanString(event.anonymousId, 160);
+  const path = cleanString(event.path, 160);
+  const bucketMs = eventType === "session_heartbeat" ? 60_000 : eventType === "page_view" ? 300_000 : 30_000;
+  const bucket = Math.floor(now.getTime() / bucketMs);
+  return crypto
+    .createHash("sha256")
+    .update([eventType, sessionId, anonymousId, path, bucket].join("|"))
+    .digest("hex");
+}
+
 function isLikelyTest(req: NextRequest, body: Record<string, unknown>) {
   if (body.isTest === true) return true;
   const host = req.headers.get("host") ?? "";
@@ -161,7 +174,15 @@ export async function POST(req: NextRequest) {
       event.lastActiveAt = cleanString(body.lastActiveAt, 64) || null;
     }
 
-    await getAdminDb().collection("analytics_events").add(event);
+    const eventId = makeEventId(event, now);
+    await getAdminDb().collection("analytics_events").doc(eventId).set(
+      {
+        ...event,
+        eventId,
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
     return NextResponse.json({ ok: true });
   } catch (err) {
     const level = isQuotaError(err) ? "warn" : "error";
