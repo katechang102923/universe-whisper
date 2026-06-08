@@ -14,6 +14,7 @@ import { ZODIAC_SIGNS, type FortuneStatsDoc } from "@/lib/dailyFortune";
 import {
   SESSION_COOKIE_NAME,
   verifyAdminSessionCookie,
+  getAdminEmailList,
 } from "@/lib/verifyAdmin";
 import {
   REDEEM_CODES_COLLECTION,
@@ -520,12 +521,14 @@ export default async function AdminUsagePage({
 
       // 付款訂單彙總（isTest 訂單只計入 todayTest，不混入正式統計）
       try {
+        const adminEmailSet = new Set(getAdminEmailList());
         const orderSnap = await db.collection(PAYMENT_ORDERS_COLLECTION).get();
         orderSnap.docs.forEach((d) => {
           const o = d.data() as {
             status?: string; amount?: number;
             paidAt?: unknown; isTest?: boolean;
             redeemCode?: string; emailSent?: boolean;
+            buyerEmail?: string;
           };
           const paidDate = toDate(o.paidAt);
           const isToday  = paidDate?.toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" }) === today;
@@ -536,6 +539,9 @@ export default async function AdminUsagePage({
             if (isToday && o.status === "paid") orderStats.todayTest++;
             return;
           }
+
+          // 管理員本人購買的訂單不計入正式統計
+          if (o.buyerEmail && adminEmailSet.has(o.buyerEmail.toLowerCase())) return;
 
           orderStats.total++;
           if (o.status === "paid") {
@@ -590,9 +596,13 @@ export default async function AdminUsagePage({
   const anonUsage  = usageData.anon_usage  ?? {};
   const lineUsage  = usageData.line_usage  ?? {};
 
+  const adminLineIdsSet = new Set(getAdminUserIds());
   const ipRanking   = sortedEntries(ipUsage).slice(0, 20).map(({ key, count }) => ({ display: ipDisplay[key] ?? key, count }));
   const anonRanking = sortedEntries(anonUsage).slice(0, 20).map(({ key, count }) => ({ display: key, count }));
-  const lineRanking = sortedEntries(lineUsage).slice(0, 20).map(({ key, count }) => ({ display: key, count }));
+  const lineRanking = sortedEntries(lineUsage)
+    .filter(({ key }) => !adminLineIdsSet.has(key))
+    .slice(0, 20)
+    .map(({ key, count }) => ({ display: key, count }));
 
   const generatedSigns = fortuneStats.generated_zodiacs ?? [];
 

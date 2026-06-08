@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getAdminDb } from "@/lib/firebaseAdmin";
-import { verifyAdminSessionCookie, SESSION_COOKIE_NAME } from "@/lib/verifyAdmin";
+import { verifyAdminSessionCookie, SESSION_COOKIE_NAME, getAdminEmailList } from "@/lib/verifyAdmin";
 import { getAdminUserIds, getTaipeiDate, type DailyUsageDoc } from "@/lib/rateLimit";
 import { PAYMENT_ORDERS_COLLECTION, REDEEM_CODES_COLLECTION, type RedeemCodeData } from "@/lib/redeemCodes";
 
@@ -22,6 +22,7 @@ type AnalyticsEvent = {
   landingPath?: string;
   referrer?: string;
   url?: string;
+  utmSource?: string | null;
   activeSeconds?: number;
   pageActiveSeconds?: number;
   totalSeconds?: number;
@@ -55,6 +56,8 @@ type SourceRow = {
   sessions: number;
   visitors: number;
   avgActiveSeconds: number;
+  drawCount: number;
+  freeUnlockCount: number;
   paidSuccess: number;
   paidConversionRate: string;
 };
@@ -124,14 +127,34 @@ function pageLabel(path: string) {
   return path;
 }
 
-function sourceFrom(referrer?: string, url?: string) {
-  const value = `${referrer ?? ""} ${url ?? ""}`.toLowerCase();
-  if (!referrer && !value.includes("fbclid")) return "Direct";
-  if (value.includes("facebook.com") || value.includes("fbclid")) return "Facebook";
-  if (value.includes("instagram.com")) return "Instagram";
-  if (value.includes("threads.net")) return "Threads";
-  if (value.includes("t.co") || value.includes("x.com")) return "X";
-  if (value.includes("google.com")) return "Google";
+function sourceFrom(referrer?: string, url?: string, utmSource?: string | null): string {
+  // 1. utm_source 優先
+  if (utmSource) {
+    const s = utmSource.toLowerCase();
+    if (s === "facebook" || s === "fb") return "Facebook";
+    if (s === "instagram" || s === "ig") return "Instagram";
+    if (s === "threads") return "Threads";
+    if (s === "line") return "LINE";
+    if (s === "google") return "Google";
+  }
+
+  const ref = (referrer ?? "").toLowerCase();
+  const urlStr = (url ?? "").toLowerCase();
+
+  // 2. fbclid 表示 Facebook 廣告連結
+  if (urlStr.includes("fbclid")) return "Facebook";
+
+  // 3. 無 referrer → Direct
+  if (!ref) return "Direct";
+
+  // 4. referrer domain 辨識
+  if (ref.includes("facebook.com") || ref.includes("fb.com")) return "Facebook";
+  if (ref.includes("instagram.com")) return "Instagram";
+  if (ref.includes("threads.net")) return "Threads";
+  if (ref.includes("line.me") || ref.includes("liff.line.me")) return "LINE";
+  if (ref.includes("t.co") || ref.includes("x.com") || ref.includes("twitter.com")) return "X";
+  if (ref.includes("google.com")) return "Google";
+
   return "Other";
 }
 
@@ -272,7 +295,14 @@ function buildTraffic(events: AnalyticsEvent[], period: Period, today: string, m
 function buildSourceRows(events: AnalyticsEvent[], today: string, monthKey: string) {
   const periodEvents = events.filter((event) => inPeriod(event, "month", today, monthKey));
   const sessionSource = new Map<string, string>();
-  const sourceMap = new Map<string, { sessions: number; visitors: Set<string>; active: number[]; paid: number }>();
+  const sourceMap = new Map<string, {
+    sessions: number;
+    visitors: Set<string>;
+    active: number[];
+    paid: number;
+    draws: number;
+    freeUnlocks: number;
+  }>();
   const sessionActive = new Map<string, number>();
 
   for (const event of periodEvents) {
@@ -281,9 +311,9 @@ function buildSourceRows(events: AnalyticsEvent[], today: string, monthKey: stri
       sessionActive.set(event.sessionId, Math.max(sessionActive.get(event.sessionId) ?? 0, cleanSeconds(event.activeSeconds)));
     }
     if (event.eventType !== "session_start") continue;
-    const source = sourceFrom(event.referrer, event.url);
+    const source = sourceFrom(event.referrer, event.url, event.utmSource);
     sessionSource.set(event.sessionId, source);
-    const current = sourceMap.get(source) ?? { sessions: 0, visitors: new Set<string>(), active: [], paid: 0 };
+    const current = sourceMap.get(source) ?? { sessions: 0, visitors: new Set<string>(), active: [], paid: 0, draws: 0, freeUnlocks: 0 };
     current.sessions += 1;
     const uid = visitorKey(event);
     if (uid) current.visitors.add(uid);
@@ -291,11 +321,21 @@ function buildSourceRows(events: AnalyticsEvent[], today: string, monthKey: stri
   }
 
   for (const event of periodEvents) {
-    if (event.eventType !== "payment_success" || event.isTest || !event.sessionId) continue;
+    if (!event.sessionId) continue;
     const source = sessionSource.get(event.sessionId) ?? "Direct";
-    const current = sourceMap.get(source) ?? { sessions: 0, visitors: new Set<string>(), active: [], paid: 0 };
-    current.paid += 1;
-    sourceMap.set(source, current);
+    if (event.eventType === "payment_success" && !event.isTest) {
+      const current = sourceMap.get(source) ?? { sessions: 0, visitors: new Set<string>(), active: [], paid: 0, draws: 0, freeUnlocks: 0 };
+      current.paid += 1;
+      sourceMap.set(source, current);
+    }
+    if (event.eventType === "tarot_draw_complete") {
+      const current = sourceMap.get(source);
+      if (current) current.draws += 1;
+    }
+    if (event.eventType === "free_unlock") {
+      const current = sourceMap.get(source);
+      if (current) current.freeUnlocks += 1;
+    }
   }
 
   for (const [sessionId, source] of sessionSource.entries()) {
@@ -308,6 +348,8 @@ function buildSourceRows(events: AnalyticsEvent[], today: string, monthKey: stri
       sessions: row.sessions,
       visitors: row.visitors.size,
       avgActiveSeconds: average(row.active),
+      drawCount: row.draws,
+      freeUnlockCount: row.freeUnlocks,
       paidSuccess: row.paid,
       paidConversionRate: calcRatio(row.paid, row.sessions),
     }))
@@ -434,6 +476,10 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // 管理員識別集合（供所有 collection 過濾使用）
+  const adminLineIds = new Set(getAdminUserIds());
+  const adminEmails = new Set(getAdminEmailList());
+
   const redeemSnap = await db.collection(REDEEM_CODES_COLLECTION).limit(500).get().catch(() => null);
   const paidUnlockEntries: Array<{ question: string; dateKey: string; monthKey: string; isPaid: boolean; spreadKey: string }> = [];
   const paidSpreadEntries: Array<{ spreadKey: string; dateKey: string; monthKey: string }> = [];
@@ -441,6 +487,8 @@ export async function GET(req: NextRequest) {
     for (const doc of redeemSnap.docs) {
       const code = doc.data() as RedeemCodeData;
       if (code.isTest) continue;
+      // 排除管理員 email 購買的通行碼（管理員測試用）
+      if (code.buyerEmail && adminEmails.has(code.buyerEmail.toLowerCase())) continue;
       for (const log of code.usedLogs ?? []) {
         const ts = resolveTs(log.usedAt);
         if (!ts) continue;
@@ -457,9 +505,6 @@ export async function GET(req: NextRequest) {
       }
     }
   }
-
-  // 管理員識別集合（供後續多個 collection 過濾使用）
-  const adminLineIds = new Set(getAdminUserIds());
 
   const downloadSnap = await db.collection("share_image_downloads").limit(1000).get().catch(() => null);
   const downloadEntries: Array<{ spreadType: string; dateKey: string; monthKey: string }> = [];

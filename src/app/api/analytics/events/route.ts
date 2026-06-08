@@ -70,6 +70,15 @@ function cleanString(value: unknown, maxLength: number) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }
 
+function extractUtmSource(rawUrl: string): string {
+  if (!rawUrl) return "";
+  try {
+    return new URL(rawUrl).searchParams.get("utm_source")?.trim().slice(0, 64) ?? "";
+  } catch {
+    return "";
+  }
+}
+
 function cleanSeconds(value: unknown) {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n) || n < 0) return 0;
@@ -119,6 +128,7 @@ export async function POST(req: NextRequest) {
     const ip = getIp(req);
     const userAgent = req.headers.get("user-agent") ?? "";
     const referrer = cleanString(body.referrer, 500) || req.headers.get("referer") || "";
+    const utmSource = extractUtmSource(cleanString(body.url, 2000));
 
     const event: Record<string, unknown> = {
       eventType,
@@ -132,6 +142,7 @@ export async function POST(req: NextRequest) {
       ipHash: hashIp(ip),
       path,
       referrer,
+      utmSource: utmSource || null,
       userAgent: userAgent.slice(0, 500),
       deviceType: getDeviceType(userAgent),
       isTest: isLikelyTest(req, body),

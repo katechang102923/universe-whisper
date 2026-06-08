@@ -44,6 +44,8 @@ interface SourceRow {
   sessions: number;
   visitors: number;
   avgActiveSeconds: number;
+  drawCount: number;
+  freeUnlockCount: number;
   paidSuccess: number;
   paidConversionRate: string;
 }
@@ -566,13 +568,15 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
       >
         <DataTable
           emptyText="尚無流量來源資料"
-          headers={["排名", "來源", "拜訪次數", "拜訪人數", "平均停留時間", "付費成功次數", "付費轉換率"]}
+          headers={["排名", "來源", "訪客人數", "訪客次數", "平均停留時間", "完成抽牌數", "免費解鎖數", "付費成功數", "付費轉換率"]}
           rows={(data?.trafficSources ?? []).map((row, index) => [
             index + 1,
             row.source,
-            row.sessions,
             row.visitors,
+            row.sessions,
             formatDuration(row.avgActiveSeconds),
+            row.drawCount,
+            row.freeUnlockCount,
             row.paidSuccess,
             row.paidConversionRate,
           ])}
