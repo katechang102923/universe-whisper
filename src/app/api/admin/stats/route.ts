@@ -460,6 +460,30 @@ async function verifyAdmin() {
   return isGoogleAdmin || Boolean(lineUserId && getAdminUserIds().includes(lineUserId));
 }
 
+// ── 快照輔助：取得最近可用快照日期（最多往前找 7 天）─────────────────────────────
+function getSnapshotCandidates(year: number, month: number, today: string): string[] {
+  const padded = `${year}-${String(month).padStart(2, "0")}`;
+  const currentMonth = today.slice(0, 7);
+  const candidates: string[] = [];
+  if (padded === currentMonth) {
+    for (let i = 1; i <= 7; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" });
+      if (dateStr.slice(0, 7) === padded) candidates.push(dateStr);
+    }
+  } else {
+    const lastDay = new Date(year, month, 0);
+    for (let i = 0; i < 5; i++) {
+      const d = new Date(lastDay);
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" });
+      if (dateStr.slice(0, 7) === padded) candidates.push(dateStr);
+    }
+  }
+  return candidates;
+}
+
 export async function GET(req: NextRequest) {
   if (!(await verifyAdmin())) {
     return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
@@ -470,6 +494,24 @@ export async function GET(req: NextRequest) {
   const year = Number(url.searchParams.get("year") ?? now.getFullYear());
   const month = Number(url.searchParams.get("month") ?? now.getMonth() + 1);
   const today = getTaipeiDate();
+
+  // ── 先嘗試讀取每日統計快照 ───────────────────────────────────────────────────
+  try {
+    const db = getAdminDb();
+    const candidates = getSnapshotCandidates(year, month, today);
+    if (candidates.length > 0) {
+      const snapDocs = await Promise.all(candidates.map((d) => db.collection("daily_admin_stats").doc(d).get()));
+      const found = snapDocs.find((d) => d.exists);
+      if (found) {
+        const snap = found.data() as { statsPayload?: Record<string, unknown>; date?: string };
+        if (snap.statsPayload) {
+          return NextResponse.json({ ok: true, _snapshotDate: snap.date, ...snap.statsPayload });
+        }
+      }
+    }
+  } catch {
+    // 快照讀取失敗時，繼續走原有即時計算邏輯
+  }
   const monthKey = `${year}-${String(month).padStart(2, "0")}`;
 
   const rawFunnelPeriod = url.searchParams.get("funnelPeriod") ?? "month";

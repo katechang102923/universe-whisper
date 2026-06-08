@@ -114,6 +114,7 @@ interface UsageOverviewProps {
   };
   shareDownloadRanking: { display: string; count: number; lastAt: string; type: string }[];
   fetchError: boolean;
+  snapshotNote?: string;
   ipRanking: SimpleRank[];
   anonRanking: SimpleRank[];
   lineRanking: SimpleRank[];
@@ -440,6 +441,12 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
       {props.fetchError ? (
         <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
           Firestore 資料讀取失敗，請確認 Firebase 環境變數設定。
+        </div>
+      ) : null}
+
+      {props.snapshotNote && !props.fetchError ? (
+        <div className="rounded-2xl border border-white/10 bg-midnight/50 px-4 py-3 text-xs text-moon/50">
+          📅 {props.snapshotNote}
         </div>
       ) : null}
 

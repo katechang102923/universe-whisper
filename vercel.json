@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/daily-fortune",
       "schedule": "0 16 * * *"
+    },
+    {
+      "path": "/api/admin/daily-stats/generate",
+      "schedule": "5 16 * * *"
     }
   ]
 }

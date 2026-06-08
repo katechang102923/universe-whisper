@@ -296,6 +296,7 @@ function OverviewTab({
   shareDownloadStats,
   shareDownloadRanking,
   fetchError,
+  snapshotNote,
   ipRanking,
   anonRanking,
   lineRanking,
@@ -312,7 +313,8 @@ function OverviewTab({
     todayCount: number; todayUsers: number; allCount: number; allUsers: number;
   };
   shareDownloadRanking: { display: string; count: number; lastAt: string; type: string }[];
-  fetchError:  boolean;
+  fetchError:    boolean;
+  snapshotNote:  string;
   ipRanking:   { display: string; count: number }[];
   anonRanking: { display: string; count: number }[];
   lineRanking: { display: string; count: number }[];
@@ -332,6 +334,7 @@ function OverviewTab({
       shareDownloadStats={shareDownloadStats}
       shareDownloadRanking={shareDownloadRanking}
       fetchError={fetchError}
+      snapshotNote={snapshotNote}
       ipRanking={ipRanking}
       anonRanking={anonRanking}
       lineRanking={lineRanking}
@@ -423,140 +426,55 @@ export default async function AdminUsagePage({
   let shareDownloadStats = { todayCount: 0, todayUsers: 0, allCount: 0, allUsers: 0 };
   let shareDownloadRanking: { display: string; count: number; lastAt: string; type: string }[] = [];
   let fetchError = false;
+  let snapshotNote = "";
 
   try {
     const db = getAdminDb();
 
     if (currentTab === "overview") {
-      const [usageSnap, fortuneSnap] = await Promise.all([
+      // ── 先嘗試讀取每日統計快照（避免大量即時 Firestore 讀取）─────────────────
+      // 快照由每日 00:05 Cron 產生，文件 id = 台灣日期（如 2026-06-08）
+      type SnapshotDoc = {
+        usageData?: Partial<DailyUsageDoc>;
+        fortuneCoverage?: number;
+        redeemStats?: typeof redeemStats;
+        orderStats?: typeof orderStats;
+        shareDownloadStats?: typeof shareDownloadStats;
+        shareDownloadRanking?: typeof shareDownloadRanking;
+        ipRanking?: { display: string; count: number }[];
+        anonRanking?: { display: string; count: number }[];
+        lineRanking?: { display: string; count: number }[];
+        date?: string;
+      };
+
+      // 嘗試今天和昨天的快照
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" });
+      const [todaySnap, yesterdaySnap, usageSnap, fortuneSnap] = await Promise.all([
+        db.collection("daily_admin_stats").doc(today).get(),
+        db.collection("daily_admin_stats").doc(yesterdayStr).get(),
         db.collection("rate_limits").doc(today).get(),
         db.collection("fortune_stats").doc(today).get(),
       ]);
-      usageData    = (usageSnap.data()   as Partial<DailyUsageDoc>)   ?? {};
-      fortuneStats = (fortuneSnap.data() as Partial<FortuneStatsDoc>) ?? {};
 
-      // 通行碼彙總（test 碼單獨計數，不混入 total/active/usedUp）
-      const codeSnap = await db.collection(REDEEM_CODES_COLLECTION).get();
-      codeSnap.docs.forEach((d) => {
-        const c = d.data() as RedeemCodeData;
-        if (c.isTest) {
-          redeemStats.test++;
-          return;  // 測試碼不計入正式統計
-        }
-        redeemStats.total++;
-        if (c.status === "active")  redeemStats.active++;
-        if (c.status === "used_up") redeemStats.usedUp++;
-      });
-
-      // 分享圖下載彙總
-      try {
-        const adminDlLineIds = new Set(getAdminUserIds());
-        const dlSnap = await db.collection("share_image_downloads").get();
-        const userCounterAll  = new Set<string>();
-        const userCounterToday = new Set<string>();
-        const rankMap = new Map<string, { count: number; lastAt: string; type: string }>();
-
-        dlSnap.docs.forEach((d) => {
-          const ev = d.data() as {
-            dateKey?: string; lineUserId?: string; anonymousId?: string; ip?: string;
-            createdAt?: unknown; spreadType?: string; isAdmin?: boolean; isTest?: boolean;
-          };
-          // 排除管理員與測試下載
-          if (ev.isAdmin === true) return;
-          if (ev.isTest === true) return;
-          if (ev.lineUserId && adminDlLineIds.has(ev.lineUserId)) return;
-
-          shareDownloadStats.allCount++;
-          const isToday = ev.dateKey === today;
-          if (isToday) shareDownloadStats.todayCount++;
-
-          // 去重識別
-          const uid = ev.lineUserId
-            ? `LINE:${ev.lineUserId}`
-            : ev.anonymousId
-            ? `anon:${ev.anonymousId}`
-            : ev.ip && ev.ip !== "unknown"
-            ? `ip:${ev.ip}`
-            : null;
-
-          if (uid) {
-            userCounterAll.add(uid);
-            if (isToday) userCounterToday.add(uid);
-          }
-
-          // ranking
-          const rankKey = ev.lineUserId
-            ? `LINE:${ev.lineUserId}`
-            : ev.anonymousId
-            ? `anon:${ev.anonymousId.slice(0, 20)}`
-            : ev.ip && ev.ip !== "unknown"
-            ? `ip:${ev.ip}`
-            : `unknown`;
-
-          const tsDate = toDate(ev.createdAt);
-          const tsStr  = tsDate
-            ? tsDate.toLocaleString("zh-TW", {
-                timeZone: "Asia/Taipei",
-                year: "numeric", month: "2-digit", day: "2-digit",
-                hour: "2-digit", minute: "2-digit", hour12: false,
-              })
-            : "—";
-          const existing = rankMap.get(rankKey);
-          if (!existing) {
-            rankMap.set(rankKey, { count: 1, lastAt: tsStr, type: ev.spreadType ?? "—" });
-          } else {
-            existing.count++;
-            if (tsStr > existing.lastAt) existing.lastAt = tsStr;
-          }
-        });
-
-        shareDownloadStats.allUsers   = userCounterAll.size;
-        shareDownloadStats.todayUsers = userCounterToday.size;
-
-        shareDownloadRanking = Array.from(rankMap.entries())
-          .sort(([, a], [, b]) => b.count - a.count)
-          .slice(0, 20)
-          .map(([key, v]) => ({ display: key, count: v.count, lastAt: v.lastAt, type: v.type }));
-      } catch { /* share_image_downloads 不存在時忽略 */ }
-
-      // 付款訂單彙總（isTest 訂單只計入 todayTest，不混入正式統計）
-      try {
-        const adminEmailSet = new Set(getAdminEmailList());
-        const orderSnap = await db.collection(PAYMENT_ORDERS_COLLECTION).get();
-        orderSnap.docs.forEach((d) => {
-          const o = d.data() as {
-            status?: string; amount?: number;
-            paidAt?: unknown; isTest?: boolean;
-            redeemCode?: string; emailSent?: boolean;
-            buyerEmail?: string;
-          };
-          const paidDate = toDate(o.paidAt);
-          const isToday  = paidDate?.toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" }) === today;
-          const isTest   = Boolean(o.isTest);
-
-          // 測試訂單：只記錄 todayTest，不計入 total / paid / failed / pending / revenue
-          if (isTest) {
-            if (isToday && o.status === "paid") orderStats.todayTest++;
-            return;
-          }
-
-          // 管理員本人購買的訂單不計入正式統計
-          if (o.buyerEmail && adminEmailSet.has(o.buyerEmail.toLowerCase())) return;
-
-          orderStats.total++;
-          if (o.status === "paid") {
-            orderStats.paid++;
-            if (isToday) {
-              orderStats.todayPaid++;
-              orderStats.todayRevenue += o.amount ?? 0;
-            }
-            if (!o.redeemCode) orderStats.noCode++;
-            if (!o.emailSent)  orderStats.emailUnsent++;
-          }
-          if (o.status === "failed")  orderStats.failed++;
-          if (o.status === "pending") orderStats.pending++;
-        });
-      } catch { /* paymentOrders 不存在時忽略 */ }
+      // 優先用今天快照，否則用昨天
+      const bestSnap = todaySnap.exists ? todaySnap : yesterdaySnap.exists ? yesterdaySnap : null;
+      if (bestSnap) {
+        const s = bestSnap.data() as SnapshotDoc;
+        usageData           = s.usageData ?? (usageSnap.data() as Partial<DailyUsageDoc>) ?? {};
+        fortuneStats        = (fortuneSnap.data() as Partial<FortuneStatsDoc>) ?? {};
+        redeemStats         = s.redeemStats ?? redeemStats;
+        orderStats          = s.orderStats ?? orderStats;
+        shareDownloadStats  = s.shareDownloadStats ?? shareDownloadStats;
+        shareDownloadRanking = s.shareDownloadRanking ?? [];
+        snapshotNote = `統計資料來自 ${s.date ?? yesterdayStr} 快照，每日 00:05 更新`;
+      } else {
+        // 尚未有快照：只讀兩個單一文件，不掃全集
+        usageData    = (usageSnap.data()   as Partial<DailyUsageDoc>)   ?? {};
+        fortuneStats = (fortuneSnap.data() as Partial<FortuneStatsDoc>) ?? {};
+        snapshotNote = "統計快照尚未產生，資料每日 00:05 更新（可手動呼叫 /api/admin/daily-stats/generate 補跑）";
+      }
     }
 
     if (currentTab === "orders") {
@@ -675,6 +593,7 @@ export default async function AdminUsagePage({
               shareDownloadStats={shareDownloadStats}
               shareDownloadRanking={shareDownloadRanking}
               fetchError={fetchError}
+              snapshotNote={snapshotNote}
               ipRanking={ipRanking}
               anonRanking={anonRanking}
               lineRanking={lineRanking}
