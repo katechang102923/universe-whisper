@@ -139,7 +139,7 @@ function sourceFrom(referrer?: string, url?: string, utmSource?: string | null):
   // 1. utm_source 優先
   if (utmSource) {
     const s = utmSource.toLowerCase();
-    if (["facebook", "fb", "meta", "fbad", "fbclid"].includes(s)) return "Facebook";
+    if (["facebook", "fb", "meta", "fbad", "fbbad", "fbclid"].includes(s)) return "Facebook";
     if (["instagram", "ig", "igshid", "l.instagram.com", "instagram.com"].includes(s)) return "Instagram";
     if (["threads", "threads.net"].includes(s)) return "Threads";
     if (["line", "line.me", "liff.line.me"].includes(s)) return "LINE";
@@ -157,7 +157,7 @@ function sourceFrom(referrer?: string, url?: string, utmSource?: string | null):
   if (!ref) return "Direct";
 
   // 4. referrer domain 辨識
-  if (ref.includes("facebook.com") || ref.includes("fb.com")) return "Facebook";
+  if (ref.includes("l.facebook.com") || ref.includes("m.facebook.com") || ref.includes("facebook.com") || ref.includes("fb.com")) return "Facebook";
   if (ref.includes("l.instagram.com") || ref.includes("instagram.com")) return "Instagram";
   if (ref.includes("threads.net")) return "Threads";
   if (ref.includes("line.me") || ref.includes("liff.line.me")) return "LINE";
@@ -409,8 +409,20 @@ function buildPageStayRows(events: AnalyticsEvent[], today: string, monthKey: st
     .slice(0, 10);
 }
 
-function buildFunnel(events: AnalyticsEvent[], today: string, monthKey: string) {
-  const periodEvents = events.filter((event) => inPeriod(event, "month", today, monthKey));
+type FunnelFilter =
+  | { type: "today"; date: string }
+  | { type: "month"; monthKey: string }
+  | { type: "custom"; start: string; end: string };
+
+function matchFunnelFilter(event: AnalyticsEvent, filter: FunnelFilter): boolean {
+  if (filter.type === "today") return event.dateKey === filter.date;
+  if (filter.type === "month") return event.monthKey === filter.monthKey;
+  const key = event.dateKey ?? "";
+  return key >= filter.start && key <= filter.end;
+}
+
+function buildFunnel(events: AnalyticsEvent[], filter: FunnelFilter) {
+  const periodEvents = events.filter((event) => matchFunnelFilter(event, filter));
   const steps = [
     { label: "進站人數", match: (event: AnalyticsEvent) => event.eventType === "session_start" },
     { label: "進入抽牌頁人數", match: (event: AnalyticsEvent) => event.eventType === "page_view" && normalizePath(event.path) === "/tarot" },
@@ -459,6 +471,18 @@ export async function GET(req: NextRequest) {
   const month = Number(url.searchParams.get("month") ?? now.getMonth() + 1);
   const today = getTaipeiDate();
   const monthKey = `${year}-${String(month).padStart(2, "0")}`;
+
+  const rawFunnelPeriod = url.searchParams.get("funnelPeriod") ?? "month";
+  const funnelPeriod: "today" | "month" | "custom" =
+    rawFunnelPeriod === "today" ? "today" : rawFunnelPeriod === "custom" ? "custom" : "month";
+  const funnelStartParam = url.searchParams.get("funnelStart");
+  const funnelEndParam = url.searchParams.get("funnelEnd");
+  const funnelFilter: FunnelFilter =
+    funnelPeriod === "today"
+      ? { type: "today", date: today }
+      : funnelPeriod === "custom" && funnelStartParam && funnelEndParam
+        ? { type: "custom", start: funnelStartParam, end: funnelEndParam }
+        : { type: "month", monthKey };
   const db = getAdminDb();
 
   const { FieldPath } = await import("firebase-admin/firestore");
@@ -589,7 +613,8 @@ export async function GET(req: NextRequest) {
     },
     trafficSources: buildSourceRows(analyticsEvents, today, monthKey),
     pageStay: buildPageStayRows(analyticsEvents, today, monthKey),
-    funnel: buildFunnel(analyticsEvents, today, monthKey),
+    funnel: buildFunnel(analyticsEvents, funnelFilter),
+    funnelFilter,
     paymentOrderCount: await db
       .collection(PAYMENT_ORDERS_COLLECTION)
       .where("status", "==", "paid")

@@ -63,6 +63,11 @@ interface FunnelRow {
   totalRate: string;
 }
 
+type FunnelFilter =
+  | { type: "today"; date: string }
+  | { type: "month"; monthKey: string }
+  | { type: "custom"; start: string; end: string };
+
 interface StatsData {
   ok: true;
   today: string;
@@ -75,6 +80,7 @@ interface StatsData {
   trafficSources: SourceRow[];
   pageStay: PageStayRow[];
   funnel: FunnelRow[];
+  funnelFilter: FunnelFilter;
 }
 
 interface UsageOverviewProps {
@@ -152,6 +158,13 @@ function periodLabel(period: Period, data: StatsData) {
   if (period === "today") return `今日（${data.today}）`;
   if (period === "month") return `本月（${data.monthKey}）`;
   return "全期";
+}
+
+function funnelFilterLabel(filter: FunnelFilter | undefined): string {
+  if (!filter) return "本月";
+  if (filter.type === "today") return `今日（${filter.date}）`;
+  if (filter.type === "custom") return `${filter.start} ～ ${filter.end}`;
+  return `本月（${filter.monthKey}）`;
 }
 
 function Section({
@@ -334,11 +347,28 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
   const [spreadPeriod, setSpreadPeriod] = useState<Period>("today");
   const [linePeriod, setLinePeriod] = useState<Period>("today");
 
-  const load = useCallback(async (year: number, month: number) => {
+  const [funnelMode, setFunnelMode] = useState<"today" | "month" | "custom">("month");
+  const [funnelCustomStart, setFunnelCustomStart] = useState(props.today);
+  const [funnelCustomEnd, setFunnelCustomEnd] = useState(props.today);
+
+  const load = useCallback(async (
+    year: number,
+    month: number,
+    funnelPeriod?: "today" | "month" | "custom",
+    funnelStart?: string,
+    funnelEnd?: string,
+  ) => {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`/api/admin/stats?year=${year}&month=${month}`);
+      const params = new URLSearchParams({ year: String(year), month: String(month) });
+      if (funnelPeriod === "today") params.set("funnelPeriod", "today");
+      if (funnelPeriod === "custom" && funnelStart && funnelEnd) {
+        params.set("funnelPeriod", "custom");
+        params.set("funnelStart", funnelStart);
+        params.set("funnelEnd", funnelEnd);
+      }
+      const res = await fetch(`/api/admin/stats?${params.toString()}`);
       const json = (await res.json()) as { ok: boolean; error?: string } & Partial<StatsData>;
       if (!json.ok) {
         setError(json.error ?? "讀取失敗");
@@ -353,6 +383,7 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
   }, []);
 
   useEffect(() => {
+    setFunnelMode("month");
     void load(props.year, props.month);
   }, [props.year, props.month, load]);
 
@@ -459,10 +490,54 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
       <Section
         id="funnel"
         title="流量轉換漏斗"
-        summary={`進站 ${getFunnelUsers(data, "進站人數")}｜完成抽牌 ${getFunnelUsers(data, "完成抽牌人數")}｜付費 ${getFunnelUsers(data, "付費成功人數")}`}
+        summary={`${funnelFilterLabel(data?.funnelFilter)}｜進站 ${getFunnelUsers(data, "進站人數")}｜完成抽牌 ${getFunnelUsers(data, "完成抽牌人數")}｜付費 ${getFunnelUsers(data, "付費成功人數")}`}
         openSections={openSections}
         toggle={toggle}
       >
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <div className="flex gap-1 rounded-xl border border-white/8 bg-midnight/40 p-1">
+            {(["today", "month", "custom"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => {
+                  setFunnelMode(mode);
+                  if (mode !== "custom") void load(props.year, props.month, mode);
+                }}
+                className={[
+                  "rounded-lg px-3 py-1.5 text-xs font-medium transition",
+                  funnelMode === mode ? "bg-lavender/22 text-lavender" : "text-moon/55 hover:bg-white/8 hover:text-moon",
+                ].join(" ")}
+              >
+                {mode === "today" ? "今日" : mode === "month" ? "本月" : "自訂"}
+              </button>
+            ))}
+          </div>
+          {funnelMode === "custom" && (
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="date"
+                value={funnelCustomStart}
+                onChange={(e) => setFunnelCustomStart(e.target.value)}
+                className="rounded-lg border border-white/12 bg-midnight/50 px-3 py-1.5 text-xs text-moon focus:outline-none focus:ring-1 focus:ring-lavender/50"
+              />
+              <span className="text-xs text-moon/50">～</span>
+              <input
+                type="date"
+                value={funnelCustomEnd}
+                onChange={(e) => setFunnelCustomEnd(e.target.value)}
+                className="rounded-lg border border-white/12 bg-midnight/50 px-3 py-1.5 text-xs text-moon focus:outline-none focus:ring-1 focus:ring-lavender/50"
+              />
+              <button
+                type="button"
+                onClick={() => void load(props.year, props.month, "custom", funnelCustomStart, funnelCustomEnd)}
+                className="rounded-lg border border-lavender/30 bg-lavender/12 px-4 py-1.5 text-xs font-medium text-lavender transition hover:bg-lavender/20"
+              >
+                查詢
+              </button>
+            </div>
+          )}
+        </div>
         <DataTable
           emptyText="尚無漏斗資料"
           headers={["階段", "人數", "相對上一階段", "相對進站總人數"]}

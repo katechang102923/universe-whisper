@@ -151,6 +151,7 @@ export async function POST(req: NextRequest) {
 
     if (eventType === "session_start") {
       event.landingPath = normalizePath(body.landingPath ?? path);
+      event.url = cleanString(body.url, 500) || null;
     }
     if (eventType === "session_heartbeat") {
       event.activeSeconds = cleanSeconds(body.activeSeconds);
