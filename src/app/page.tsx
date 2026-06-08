@@ -6,12 +6,20 @@ import { FeatureCard } from "@/components/FeatureCard";
 
 export const metadata: Metadata = {
   title: "宇宙偷偷話 Universe Whisper",
-  description: "深夜裡陪你抽一張塔羅牌，查看每日星座運勢，接收溫柔的宇宙訊息。",
+  description: "每天免費抽一張塔羅牌，不用登入、不用付款，30 秒看見今天的提醒。感情、工作、財運、生活都可以問。",
   openGraph: {
     title: "宇宙偷偷話 Universe Whisper",
-    description: "深夜裡陪你抽一張塔羅牌，查看每日星座運勢，接收溫柔的宇宙訊息。",
+    description: "每天免費抽一張塔羅牌，不用登入、不用付款，30 秒看見今天的提醒。感情、工作、財運、生活都可以問。",
   },
 };
+
+const quickQuestions = [
+  "他還會回我嗎？",
+  "這段感情該繼續嗎？",
+  "最近工作會順嗎？",
+  "最近財運要注意什麼？",
+  "今天我該注意什麼？",
+];
 
 const cosmicMessages = [
   "你已經在等一個答案很久了，今晚先讓心靜下來。",
@@ -39,97 +47,59 @@ export default function Home() {
         <div className="grid w-full items-center gap-8 lg:grid-cols-2 lg:gap-12">
           {/* ── Left: headline + CTAs ─────────────────────────── */}
           <div className="text-center lg:text-left">
-            <p className="text-xs uppercase tracking-[0.36em] text-aurora/80">
-              宇宙塔羅 · 每日提醒
-            </p>
-            <h1 className="mx-auto mt-4 max-w-[9em] text-[2.8rem] font-semibold leading-[1.08] text-moon drop-shadow-[0_0_22px_rgba(203,184,255,0.16)] sm:text-5xl lg:mx-0 lg:text-6xl">
-              今晚想聽
+            {/* 小標籤列 */}
+            <div className="flex flex-wrap items-center justify-center gap-2 lg:justify-start">
+              {["每日免費一次", "可存到 LINE", "完整版 NT$49"].map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-full border border-[#d8bd70]/30 bg-[#d8bd70]/10 px-3 py-1 text-xs font-medium text-aurora/90"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+
+            <h1 className="mx-auto mt-4 max-w-[14em] text-[2.2rem] font-semibold leading-[1.16] text-moon drop-shadow-[0_0_22px_rgba(203,184,255,0.16)] sm:text-[2.7rem] lg:mx-0 lg:text-[3.2rem]">
+              現在最困住你的問題，
               <br className="hidden sm:block" />
-              宇宙說什麼？
+              抽一張牌先看方向
             </h1>
-            <p className="mx-auto mt-5 max-w-xl text-base leading-8 text-moon/76 sm:text-xl lg:mx-0">
-              深夜裡，陪你抽一張牌，聽聽宇宙想對你說什麼。
+            <p className="mx-auto mt-5 max-w-xl text-base leading-8 text-moon/78 sm:text-lg lg:mx-0">
+              感情、工作、財運、生活都可以問。每天免費一次，不用登入、不用付款，30 秒看見今天的提醒。
             </p>
 
-            <Link
-              href="/tarot"
-              className="mt-6 inline-flex min-h-14 w-full max-w-[320px] items-center justify-center rounded-full px-7 text-base font-semibold text-midnight shadow-[0_18px_50px_rgba(216,189,112,0.26),0_0_26px_rgba(203,184,255,0.18)] transition hover:brightness-110 active:scale-[0.98] sm:w-auto"
-              style={{
-                background: "linear-gradient(135deg, #f7d987 0%, #d8bd70 42%, #cbb8ff 100%)",
-              }}
-            >
-              立即抽牌
-            </Link>
-
-            {/* ── Two entry cards ── */}
-            <div className="mt-7 grid gap-4 sm:grid-cols-2">
-              {/* 單張入口 */}
+            {/* ── CTA：主要按鈕（最醒目）+ 次要按鈕 ── */}
+            <div className="mt-7 flex flex-col items-center gap-3 sm:flex-row sm:flex-wrap lg:items-start">
               <Link
                 href="/tarot?spread=single"
-                className="group flex min-h-[188px] flex-col rounded-[2rem] border border-[#d8bd70]/34 bg-gradient-to-br from-white/[0.09] via-midnight/62 to-[#d8bd70]/[0.06] p-5 text-left shadow-[0_18px_54px_rgba(4,7,26,0.28)] backdrop-blur-sm transition hover:-translate-y-1 hover:border-[#d8bd70]/62 hover:bg-white/5 active:scale-[0.98]"
+                className="inline-flex min-h-[60px] w-full max-w-[360px] items-center justify-center rounded-full px-8 text-lg font-bold text-midnight shadow-[0_18px_50px_rgba(216,189,112,0.34),0_0_30px_rgba(203,184,255,0.2)] transition hover:brightness-110 active:scale-[0.98] sm:w-auto"
+                style={{
+                  background: "linear-gradient(135deg, #f7d987 0%, #d8bd70 42%, #cbb8ff 100%)",
+                }}
               >
-                <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-[#d8bd70]/28 bg-[#d8bd70]/12 text-2xl shadow-[0_0_24px_rgba(216,189,112,0.16)]">✨</span>
-                <span className="mt-2 text-base font-semibold text-moon">單張宇宙訊息</span>
-                <span className="mt-1 flex-1 text-sm leading-6 text-moon/58">
-                  適合快速獲得一個提醒與方向
-                </span>
-                <span
-                  className="mt-4 self-start rounded-full px-5 py-2.5 text-sm font-semibold text-midnight shadow-[0_10px_24px_rgba(216,189,112,0.22)] transition group-hover:brightness-105"
-                  style={{
-                    background: "linear-gradient(135deg, #d8bd70 0%, #b89adf 60%, #d8bd70 100%)",
-                    backgroundSize: "200% 200%",
-                  }}
-                >
-                  抽一張
-                </span>
+                免費抽一張
               </Link>
-
-              {/* 三張入口 */}
               <Link
                 href="/tarot?spread=three"
-                className="group flex min-h-[188px] flex-col rounded-[2rem] border border-lavender/34 bg-gradient-to-br from-white/[0.08] via-midnight/62 to-lavender/[0.07] p-5 text-left shadow-[0_18px_54px_rgba(4,7,26,0.28)] backdrop-blur-sm transition hover:-translate-y-1 hover:border-lavender/62 hover:bg-white/5 active:scale-[0.98]"
+                className="inline-flex min-h-[52px] w-full max-w-[360px] items-center justify-center rounded-full border border-lavender/45 bg-lavender/10 px-6 text-sm font-semibold text-lavender transition hover:bg-lavender/20 active:scale-[0.98] sm:w-auto"
               >
-                <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-lavender/28 bg-lavender/12 text-2xl shadow-[0_0_24px_rgba(203,184,255,0.16)]">🔮</span>
-                <span className="mt-2 text-base font-semibold text-moon">三張宇宙訊息</span>
-                <span className="mt-1 flex-1 text-sm leading-6 text-moon/58">
-                  從過去、現在、未來看清整體脈絡
-                </span>
-                <span className="mt-4 self-start rounded-full border border-lavender/50 bg-lavender/20 px-5 py-2.5 text-sm font-semibold text-lavender shadow-[0_10px_24px_rgba(203,184,255,0.14)] transition group-hover:bg-lavender/30">
-                  抽三張
-                </span>
+                抽三張看完整脈絡
               </Link>
             </div>
 
             {/* LINE 輔助文字 */}
-            <p className="mt-4 text-xs text-moon/40">
+            <p className="mt-4 text-xs text-moon/45">
               抽完牌可同步收藏至{" "}
               <a
                 href={lineAddFriendUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="underline underline-offset-2 transition hover:text-moon/60"
+                className="underline underline-offset-2 transition hover:text-moon/70"
               >
                 LINE
               </a>
+              ，完整版 NT$49 解鎖更深入的解讀。
             </p>
-
-            {/* ── 三重星座入口卡 ── */}
-            <Link
-              href="/astro-profile"
-              className="group mt-5 flex items-center justify-between rounded-2xl border border-[#d8bd70]/22 bg-midnight/40 px-5 py-4 transition hover:border-[#d8bd70]/44 hover:bg-white/5 active:scale-[0.98]"
-            >
-              <div>
-                <p className="text-sm font-semibold text-moon">✦ 我的三重星座</p>
-                <p className="mt-0.5 text-xs text-moon/50">太陽 × 月亮 × 上升</p>
-                <p className="mt-1 text-xs leading-5 text-moon/45">
-                  輸入出生資訊，看看你的核心個性、內在情感與外在氣質。
-                </p>
-                <p className="mt-1 text-xs text-moon/32">延伸查看金星感情吸引力</p>
-              </div>
-              <span className="ml-4 shrink-0 text-xs text-lavender/60 transition-transform group-hover:translate-x-1">
-                →
-              </span>
-            </Link>
           </div>
 
           {/* ── Right: cat illustration + today's cosmic message ─── */}
@@ -161,7 +131,73 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── Feature entry cards（下半部）────────────────────────────────────── */}
+      {/* ── 快捷問題 + 範例結果卡 ───────────────────────────────────── */}
+      <section className="pb-10 sm:pb-14">
+        <div className="grid gap-6 lg:grid-cols-2 lg:gap-10">
+          {/* 不知道問什麼 */}
+          <div>
+            <h2 className="text-lg font-semibold text-moon">
+              不知道問什麼？可以從這些開始
+            </h2>
+            <div className="mt-4 flex flex-col gap-3">
+              {quickQuestions.map((q) => (
+                <Link
+                  key={q}
+                  href="/tarot?spread=single"
+                  className="group flex items-center justify-between rounded-2xl border border-[#d8bd70]/24 bg-midnight/40 px-5 py-3.5 text-left transition hover:-translate-y-0.5 hover:border-[#d8bd70]/50 hover:bg-white/5 active:scale-[0.98]"
+                >
+                  <span className="text-sm font-medium text-moon/88">{q}</span>
+                  <span className="ml-3 shrink-0 text-xs text-aurora/70 transition-transform group-hover:translate-x-1">
+                    抽一張 →
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          {/* 範例結果卡（靜態展示，不呼叫 AI） */}
+          <div>
+            <h2 className="text-lg font-semibold text-moon">抽完你會看到</h2>
+            <div className="mt-4 rounded-[2rem] border border-lavender/26 bg-gradient-to-br from-white/[0.08] via-midnight/62 to-lavender/[0.06] p-6 shadow-[0_18px_54px_rgba(4,7,26,0.28)] backdrop-blur-sm">
+              <p className="text-xs uppercase tracking-[0.24em] text-aurora/70">
+                範例 · 僅供參考
+              </p>
+              <div className="mt-4 space-y-4">
+                <div>
+                  <p className="text-xs font-semibold text-[#d8bd70]/80">一句話結論</p>
+                  <p className="mt-1 text-sm leading-7 text-moon/85">
+                    先別急著要答案，這幾天適合慢慢觀察，方向會自己浮現。
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-[#d8bd70]/80">牌面重點</p>
+                  <p className="mt-1 text-sm leading-7 text-moon/75">
+                    抽到的牌提醒你：現在的猶豫，是因為你還在等一個更確定的訊號。
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-[#d8bd70]/80">針對你的問題</p>
+                  <p className="mt-1 text-sm leading-7 text-moon/75">
+                    對方不是不在乎，而是也在觀望，與其追問，不如先穩住自己的節奏。
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-[#d8bd70]/80">3～7 天建議</p>
+                  <p className="mt-1 text-sm leading-7 text-moon/75">
+                    這週試著主動釋出一次善意，但不施壓，把空間留給彼此。
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-midnight/40 px-4 py-3">
+                  <span className="text-base">💚</span>
+                  <p className="text-xs text-moon/60">可收藏到 LINE，隨時回來看這次的提醒</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Feature entry cards（下半部，次要入口）──────────────────────────── */}
       <section className="pb-8 sm:pb-12">
         <p className="mb-5 text-center text-xs uppercase tracking-[0.28em] text-moon/38">
           今日星座 · 每日運勢
