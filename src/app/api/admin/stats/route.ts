@@ -27,6 +27,8 @@ type AnalyticsEvent = {
   totalSeconds?: number;
   deviceType?: string;
   isTest?: boolean;
+  /** 管理員操作：由 /api/analytics/events 在寫入時標記，統計查詢時排除 */
+  isAdmin?: boolean;
 };
 
 type PeriodUnlock = { free: number; paid: number; total: number; ratio: string };
@@ -468,8 +470,18 @@ export async function GET(req: NextRequest) {
   }
 
   const analyticsSnap = await db.collection("analytics_events").limit(5000).get().catch(() => null);
+  // 排除管理員事件：
+  //   1. 新格式：寫入時已標記 isAdmin: true
+  //   2. 舊格式（回溯）：LINE 管理員 lineUserId 在 admin 清單中
+  const adminLineIds = new Set(getAdminUserIds());
   const analyticsEvents: AnalyticsEvent[] = analyticsSnap
-    ? analyticsSnap.docs.map((doc) => doc.data() as AnalyticsEvent).filter((event) => isPublicPath(normalizePath(event.path)))
+    ? analyticsSnap.docs
+        .map((doc) => doc.data() as AnalyticsEvent)
+        .filter((event) => {
+          if (event.isAdmin === true) return false;
+          if (event.lineUserId && adminLineIds.has(event.lineUserId)) return false;
+          return isPublicPath(normalizePath(event.path));
+        })
     : [];
 
   const todayFree = freeByDate.get(today) ?? { single: 0, three: 0 };

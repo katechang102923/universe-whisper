@@ -1,7 +1,10 @@
 import crypto from "crypto";
+import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebaseAdmin";
+import { SESSION_COOKIE_NAME, verifyAdminSessionCookie } from "@/lib/verifyAdmin";
+import { getAdminUserIds } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
 
@@ -79,6 +82,23 @@ function isLikelyTest(req: NextRequest, body: Record<string, unknown>) {
   return host.includes("localhost") || host.includes("127.0.0.1");
 }
 
+/** 判斷此請求是否來自管理員。
+ *  - LINE 管理員：cookie line_user_id 在 ADMIN_LINE_USER_IDS 清單中（同步，無網路呼叫）
+ *  - Google 管理員：cookie __admin_session 存在時才做 Firebase Auth 驗證（非管理員通常沒有此 cookie）
+ */
+async function detectAdminFromCookies(): Promise<boolean> {
+  try {
+    const cookieStore = await cookies();
+    const lineUserIdCookie = cookieStore.get("line_user_id")?.value ?? null;
+    if (lineUserIdCookie && getAdminUserIds().includes(lineUserIdCookie)) return true;
+    const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value ?? null;
+    if (!sessionCookie) return false;
+    return await verifyAdminSessionCookie(sessionCookie);
+  } catch {
+    return false;
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
@@ -89,6 +109,10 @@ export async function POST(req: NextRequest) {
 
     const path = normalizePath(body.path);
     if (isAdminPath(path)) return NextResponse.json({ ok: true, skipped: true });
+
+    // 管理員偵測：只在 admin session cookie 或 LINE admin ID 存在時觸發驗證，
+    // 避免對一般使用者增加延遲。
+    const isAdmin = await detectAdminFromCookies();
 
     const now = new Date();
     const { dateKey, monthKey } = getTaipeiDateParts(now);
@@ -111,6 +135,7 @@ export async function POST(req: NextRequest) {
       userAgent: userAgent.slice(0, 500),
       deviceType: getDeviceType(userAgent),
       isTest: isLikelyTest(req, body),
+      isAdmin,   // true = 管理員操作，後台統計查詢時排除
     };
 
     if (eventType === "session_start") {
