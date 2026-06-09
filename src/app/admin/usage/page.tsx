@@ -57,6 +57,7 @@ function sortedEntries(map: Record<string, number>): Array<{ key: string; count:
 function toDate(v: unknown): Date | null {
   if (!v) return null;
   if (v instanceof Date) return v;
+  if (typeof v === "string") return new Date(v);
   if (typeof v === "object" && "toDate" in v) return (v as { toDate(): Date }).toDate();
   return null;
 }
@@ -212,18 +213,40 @@ function SourceBadge({ source }: { source?: string }) {
 
 // ── 序列化 ────────────────────────────────────────────────────────────────────
 
-function serializeOrders(docs: FirebaseFirestore.QueryDocumentSnapshot[]): SerializableOrder[] {
+function serializeConsentRecord(data: FirebaseFirestore.DocumentData): SerializableOrder["consents"] {
+  const consents = data.consents;
+  if (!consents || typeof consents !== "object") return null;
+
+  return {
+    ageAndGuardianConsent:       Boolean(consents.ageAndGuardianConsent),
+    paymentAuthorizationConsent: Boolean(consents.paymentAuthorizationConsent),
+    digitalContentConsent:       Boolean(consents.digitalContentConsent),
+    consentVersion:              consents.consentVersion ?? null,
+    consentAcceptedAt:           toDate(consents.consentAcceptedAt)?.toISOString() ?? null,
+    userAgent:                   consents.userAgent ?? null,
+    pagePath:                    consents.pagePath ?? null,
+    tarotMode:                   consents.tarotMode ?? null,
+    amount:                      consents.amount ?? null,
+    currency:                    consents.currency ?? null,
+  };
+}
+
+function serializeOrders(
+  docs: FirebaseFirestore.QueryDocumentSnapshot[],
+  orderSource: SerializableOrder["orderSource"] = "tarot",
+): SerializableOrder[] {
   return docs.map((d) => {
     const data = d.data();
     return {
       id:              d.id,
+      orderSource,
       orderNo:         data.orderNo         ?? null,
       merchantTradeNo: data.merchantTradeNo ?? null,
       ecpayTradeNo:    data.ecpayTradeNo    ?? data.tradeNo ?? null,
       tradeNo:         data.tradeNo         ?? data.ecpayTradeNo ?? null,
       status:          data.status          ?? "pending",
       planId:          data.planId          ?? null,
-      planName:        data.planName        ?? null,
+      planName:        data.planName        ?? (orderSource === "astro_profile" ? "三重星座付費解鎖" : null),
       amount:          data.amount          ?? null,
       currency:        data.currency        ?? "TWD",
       uses:            data.uses            ?? null,
@@ -249,6 +272,7 @@ function serializeOrders(docs: FirebaseFirestore.QueryDocumentSnapshot[]): Seria
       refundedAt:      toDate(data.refundedAt)?.toISOString()   ?? null,
       isTest:          data.isTest          ?? false,
       note:            data.note            ?? null,
+      consents:        serializeConsentRecord(data),
     };
   });
 }
@@ -398,7 +422,19 @@ export default async function AdminUsagePage({
           .orderBy("createdAt", "desc")
           .limit(200)
           .get();
-        orders = serializeOrders(snap.docs);
+        const astroSnap = await db
+          .collection("astroProfileOrders")
+          .orderBy("createdAt", "desc")
+          .limit(80)
+          .get()
+          .catch(() => null);
+
+        orders = [
+          ...serializeOrders(snap.docs, "tarot"),
+          ...(astroSnap ? serializeOrders(astroSnap.docs, "astro_profile") : []),
+        ]
+          .sort((a, b) => (toDate(b.createdAt)?.getTime() ?? 0) - (toDate(a.createdAt)?.getTime() ?? 0))
+          .slice(0, 200);
       } catch (e) {
         console.error("[Admin Orders] load failed:", e);
       }

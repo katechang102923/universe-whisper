@@ -872,6 +872,17 @@ function UnlockGate({
             />
           </div>
 
+          <PaymentConsentChecklist
+            value={paymentConsents}
+            onChange={setPaymentConsents}
+            disabled={loading}
+          />
+          {!arePaidConsentsAccepted(paymentConsents) && (
+            <p className="mt-2 text-[11px] leading-5 text-moon/40">
+              請先確認年齡、付款授權與數位內容提供規則後，再前往付款。
+            </p>
+          )}
+
           {unlockError && (
             <p className="mt-3 rounded-xl border border-red-400/30 bg-red-400/10 px-3 py-2 text-xs text-red-300">
               {unlockError}
@@ -887,7 +898,7 @@ function UnlockGate({
           ) : (
             <button
               onClick={handleUnlock}
-              disabled={loading}
+              disabled={loading || !arePaidConsentsAccepted(paymentConsents)}
               className="mt-5 w-full rounded-full py-3.5 text-base font-semibold text-midnight transition hover:brightness-105 active:scale-[0.98] disabled:opacity-60"
               style={{ background: "linear-gradient(135deg, #d8bd70 0%, #b89adf 60%, #d8bd70 100%)" }}
             >

@@ -49,7 +49,7 @@ export default function Home() {
           <div className="text-center lg:text-left">
             {/* 小標籤列 */}
             <div className="flex flex-wrap items-center justify-center gap-2 lg:justify-start">
-              {["每日免費一次", "可存到 LINE", "想看完整再 NT$49"].map((tag) => (
+              {["每日免費一次", "可存到 LINE", "免費也能看完整版"].map((tag) => (
                 <span
                   key={tag}
                   className="rounded-full border border-[#d8bd70]/30 bg-[#d8bd70]/10 px-3 py-1 text-xs font-medium text-aurora/90"
@@ -98,7 +98,7 @@ export default function Home() {
               >
                 LINE
               </a>
-              ，完整版 NT$49 解鎖更深入的解讀。
+              ；每日免費也能看完整訊息，想再問更多問題可選擇加抽。
             </p>
           </div>
 
@@ -202,7 +202,7 @@ export default function Home() {
               </p>
               <div className="mt-3 flex items-center gap-2 rounded-xl border border-white/10 bg-midnight/40 px-4 py-2.5">
                 <span className="text-base">💚</span>
-                <p className="text-xs text-moon/60">可收藏到 LINE，想看完整再 NT$49</p>
+                <p className="text-xs text-moon/60">可收藏到 LINE，免費也能看完整訊息</p>
               </div>
             </div>
 

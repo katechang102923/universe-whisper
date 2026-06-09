@@ -65,6 +65,18 @@ export interface PaymentOrderData {
   redeemCodeId?: string;
   emailSent?: boolean;
   emailSentAt?: Timestamp | Date;
+  consents?: {
+    ageAndGuardianConsent?: boolean;
+    paymentAuthorizationConsent?: boolean;
+    digitalContentConsent?: boolean;
+    consentVersion?: string;
+    consentAcceptedAt?: Timestamp | Date;
+    userAgent?: string | null;
+    pagePath?: string | null;
+    tarotMode?: string | null;
+    amount?: number;
+    currency?: string;
+  };
   createdAt: Timestamp | Date;
   paidAt?: Timestamp | Date;
   failedAt?: Timestamp | Date;

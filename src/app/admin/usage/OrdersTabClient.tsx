@@ -7,6 +7,7 @@ import { readJsonResponse } from "@/lib/readJsonResponse";
 
 export interface SerializableOrder {
   id?: string;
+  orderSource?: "tarot" | "astro_profile";
   orderNo?: string;
   merchantTradeNo?: string;
   ecpayTradeNo?: string;
@@ -39,6 +40,18 @@ export interface SerializableOrder {
   refundedAt?: string | null;
   isTest?: boolean;
   note?: string | null;
+  consents?: {
+    ageAndGuardianConsent?: boolean;
+    paymentAuthorizationConsent?: boolean;
+    digitalContentConsent?: boolean;
+    consentVersion?: string | null;
+    consentAcceptedAt?: string | null;
+    userAgent?: string | null;
+    pagePath?: string | null;
+    tarotMode?: string | null;
+    amount?: number | null;
+    currency?: string | null;
+  } | null;
 }
 
 // ── 篩選條件 ──────────────────────────────────────────────────────────────────
@@ -81,6 +94,18 @@ function fmtDate(v: unknown): string {
   });
 }
 
+function hasCompleteConsent(consents: SerializableOrder["consents"]): boolean {
+  return Boolean(
+    consents?.ageAndGuardianConsent &&
+    consents.paymentAuthorizationConsent &&
+    consents.digitalContentConsent,
+  );
+}
+
+function consentText(value?: boolean): string {
+  return value ? "已勾選" : "未記錄";
+}
+
 // ── Status Badge ──────────────────────────────────────────────────────────────
 
 function StatusBadge({ status, isTest }: { status: string; isTest?: boolean }) {
@@ -118,6 +143,7 @@ function OrderRow({ o, idx, total }: { o: SerializableOrder; idx: number; total:
 
   const isLast = idx === total - 1;
   const effectiveCode = localCode ?? o.redeemCode;
+  const isAstroOrder = o.orderSource === "astro_profile";
 
   function copyCode() {
     if (!effectiveCode) return;
@@ -232,21 +258,28 @@ function OrderRow({ o, idx, total }: { o: SerializableOrder; idx: number; total:
           )}
         </td>
         <td className="px-3 py-2.5">
+          <span className={`rounded-full px-2 py-0.5 text-[11px] ${hasCompleteConsent(o.consents) ? "bg-aurora/12 text-aurora" : "bg-white/6 text-moon/40"}`}>
+            同意紀錄：{hasCompleteConsent(o.consents) ? "完整" : "未記錄"}
+          </span>
+        </td>
+        <td className="px-3 py-2.5">
           <div className="flex flex-wrap gap-1">
             {effectiveCode && (
               <button onClick={copyCode} className="rounded-lg bg-[#d8bd70]/12 px-2 py-1 text-[11px] text-[#d8bd70] transition hover:bg-[#d8bd70]/20">
                 {copied ? "✓已複製" : "複製碼"}
               </button>
             )}
-            <button onClick={() => setShowEmail(!showEmail)} className="rounded-lg bg-white/8 px-2 py-1 text-[11px] text-moon/60 transition hover:bg-white/14">
-              補寄 Email
-            </button>
-            {o.status !== "refunded" && o.status !== "cancelled" && (
+            {!isAstroOrder && (
+              <button onClick={() => setShowEmail(!showEmail)} className="rounded-lg bg-white/8 px-2 py-1 text-[11px] text-moon/60 transition hover:bg-white/14">
+                補寄 Email
+              </button>
+            )}
+            {!isAstroOrder && o.status !== "refunded" && o.status !== "cancelled" && (
               <button onClick={() => void syncEcpay()} disabled={syncStatus === "loading"} className="rounded-lg bg-lavender/12 px-2 py-1 text-[11px] text-lavender/80 transition hover:bg-lavender/20 disabled:opacity-50">
                 {syncStatus === "loading" ? "同步中…" : "同步綠界"}
               </button>
             )}
-            {o.status === "paid" && !effectiveCode && (
+            {!isAstroOrder && o.status === "paid" && !effectiveCode && (
               <button onClick={() => void manualGenerate()} disabled={genStatus === "loading"} className="rounded-lg bg-amber-400/14 px-2 py-1 text-[11px] text-amber-300 transition hover:bg-amber-400/22 disabled:opacity-50">
                 {genStatus === "loading" ? "產生中…" : "手動產生碼"}
               </button>
@@ -261,7 +294,7 @@ function OrderRow({ o, idx, total }: { o: SerializableOrder; idx: number; total:
       {/* 補寄 Email 展開列 */}
       {showEmail && (
         <tr className="border-b border-white/6 bg-white/[0.02]">
-          <td colSpan={11} className="px-4 py-3">
+          <td colSpan={12} className="px-4 py-3">
             <div className="flex flex-wrap items-center gap-2">
               <input
                 type="email"
@@ -288,7 +321,7 @@ function OrderRow({ o, idx, total }: { o: SerializableOrder; idx: number; total:
       {/* 同步結果列 */}
       {syncMsg && (
         <tr className="border-b border-white/6 bg-white/[0.02]">
-          <td colSpan={11} className="px-4 py-2">
+          <td colSpan={12} className="px-4 py-2">
             <p className={`text-xs ${syncStatus === "error" ? "text-red-300/80" : "text-aurora/80"}`}>
               {syncStatus === "synced" ? "✓ " : syncStatus === "noop" ? "ℹ " : "✕ "}{syncMsg}
             </p>
@@ -299,7 +332,7 @@ function OrderRow({ o, idx, total }: { o: SerializableOrder; idx: number; total:
       {/* 手動產生結果列 */}
       {genMsg && (
         <tr className="border-b border-white/6 bg-white/[0.02]">
-          <td colSpan={11} className="px-4 py-2">
+          <td colSpan={12} className="px-4 py-2">
             <p className={`text-xs ${genStatus === "error" ? "text-red-300/80" : "text-amber-300/80"}`}>
               {genStatus === "done" ? "✓ " : "✕ "}{genMsg}
             </p>
@@ -310,7 +343,7 @@ function OrderRow({ o, idx, total }: { o: SerializableOrder; idx: number; total:
       {/* 詳情列 */}
       {showDetail && (
         <tr className="border-b border-white/6 bg-white/[0.015]">
-          <td colSpan={11} className="px-4 py-3">
+          <td colSpan={12} className="px-4 py-3">
             <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-3 lg:grid-cols-4">
               {([
                 ["訂單 ID",         o.id],
@@ -337,6 +370,37 @@ function OrderRow({ o, idx, total }: { o: SerializableOrder; idx: number; total:
                     <p className="font-mono text-moon/70 break-all">{String(val)}</p>
                   </div>
                 ))}
+            </div>
+            <div className="mt-4 rounded-xl border border-white/8 bg-white/[0.025] p-3 text-xs">
+              <p className="mb-2 font-semibold text-moon/70">付款同意紀錄</p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                <div>
+                  <p className="text-moon/40">年齡/監護人同意</p>
+                  <p className="text-moon/70">{consentText(o.consents?.ageAndGuardianConsent)}</p>
+                </div>
+                <div>
+                  <p className="text-moon/40">付款授權同意</p>
+                  <p className="text-moon/70">{consentText(o.consents?.paymentAuthorizationConsent)}</p>
+                </div>
+                <div>
+                  <p className="text-moon/40">數位內容提供同意</p>
+                  <p className="text-moon/70">{consentText(o.consents?.digitalContentConsent)}</p>
+                </div>
+                <div>
+                  <p className="text-moon/40">同意時間</p>
+                  <p className="font-mono text-moon/70">{o.consents?.consentAcceptedAt ? fmtDate(o.consents.consentAcceptedAt) : "未記錄"}</p>
+                </div>
+                <div>
+                  <p className="text-moon/40">consentVersion</p>
+                  <p className="font-mono text-moon/70 break-all">{o.consents?.consentVersion ?? "未記錄"}</p>
+                </div>
+                <div>
+                  <p className="text-moon/40">來源頁面 / 模式</p>
+                  <p className="font-mono text-moon/70 break-all">
+                    {[o.consents?.pagePath, o.consents?.tarotMode].filter(Boolean).join(" / ") || "未記錄"}
+                  </p>
+                </div>
+              </div>
             </div>
           </td>
         </tr>
@@ -462,7 +526,7 @@ export function OrdersTabClient({ orders }: { orders: SerializableOrder[] }) {
                   {[
                     "建立時間", "付款時間", "方案", "金額", "狀態",
                     "Email", "通行碼", "MerchantTradeNo", "TradeNo",
-                    "Email 狀態", "操作",
+                    "Email 狀態", "同意紀錄", "操作",
                   ].map((h) => (
                     <th
                       key={h}
