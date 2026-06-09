@@ -8,7 +8,7 @@ const footerLinks = [
   { href: "/payment-info", label: "付款說明" },
   { href: "/privacy", label: "隱私政策" },
   { href: "/terms", label: "服務條款" },
-  { href: "/terms#refund", label: "退款政策" },
+  { href: "/terms#refund-policy", label: "退款政策" },
   { href: "/contact", label: "聯絡我們" },
   { href: "/disclaimer", label: "娛樂聲明" },
 ];
@@ -34,9 +34,9 @@ export function AppShell({
         <footer className={`mt-auto border-t border-white/10 text-sm text-moon/62 ${adminMode ? "py-4" : "py-8"}`}>
           {adminMode ? (
             <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-moon/42">
-              <span>宇宙偷偷話 · 管理後台</span>
+              <span>宇宙偷偷話 · 後台管理</span>
               <nav className="flex gap-4">
-                <Link href="/" className="transition hover:text-moon">前台首頁</Link>
+                <Link href="/" className="transition hover:text-moon">回到前台</Link>
                 <Link href="/admin/usage" className="transition hover:text-moon">後台總覽</Link>
               </nav>
             </div>
@@ -45,10 +45,10 @@ export function AppShell({
               <div>
                 <p className="font-semibold tracking-[0.18em] text-moon">宇宙偷偷話 Universe Whisper</p>
                 <p className="mt-2 max-w-2xl leading-7">
-                  本網站內容僅供娛樂與自我探索參考，不作為醫療、法律、投資等專業建議。
+                  內容僅供娛樂、自我探索與心靈陪伴參考，不構成醫療、法律、投資、財務或心理治療等專業建議。
                 </p>
                 <p className="mt-2 text-moon/60">
-                  客服信箱：
+                  客服信箱：{" "}
                   <a href="mailto:ciut0000@gmail.com" className="underline underline-offset-2 transition hover:text-moon">
                     ciut0000@gmail.com
                   </a>

@@ -3893,7 +3893,7 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
       {/* Card display */}
       {/* 狀態 B（次數用完 + 無通行碼）在 idle 時，卡牌區保持空白；通行碼/購買在下方 */}
       {status === "idle" && isBlockedState ? null
-      : status === "idle" || status === "revealed" ? (
+      : !isSingleResult && (status === "idle" || status === "revealed") ? (
         <>
           {/* Single-card: 置中單張牌卡，避免孤單靠左、右側大留白 */}
           {isSingleResult ? (
@@ -4020,7 +4020,7 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
       {canShowReadings ? (
         <section
           ref={readingSectionRef}
-          className={`relative z-10 mt-9 space-y-5 ${isSingleResult ? "mx-auto w-full max-w-2xl" : ""}`}
+          className={`relative z-10 space-y-5 ${isSingleResult ? "mx-auto mt-6 w-full max-w-2xl" : "mt-9"}`}
         >
 
           {/* 通行碼扣次成功提示 */}
@@ -4039,6 +4039,16 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
           {/* ?? 1. Single-card story image (always shown for download/share) ?? */}
           {isSingleResult && storyCard ? (
             <div className="cosmic-reading-card mx-auto max-w-[460px] rounded-[2rem] border border-[#d8bd70]/24 bg-midnight/58 p-4 text-center shadow-glow sm:p-6">
+              <div className="mb-4 rounded-2xl border border-white/10 bg-white/[0.045] px-4 py-3 text-left">
+                <p className="text-[11px] font-medium tracking-[0.18em] text-[#d8bd70]/70">本次宇宙訊息</p>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-moon/72">
+                  <span>抽到：<span className="font-semibold text-moon">{storyCard.nameZh ?? storyCard.name}</span></span>
+                  <span className="text-moon/28">/</span>
+                  <span>牌位：{storyCard.orientationLabel}</span>
+                  <span className="text-moon/28">/</span>
+                  <span>分類：{topic}</span>
+                </div>
+              </div>
               <ShareStoryCard
                 ref={storyCardRef}
                 cardNameZh={storyCard.nameZh ?? storyCard.name}
