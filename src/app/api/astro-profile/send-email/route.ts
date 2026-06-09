@@ -129,7 +129,7 @@ function buildAstroEmailHtml(payload: AstroEmailPayload, dateStr: string, siteUr
     extendedDivider,
     careerWealthText ? sectionCard("個人事業與財富天賦報告", "💰", careerWealthText) : "",
     loveRelationshipText ? sectionCard("情感正緣與人際模式分析", "❤️", loveRelationshipText) : "",
-    yearlyFortuneText ? sectionCard("流年與未來半年運勢", "🌙", yearlyFortuneText) : "",
+    yearlyFortuneText ? sectionCard("未來半年能量提醒", "🌙", yearlyFortuneText) : "",
     soulLessonText ? sectionCard("靈魂課題與人生方向", "✨", soulLessonText) : "",
   ].join("");
 
@@ -199,7 +199,7 @@ function buildAstroEmailText(payload: AstroEmailPayload, dateStr: string, siteUr
     lines.push("", D, "");
     if (careerWealthText)    lines.push("💰 個人事業與財富天賦報告", careerWealthText, "");
     if (loveRelationshipText) lines.push("❤️ 情感正緣與人際模式分析", loveRelationshipText, "");
-    if (yearlyFortuneText)   lines.push("🌙 流年與未來半年運勢", yearlyFortuneText, "");
+    if (yearlyFortuneText)   lines.push("🌙 未來半年能量提醒", yearlyFortuneText, "");
     if (soulLessonText)      lines.push("✨ 靈魂課題與人生方向", soulLessonText, "");
   }
 

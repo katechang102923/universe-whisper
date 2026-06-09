@@ -178,7 +178,7 @@ export function buildLineAstroProfileMessage(data: AstroProfileClaimData): strin
       parts.push("");
     }
     if (yearly) {
-      parts.push("🌙 流年與未來半年運勢");
+      parts.push("🌙 未來半年能量提醒");
       parts.push(yearly);
       parts.push("");
     }

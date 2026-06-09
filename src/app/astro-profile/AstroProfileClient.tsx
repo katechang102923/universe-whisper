@@ -23,15 +23,7 @@ import {
 } from "@/components/PaymentConsentChecklist";
 import { PAID_CONSENT_VERSION } from "@/lib/paidConsents";
 import { readJsonResponse } from "@/lib/readJsonResponse";
-
-// ── Birth time options ─────────────────────────────────────────────────────────
-
-const BIRTH_TIME_OPTIONS: string[] = ["不知道出生時間"];
-for (let h = 0; h < 24; h++) {
-  for (const m of [0, 30]) {
-    BIRTH_TIME_OPTIONS.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
-  }
-}
+import { trackTripleZodiac } from "@/lib/trackTripleZodiac";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -130,7 +122,9 @@ export function AstroProfileClient() {
 
   // Form fields
   const [birthDate, setBirthDate] = useState("");
-  const [birthTime, setBirthTime] = useState("不知道出生時間");
+  // 出生時間：精確到分鐘的 "HH:mm"；空字串代表「不知道出生時間」。
+  const [birthTime, setBirthTime] = useState("");
+  const [timeUnknown, setTimeUnknown] = useState(true);
   const [birthCity, setBirthCity] = useState<BirthCity | null>(null);
   const [error, setError] = useState("");
   const [showManual, setShowManual] = useState(false);
@@ -139,7 +133,7 @@ export function AstroProfileClient() {
   const [manualVenus, setManualVenus] = useState<ZodiacSign | "">("");
 
   const sunSign = getSunSign(birthDate);
-  const hasTime = birthTime !== "不知道出生時間";
+  const hasTime = !timeUnknown && /^\d{2}:\d{2}$/.test(birthTime);
   const hasCity = birthCity !== null;
   const canCalcFull = !!(birthDate && hasTime && hasCity);
   const canCalcMoon = !!(birthDate && hasTime);
@@ -197,6 +191,8 @@ export function AstroProfileClient() {
     if (!birthDate) { setError("請填寫出生日期"); return; }
     if (!sunSign) { setError("日期格式有誤，請重新輸入"); return; }
     setError("");
+    // 儀表化：使用者實際送出表單（行為事件，不含出生資料）。best-effort，不阻擋流程。
+    trackTripleZodiac("triple_zodiac_started");
 
     let moonSign: ZodiacSign | null = null;
     let risingSign: ZodiacSign | null = null;
@@ -224,6 +220,8 @@ export function AstroProfileClient() {
     setSessionId(null);
     setPendingOrder(null);
     setStep("result");
+    // 儀表化：免費三重星座概覽成功產出（免費成功）。best-effort。
+    trackTripleZodiac("triple_zodiac_free_success", { isPaid: false });
   };
 
   if (step === "result" && calcResult) {
@@ -293,14 +291,34 @@ export function AstroProfileClient() {
         <div className="mb-6">
           <label className="mb-2 block text-sm font-medium text-moon/80">
             出生時間
-            <span className="ml-1.5 text-xs text-moon/38">（選填，可提升準確度）</span>
+            <span className="ml-1.5 text-xs text-moon/38">（選填，知道越精準，上升星座越準）</span>
           </label>
-          <CosmicSelect
-            options={BIRTH_TIME_OPTIONS}
-            value={birthTime}
-            onChange={setBirthTime}
-            placeholder="不知道出生時間"
-          />
+          <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
+            <input
+              type="time"
+              step="60"
+              value={timeUnknown ? "" : birthTime}
+              placeholder="08:23"
+              onChange={(e) => {
+                const v = e.target.value;
+                setBirthTime(v);
+                setTimeUnknown(v === "");
+              }}
+              className="w-full flex-1 rounded-xl border border-white/14 bg-[#0a1028] px-4 py-2.5 text-sm text-moon outline-none transition focus:border-lavender/60 focus:ring-2 focus:ring-lavender/20 disabled:opacity-45 sm:w-auto"
+            />
+            <label className="flex shrink-0 cursor-pointer select-none items-center gap-2 text-xs text-moon/60">
+              <input
+                type="checkbox"
+                checked={timeUnknown}
+                onChange={(e) => {
+                  setTimeUnknown(e.target.checked);
+                  if (e.target.checked) setBirthTime("");
+                }}
+                className="h-4 w-4 accent-lavender"
+              />
+              不知道出生時間
+            </label>
+          </div>
           {!hasTime && (
             <div className="mt-3 space-y-1.5 rounded-xl border border-white/8 bg-white/3 px-4 py-3 text-xs">
               <p className="text-moon/50">不提供出生時間也可以產生解析，<br />但月亮、上升、金星可能無法精準判定。</p>
@@ -448,6 +466,13 @@ function ResultView({
           {ZODIAC_SYMBOLS[sunSign]} {sunSign}
         </h1>
         <p className="mt-2 text-sm text-moon/50">太陽 × 月亮 × 上升</p>
+      </div>
+
+      {/* 資料來源說明：讓使用者清楚知道分析依據，避免誤會為命定預測 */}
+      <div className="mb-6 rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-3">
+        <p className="text-xs leading-6 text-moon/50">
+          ✦ 本解析依據你提供的太陽、月亮、上升與金星星座，結合現代心理占星的星座象徵、人格傾向與互動模式，從核心個性、情緒需求、外在表現與感情模式進行分析。內容適合做自我了解與娛樂參考，並非絕對命定結果。
+        </p>
       </div>
 
       <div className="space-y-4">
@@ -662,8 +687,8 @@ function PaidContent({
         <p className="leading-8">{sunTexts.loveRelationshipText}</p>
       </ResultCard>
 
-      {/* 10. 流年與未來半年運勢 */}
-      <ResultCard label="流年與未來半年運勢" accent="from-aurora/36 to-nebula/22" icon="🌙">
+      {/* 10. 未來半年能量提醒（原「流年與未來半年運勢」，避免被誤解為精準流年預測） */}
+      <ResultCard label="未來半年能量提醒" accent="from-aurora/36 to-nebula/22" icon="🌙">
         <p className="leading-8">{sunTexts.yearlyFortuneText}</p>
       </ResultCard>
 
@@ -1043,6 +1068,8 @@ function PostUnlockActions({
       a.click();
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 10000);
+      // 儀表化：限動圖下載成功。best-effort，不影響下載流程。
+      trackTripleZodiac("triple_zodiac_story_downloaded", { isPaid: true });
     } catch (err) {
       setDlError(err instanceof Error ? err.message : "下載失敗，請稍後再試。");
     } finally {
@@ -1087,6 +1114,8 @@ function PostUnlockActions({
         throw new Error(data.error ?? "無法產生查詢碼，請稍後再試。");
       }
       setLineClaimCode(data.claimCode);
+      // 儀表化：成功產生 LINE 查詢碼（傳送到 LINE）。best-effort。
+      trackTripleZodiac("triple_zodiac_line_sent", { isPaid: true });
     } catch (err) {
       setLineClaimError(err instanceof Error ? err.message : "無法產生查詢碼，請稍後再試。");
     } finally {
@@ -1140,6 +1169,8 @@ function PostUnlockActions({
         setEmailMsg("✦ Email 已寄出，請查收。");
         setShowEmailPanel(false);
         setEmailAddr("");
+        // 儀表化：Email 寄送成功。best-effort，不影響寄送流程。
+        trackTripleZodiac("triple_zodiac_email_sent", { isPaid: true });
       } else {
         setEmailMsg(data.error === "EMAIL_NOT_CONFIGURED" ? "Email 系統尚未設定，請聯繫客服。" : "寄送失敗，請稍後再試。");
       }

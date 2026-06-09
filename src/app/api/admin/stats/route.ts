@@ -17,6 +17,24 @@ type ConversionRates = {
   drawToPaid: string;
   visitorToPaid: string;
 };
+type ZodiacConversionRates = {
+  pageToGenerated: string;
+  generatedToPaid: string;
+  pageToPaid: string;
+};
+type ZodiacStats = {
+  tripleZodiacPageViews: number;
+  tripleZodiacStarted: number;
+  tripleZodiacGenerated: number;
+  tripleZodiacFreeSuccess: number;
+  tripleZodiacPaidSuccess: number;
+  tripleZodiacCodeSuccess: number;
+  tripleZodiacLineSent: number;
+  tripleZodiacEmailSent: number;
+  tripleZodiacStoryDownloaded: number;
+  tripleZodiacRevenue: number;
+  conversionRates: ZodiacConversionRates;
+};
 type DailyMetrics = {
   date: string;
   period: SnapshotPeriod;
@@ -31,6 +49,21 @@ type DailyMetrics = {
   visitorSources: BreakdownRow[];
   featureRanking: BreakdownRow[];
   paymentSources: PaymentBreakdownRow[];
+  zodiacStats: ZodiacStats;
+};
+
+const EMPTY_ZODIAC_STATS: ZodiacStats = {
+  tripleZodiacPageViews: 0,
+  tripleZodiacStarted: 0,
+  tripleZodiacGenerated: 0,
+  tripleZodiacFreeSuccess: 0,
+  tripleZodiacPaidSuccess: 0,
+  tripleZodiacCodeSuccess: 0,
+  tripleZodiacLineSent: 0,
+  tripleZodiacEmailSent: 0,
+  tripleZodiacStoryDownloaded: 0,
+  tripleZodiacRevenue: 0,
+  conversionRates: { pageToGenerated: "0%", generatedToPaid: "0%", pageToPaid: "0%" },
 };
 
 type SnapshotDoc = {
@@ -43,6 +76,7 @@ type SnapshotDoc = {
   freeDraws?: number;
   paidUnlocks?: number;
   revenue?: number;
+  zodiacStats?: unknown;
   orderStats?: { paid?: number; todayPaid?: number; todayRevenue?: number };
   statsPayload?: {
     traffic?: { today?: { pageViews?: number; visitors?: number } };
@@ -110,6 +144,32 @@ function safePaymentRows(value: unknown): PaymentBreakdownRow[] {
   })).filter((row) => row.label);
 }
 
+function safeZodiacStats(value: unknown): ZodiacStats {
+  if (!value || typeof value !== "object") return EMPTY_ZODIAC_STATS;
+  const v = value as Partial<ZodiacStats> & { conversionRates?: Partial<ZodiacConversionRates> };
+  const pageViews = numberValue(v.tripleZodiacPageViews);
+  const generated = numberValue(v.tripleZodiacGenerated);
+  const paid = numberValue(v.tripleZodiacPaidSuccess);
+  const rates: Partial<ZodiacConversionRates> = v.conversionRates ?? {};
+  return {
+    tripleZodiacPageViews: pageViews,
+    tripleZodiacStarted: numberValue(v.tripleZodiacStarted),
+    tripleZodiacGenerated: generated,
+    tripleZodiacFreeSuccess: numberValue(v.tripleZodiacFreeSuccess),
+    tripleZodiacPaidSuccess: paid,
+    tripleZodiacCodeSuccess: numberValue(v.tripleZodiacCodeSuccess),
+    tripleZodiacLineSent: numberValue(v.tripleZodiacLineSent),
+    tripleZodiacEmailSent: numberValue(v.tripleZodiacEmailSent),
+    tripleZodiacStoryDownloaded: numberValue(v.tripleZodiacStoryDownloaded),
+    tripleZodiacRevenue: numberValue(v.tripleZodiacRevenue),
+    conversionRates: {
+      pageToGenerated: String(rates.pageToGenerated ?? calcRatio(generated, pageViews)),
+      generatedToPaid: String(rates.generatedToPaid ?? calcRatio(paid, generated)),
+      pageToPaid: String(rates.pageToPaid ?? calcRatio(paid, pageViews)),
+    },
+  };
+}
+
 function funnelUsers(snapshot: SnapshotDoc, label: string) {
   return snapshot.statsPayload?.funnel?.find((row) => row.label === label)?.users ?? 0;
 }
@@ -158,6 +218,7 @@ function metricsFromDoc(doc: DocumentSnapshot, fallbackDate: string, fallbackPer
     visitorSources: safeBreakdownRows(dailyMetrics.visitorSources),
     featureRanking: safeBreakdownRows(dailyMetrics.featureRanking),
     paymentSources: safePaymentRows(dailyMetrics.paymentSources),
+    zodiacStats: safeZodiacStats(dailyMetrics.zodiacStats ?? data.zodiacStats),
   };
 }
 

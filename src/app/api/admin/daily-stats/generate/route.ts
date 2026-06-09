@@ -33,6 +33,24 @@ type ConversionRates = {
   drawToPaid: string;
   visitorToPaid: string;
 };
+type ZodiacConversionRates = {
+  pageToGenerated: string;
+  generatedToPaid: string;
+  pageToPaid: string;
+};
+type ZodiacStats = {
+  tripleZodiacPageViews: number;
+  tripleZodiacStarted: number;
+  tripleZodiacGenerated: number;
+  tripleZodiacFreeSuccess: number;
+  tripleZodiacPaidSuccess: number;
+  tripleZodiacCodeSuccess: number;
+  tripleZodiacLineSent: number;
+  tripleZodiacEmailSent: number;
+  tripleZodiacStoryDownloaded: number;
+  tripleZodiacRevenue: number;
+  conversionRates: ZodiacConversionRates;
+};
 type PeriodUnlock = { free: number; paid: number; total: number; ratio: string };
 type TrafficPeriod = { visitors: number; sessions: number; pageViews: number; avgActiveSeconds: number; bounceRate: string };
 type LineSavePeriod = { count: number; users: number };
@@ -60,6 +78,7 @@ type DailyMetrics = {
   visitorSources: BreakdownRow[];
   featureRanking: BreakdownRow[];
   paymentSources: PaymentBreakdownRow[];
+  zodiacStats: ZodiacStats;
 };
 
 function calcRatio(num: number, den: number) {
@@ -408,7 +427,7 @@ export async function GET(req: NextRequest) {
   const adminEmails = new Set(getAdminEmailList());
 
   try {
-    const [analyticsSnap, downloadSnap, orderSnap, astroSnap, rateLimitSnap, fortuneSnap, redeemSnap] = await Promise.all([
+    const [analyticsSnap, downloadSnap, orderSnap, astroSnap, rateLimitSnap, fortuneSnap, redeemSnap, zodiacEventSnap, zodiacCodeSnap] = await Promise.all([
       db.collection("analytics_events").where("createdAt", ">=", rangeStart).where("createdAt", "<", rangeEnd).limit(5000).get().catch(() => null),
       db.collection("share_image_downloads").where("createdAt", ">=", rangeStart).where("createdAt", "<", rangeEnd).limit(2000).get().catch(() => null),
       db.collection(PAYMENT_ORDERS_COLLECTION).where("paidAt", ">=", rangeStart).where("paidAt", "<", rangeEnd).limit(1000).get().catch(() => null),
@@ -416,6 +435,10 @@ export async function GET(req: NextRequest) {
       db.collection("rate_limits").doc(date).get().catch(() => null),
       db.collection("fortune_stats").doc(date).get().catch(() => null),
       db.collection(REDEEM_CODES_COLLECTION).where("createdAt", ">=", rangeStart).where("createdAt", "<", rangeEnd).limit(1000).get().catch(() => null),
+      // 三重星座行為事件（started / free_success / line_sent / email_sent / story_downloaded）
+      db.collection("triple_zodiac_events").where("createdAt", ">=", rangeStart).where("createdAt", "<", rangeEnd).limit(5000).get().catch(() => null),
+      // 三重星座兌換碼使用紀錄（兌換碼成功）
+      db.collection("astroProfileReissueCodes").where("usedAt", ">=", rangeStart).where("usedAt", "<", rangeEnd).limit(500).get().catch(() => null),
     ]);
 
     const analyticsEvents: AnalyticsEvent[] = analyticsSnap
@@ -431,12 +454,14 @@ export async function GET(req: NextRequest) {
     const visitors = new Set<string>();
     let tarotDraws = 0;
     let lineSends = 0;
+    let tripleZodiacPageViews = 0;
     const sourceBreakdown: Record<string, number> = {};
     for (const event of analyticsEvents) {
       const uid = visitorKey(event);
       if (uid && (event.eventType === "session_start" || event.eventType === "page_view")) visitors.add(uid);
       if (event.eventType === "tarot_draw_complete") tarotDraws += 1;
       if (event.eventType === "line_save") lineSends += 1;
+      if (event.eventType === "page_view" && featureFromPath(event.path ?? event.url) === "三重星座") tripleZodiacPageViews += 1;
       if (event.eventType === "session_start") {
         const source = sourceFrom(event.referrer, event.url, event.utmSource);
         sourceBreakdown[source] = (sourceBreakdown[source] ?? 0) + 1;
@@ -539,6 +564,49 @@ export async function GET(req: NextRequest) {
     revenue += astroProfileRevenue;
     const paidSuccess = orderStats.todayPaid + astroProfileCount;
 
+    // ── 三重星座（astro-profile）獨立統計 ──────────────────────────────────────
+    // 行為事件來自 triple_zodiac_events（純儀表化，不含敏感個資）；
+    // 付費與收入沿用 astroProfileOrders（金額權威來源）；
+    // 兌換碼成功沿用 astroProfileReissueCodes。
+    const zodiacEventCounts: Record<string, number> = {};
+    if (zodiacEventSnap) {
+      for (const doc of zodiacEventSnap.docs) {
+        const event = doc.data() as { eventType?: string; isAdmin?: boolean; isTest?: boolean };
+        if (event.isAdmin === true || event.isTest === true) continue;
+        const type = typeof event.eventType === "string" ? event.eventType : "";
+        if (!type) continue;
+        zodiacEventCounts[type] = (zodiacEventCounts[type] ?? 0) + 1;
+      }
+    }
+    let tripleZodiacCodeSuccess = 0;
+    if (zodiacCodeSnap) {
+      for (const doc of zodiacCodeSnap.docs) {
+        const code = doc.data() as { status?: string; type?: string };
+        if (code.type && code.type !== "astro-profile-reissue") continue;
+        tripleZodiacCodeSuccess += 1;
+      }
+    }
+    const tripleZodiacPaidSuccess = astroProfileCount;
+    const tripleZodiacRevenue = astroProfileRevenue;
+    const tripleZodiacGenerated = tripleZodiacPaidSuccess + tripleZodiacCodeSuccess;
+    const zodiacStats: ZodiacStats = {
+      tripleZodiacPageViews,
+      tripleZodiacStarted: zodiacEventCounts["triple_zodiac_started"] ?? 0,
+      tripleZodiacGenerated,
+      tripleZodiacFreeSuccess: zodiacEventCounts["triple_zodiac_free_success"] ?? 0,
+      tripleZodiacPaidSuccess,
+      tripleZodiacCodeSuccess,
+      tripleZodiacLineSent: zodiacEventCounts["triple_zodiac_line_sent"] ?? 0,
+      tripleZodiacEmailSent: zodiacEventCounts["triple_zodiac_email_sent"] ?? 0,
+      tripleZodiacStoryDownloaded: zodiacEventCounts["triple_zodiac_story_downloaded"] ?? 0,
+      tripleZodiacRevenue,
+      conversionRates: {
+        pageToGenerated: calcRatio(tripleZodiacGenerated, tripleZodiacPageViews),
+        generatedToPaid: calcRatio(tripleZodiacPaidSuccess, tripleZodiacGenerated),
+        pageToPaid: calcRatio(tripleZodiacPaidSuccess, tripleZodiacPageViews),
+      },
+    };
+
     const sortedEntries = (map: Record<string, number>) =>
       Object.entries(map).map(([key, count]) => ({ key, count })).sort((a, b) => b.count - a.count);
     const ipDisplay = usageData.ip_display ?? {};
@@ -565,6 +633,7 @@ export async function GET(req: NextRequest) {
       visitorSources: buildVisitorSources(analyticsEvents),
       featureRanking: buildFeatureRanking(analyticsEvents),
       paymentSources: paymentRowsFromMap(paymentSourceMap),
+      zodiacStats,
     };
     const docData = {
       date,
@@ -584,6 +653,7 @@ export async function GET(req: NextRequest) {
       lineRedeems: lineSends,
       tarotDraws,
       astroProfileCount,
+      zodiacStats,
       sourceBreakdown,
       usageData,
       fortuneCoverage: ((fortuneSnap?.data() ?? {}) as { generated_zodiacs?: string[] }).generated_zodiacs?.length ?? 0,
@@ -624,6 +694,7 @@ export async function GET(req: NextRequest) {
       lineSends,
       tarotDraws,
       astroProfileCount,
+      zodiacStats,
       sourceBreakdown,
     });
   } catch (err) {

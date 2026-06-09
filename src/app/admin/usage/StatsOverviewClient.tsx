@@ -10,6 +10,24 @@ type ConversionRates = {
   drawToPaid: string;
   visitorToPaid: string;
 };
+type ZodiacConversionRates = {
+  pageToGenerated: string;
+  generatedToPaid: string;
+  pageToPaid: string;
+};
+type ZodiacStats = {
+  tripleZodiacPageViews: number;
+  tripleZodiacStarted: number;
+  tripleZodiacGenerated: number;
+  tripleZodiacFreeSuccess: number;
+  tripleZodiacPaidSuccess: number;
+  tripleZodiacCodeSuccess: number;
+  tripleZodiacLineSent: number;
+  tripleZodiacEmailSent: number;
+  tripleZodiacStoryDownloaded: number;
+  tripleZodiacRevenue: number;
+  conversionRates: ZodiacConversionRates;
+};
 type DailyMetrics = {
   date: string;
   period: "full" | "am";
@@ -24,6 +42,21 @@ type DailyMetrics = {
   visitorSources: BreakdownRow[];
   featureRanking: BreakdownRow[];
   paymentSources: PaymentBreakdownRow[];
+  zodiacStats?: ZodiacStats;
+};
+
+const EMPTY_ZODIAC_STATS: ZodiacStats = {
+  tripleZodiacPageViews: 0,
+  tripleZodiacStarted: 0,
+  tripleZodiacGenerated: 0,
+  tripleZodiacFreeSuccess: 0,
+  tripleZodiacPaidSuccess: 0,
+  tripleZodiacCodeSuccess: 0,
+  tripleZodiacLineSent: 0,
+  tripleZodiacEmailSent: 0,
+  tripleZodiacStoryDownloaded: 0,
+  tripleZodiacRevenue: 0,
+  conversionRates: { pageToGenerated: "0%", generatedToPaid: "0%", pageToPaid: "0%" },
 };
 
 type AdminStatsResponse = {
@@ -234,6 +267,86 @@ function ConversionTable({ metrics }: { metrics: DailyMetrics }) {
   );
 }
 
+function ZodiacSummaryCards({ stats }: { stats: ZodiacStats }) {
+  const cards = [
+    { label: "頁面瀏覽", value: stats.tripleZodiacPageViews },
+    { label: "成功產出", value: stats.tripleZodiacGenerated },
+    { label: "免費成功", value: stats.tripleZodiacFreeSuccess },
+    { label: "付費成功", value: stats.tripleZodiacPaidSuccess, highlight: stats.tripleZodiacPaidSuccess > 0 },
+    { label: "收入", value: formatMoney(stats.tripleZodiacRevenue), highlight: stats.tripleZodiacRevenue > 0 },
+  ];
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      {cards.map((card) => (
+        <div
+          key={card.label}
+          className={[
+            "rounded-2xl border p-4",
+            card.highlight ? "border-[#d8bd70]/35 bg-[#d8bd70]/10" : "border-white/10 bg-midnight/62",
+          ].join(" ")}
+        >
+          <p className={`text-xs uppercase tracking-[0.22em] ${card.highlight ? "text-[#d8bd70]/70" : "text-moon/48"}`}>{card.label}</p>
+          <p className={`mt-1.5 text-3xl font-semibold ${card.highlight ? "text-[#d8bd70]" : "text-moon"}`}>{card.value}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ZodiacDetailTable({ stats }: { stats: ZodiacStats }) {
+  const rows: Array<[string, string | number]> = [
+    ["頁面瀏覽", stats.tripleZodiacPageViews],
+    ["開始填寫", stats.tripleZodiacStarted],
+    ["成功產出", stats.tripleZodiacGenerated],
+    ["免費成功", stats.tripleZodiacFreeSuccess],
+    ["付費成功", stats.tripleZodiacPaidSuccess],
+    ["兌換碼成功", stats.tripleZodiacCodeSuccess],
+    ["LINE 傳送", stats.tripleZodiacLineSent],
+    ["Email 寄送", stats.tripleZodiacEmailSent],
+    ["限動圖下載", stats.tripleZodiacStoryDownloaded],
+    ["收入", formatMoney(stats.tripleZodiacRevenue)],
+  ];
+  return (
+    <div className="overflow-hidden rounded-2xl border border-white/10 bg-midnight/50">
+      <table className="w-full text-sm">
+        <tbody>
+          {rows.map(([label, value]) => (
+            <tr key={label} className="border-b border-white/6 last:border-b-0">
+              <td className="whitespace-nowrap px-4 py-2.5 font-medium text-moon/80">{label}</td>
+              <td className="whitespace-nowrap px-4 py-2.5 text-right text-moon/75">{value}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ZodiacConversionTable({ stats }: { stats: ZodiacStats }) {
+  const rows = [
+    ["三重星座頁面 → 產出轉換率", stats.conversionRates.pageToGenerated, "成功產出 / 頁面瀏覽"],
+    ["三重星座產出 → 付費轉換率", stats.conversionRates.generatedToPaid, "付費成功 / 成功產出"],
+    ["三重星座頁面 → 付費轉換率", stats.conversionRates.pageToPaid, "付費成功 / 頁面瀏覽"],
+  ];
+  return (
+    <div className="overflow-hidden rounded-2xl border border-white/10 bg-midnight/50">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-max text-sm">
+          <tbody>
+            {rows.map(([label, value, formula]) => (
+              <tr key={label} className="border-b border-white/6 last:border-b-0">
+                <td className="whitespace-nowrap px-4 py-3 font-medium text-moon">{label}</td>
+                <td className="whitespace-nowrap px-4 py-3 text-lavender">{value}</td>
+                <td className="whitespace-nowrap px-4 py-3 text-moon/45">{formula}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function FullTrendTable({ rows }: { rows: DailyMetrics[] }) {
   if (!rows.length) return <EmptyBox text="尚無統計資料" />;
   return (
@@ -362,7 +475,57 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
             )}
           </Panel>
 
-          <Panel title="3. 最近 7 天趨勢摘要" subtitle="日期｜訪客｜抽牌｜付費｜收入">
+          <Panel title="3. 三重星座數據" subtitle="頁面瀏覽｜成功產出｜免費成功｜付費成功｜收入">
+            <div className="space-y-4">
+              <div>
+                <p className="mb-3 text-sm font-semibold text-moon">昨日三重星座</p>
+                {data.yesterday
+                  ? <ZodiacSummaryCards stats={data.yesterday.zodiacStats ?? EMPTY_ZODIAC_STATS} />
+                  : <EmptyBox text="尚無紀錄" />}
+              </div>
+              <div>
+                <p className="mb-3 text-sm font-semibold text-moon">今日前半天三重星座</p>
+                {data.todayAmAvailable && data.todayAm
+                  ? <ZodiacSummaryCards stats={data.todayAm.zodiacStats ?? EMPTY_ZODIAC_STATS} />
+                  : (
+                    <div className="rounded-2xl border border-amber-400/30 bg-amber-400/8 px-5 py-4 text-sm text-amber-200">
+                      {data.todayAmMessage ?? "今日前半天統計將於 12:05 更新"}
+                    </div>
+                  )}
+              </div>
+            </div>
+          </Panel>
+
+          <Accordion id="zodiacDetail" title="三重星座數據分析" openSections={openSections} toggle={toggle}>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div>
+                <p className="mb-3 text-sm font-semibold text-moon">昨日三重星座明細</p>
+                {data.yesterday
+                  ? <ZodiacDetailTable stats={data.yesterday.zodiacStats ?? EMPTY_ZODIAC_STATS} />
+                  : <EmptyBox text="尚無紀錄" />}
+                {data.yesterday ? (
+                  <div className="mt-3">
+                    <ZodiacConversionTable stats={data.yesterday.zodiacStats ?? EMPTY_ZODIAC_STATS} />
+                  </div>
+                ) : null}
+              </div>
+              <div>
+                <p className="mb-3 text-sm font-semibold text-moon">今日前半天三重星座明細</p>
+                {data.todayAmAvailable && data.todayAm ? (
+                  <>
+                    <ZodiacDetailTable stats={data.todayAm.zodiacStats ?? EMPTY_ZODIAC_STATS} />
+                    <div className="mt-3">
+                      <ZodiacConversionTable stats={data.todayAm.zodiacStats ?? EMPTY_ZODIAC_STATS} />
+                    </div>
+                  </>
+                ) : (
+                  <EmptyBox text="今日前半天統計將於 12:05 更新" />
+                )}
+              </div>
+            </div>
+          </Accordion>
+
+          <Panel title="4. 最近 7 天趨勢摘要" subtitle="日期｜訪客｜抽牌｜付費｜收入">
             <SimpleTrend rows={data.trends} />
           </Panel>
 
@@ -375,6 +538,16 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
               <div>
                 <p className="mb-3 text-sm font-semibold text-moon">今日前半天數據</p>
                 {data.todayAmAvailable && data.todayAm ? <ConversionTable metrics={data.todayAm} /> : <EmptyBox text="今日前半天統計將於 12:05 更新" />}
+              </div>
+            </div>
+            <div className="mt-5 grid gap-4 lg:grid-cols-2">
+              <div>
+                <p className="mb-3 text-sm font-semibold text-moon">昨日三重星座</p>
+                {data.yesterday ? <ZodiacConversionTable stats={data.yesterday.zodiacStats ?? EMPTY_ZODIAC_STATS} /> : <EmptyBox />}
+              </div>
+              <div>
+                <p className="mb-3 text-sm font-semibold text-moon">今日前半天三重星座</p>
+                {data.todayAmAvailable && data.todayAm ? <ZodiacConversionTable stats={data.todayAm.zodiacStats ?? EMPTY_ZODIAC_STATS} /> : <EmptyBox text="今日前半天統計將於 12:05 更新" />}
               </div>
             </div>
           </Accordion>
