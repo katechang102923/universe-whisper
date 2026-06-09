@@ -13,6 +13,11 @@ import {
   generateMerchantTradeNo,
   formatEcpayDate,
 } from "@/lib/ecpay";
+import {
+  arePaidConsentsAccepted,
+  PAID_CONSENT_VERSION,
+  type PaidConsentPayload,
+} from "@/lib/paidConsents";
 
 export const runtime = "nodejs";
 
@@ -50,10 +55,11 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const { planId, buyerEmail, userId } = body as {
+    const { planId, buyerEmail, userId, consents } = body as {
       planId?: string;
       buyerEmail?: string;
       userId?: string;
+      consents?: PaidConsentPayload;
     };
 
     if (!planId || !PLAN_KEY_MAP[planId]) {
@@ -61,6 +67,9 @@ export async function POST(req: NextRequest) {
     }
     if (buyerEmail && !isValidEmail(buyerEmail)) {
       return NextResponse.json({ ok: false, error: "INVALID_EMAIL" }, { status: 400 });
+    }
+    if (!arePaidConsentsAccepted(consents)) {
+      return NextResponse.json({ ok: false, error: "MISSING_PAYMENT_CONSENTS" }, { status: 400 });
     }
 
     const planName        = PLAN_KEY_MAP[planId];
@@ -83,6 +92,18 @@ export async function POST(req: NextRequest) {
       uses:             plan.totalUses,
       buyerEmail:       buyerEmail ?? null,
       userId:           userId ?? null,
+      consents: {
+        ageAndGuardianConsent:       true,
+        paymentAuthorizationConsent: true,
+        digitalContentConsent:       true,
+        consentVersion:              PAID_CONSENT_VERSION,
+        consentAcceptedAt:           FieldValue.serverTimestamp(),
+        userAgent:                   typeof consents?.userAgent === "string" ? consents.userAgent.slice(0, 500) : null,
+        pagePath:                    typeof consents?.pagePath === "string" ? consents.pagePath.slice(0, 300) : null,
+        tarotMode:                   typeof consents?.tarotMode === "string" ? consents.tarotMode.slice(0, 80) : null,
+        amount:                      plan.price,
+        currency:                    "TWD",
+      },
       createdAt:        FieldValue.serverTimestamp(),
       isTest,
     });

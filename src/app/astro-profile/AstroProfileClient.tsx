@@ -15,6 +15,13 @@ import type { BirthCity } from "@/lib/birthCities";
 import { calcVenusSign, calcRisingSign, calcMoonSign } from "@/lib/astroCalc";
 import { useAuth } from "@/contexts/AuthContext";
 import { generateAstroStoryImage } from "@/lib/astroProfileStoryImage";
+import {
+  arePaidConsentsAccepted,
+  EMPTY_PAID_CONSENTS,
+  PaymentConsentChecklist,
+  type PaidConsentFlags,
+} from "@/components/PaymentConsentChecklist";
+import { PAID_CONSENT_VERSION } from "@/lib/paidConsents";
 import { readJsonResponse } from "@/lib/readJsonResponse";
 
 // ── Birth time options ─────────────────────────────────────────────────────────
@@ -695,6 +702,7 @@ function UnlockGate({
   const [unlockError, setUnlockError] = useState("");
   const [adminTestMsg, setAdminTestMsg] = useState("");
   const [email, setEmail] = useState("");
+  const [paymentConsents, setPaymentConsents] = useState<PaidConsentFlags>(EMPTY_PAID_CONSENTS);
   const ecpayFormRef = useRef<HTMLFormElement>(null);
   // 補發序號
   const [reissueCode, setReissueCode] = useState("");
@@ -711,6 +719,11 @@ function UnlockGate({
   }, [ecpayData]);
 
   const handleUnlock = async () => {
+    if (!arePaidConsentsAccepted(paymentConsents)) {
+      setUnlockError("請先確認年齡、付款授權與數位內容提供規則後，再前往付款。");
+      return;
+    }
+
     setLoading(true);
     setUnlockError("");
     const sid = sessionId ?? generateSessionId();
@@ -720,7 +733,20 @@ function UnlockGate({
       const res = await fetch("/api/astro-profile/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: sid, buyerEmail: email.trim() || undefined }),
+        body: JSON.stringify({
+          sessionId: sid,
+          buyerEmail: email.trim() || undefined,
+          consents: {
+            ...paymentConsents,
+            consentVersion: PAID_CONSENT_VERSION,
+            consentAcceptedAt: new Date().toISOString(),
+            userAgent: navigator.userAgent,
+            pagePath: window.location.pathname,
+            tarotMode: "zodiac",
+            amount: 149,
+            currency: "TWD",
+          },
+        }),
       });
       const data = await readJsonResponse<{ ok: boolean; actionUrl?: string; params?: Record<string, string>; merchantTradeNo?: string; error?: string }>(res, { ok: false });
 

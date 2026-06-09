@@ -13,6 +13,11 @@ import {
   generateMerchantTradeNo,
   formatEcpayDate,
 } from "@/lib/ecpay";
+import {
+  arePaidConsentsAccepted,
+  PAID_CONSENT_VERSION,
+  type PaidConsentPayload,
+} from "@/lib/paidConsents";
 
 export const runtime = "nodejs";
 
@@ -37,14 +42,18 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({})) as {
       sessionId?: string;
       buyerEmail?: string;
+      consents?: PaidConsentPayload;
     };
-    const { sessionId, buyerEmail } = body;
+    const { sessionId, buyerEmail, consents } = body;
 
     if (!sessionId || typeof sessionId !== "string" || sessionId.length < 8) {
       return NextResponse.json({ ok: false, error: "INVALID_SESSION" }, { status: 400 });
     }
     if (buyerEmail && !isValidEmail(buyerEmail)) {
       return NextResponse.json({ ok: false, error: "INVALID_EMAIL" }, { status: 400 });
+    }
+    if (!arePaidConsentsAccepted(consents)) {
+      return NextResponse.json({ ok: false, error: "MISSING_PAYMENT_CONSENTS" }, { status: 400 });
     }
 
     const merchantTradeNo = generateMerchantTradeNo();
@@ -61,6 +70,18 @@ export async function POST(req: NextRequest) {
       amount: ASTRO_PROFILE_AMOUNT,
       currency: "TWD",
       buyerEmail: buyerEmail ?? null,
+      consents: {
+        ageAndGuardianConsent: true,
+        paymentAuthorizationConsent: true,
+        digitalContentConsent: true,
+        consentVersion: PAID_CONSENT_VERSION,
+        consentAcceptedAt: FieldValue.serverTimestamp(),
+        userAgent: typeof consents?.userAgent === "string" ? consents.userAgent.slice(0, 500) : null,
+        pagePath: typeof consents?.pagePath === "string" ? consents.pagePath.slice(0, 300) : null,
+        tarotMode: "zodiac",
+        amount: ASTRO_PROFILE_AMOUNT,
+        currency: "TWD",
+      },
       createdAt: FieldValue.serverTimestamp(),
       isTest: isStage,
     });

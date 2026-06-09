@@ -8,6 +8,13 @@ import { TarotShuffleAnimation } from "./TarotShuffleAnimation";
 import { useAuth } from "@/contexts/AuthContext";
 import RedeemCodeBlock from "@/components/RedeemCodeBlock";
 import EmailResultBlock from "@/components/EmailResultBlock";
+import {
+  arePaidConsentsAccepted,
+  EMPTY_PAID_CONSENTS,
+  PaymentConsentChecklist,
+  type PaidConsentFlags,
+} from "@/components/PaymentConsentChecklist";
+import { PAID_CONSENT_VERSION } from "@/lib/paidConsents";
 import { readJsonResponse } from "@/lib/readJsonResponse";
 import { normalizePlainText } from "@/lib/textUtils";
 
@@ -2160,6 +2167,7 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
   // 綠界付款：結帳前 Email 輸入 & 錯誤訊息
   const [checkoutEmail, setCheckoutEmail] = useState("");
   const [paymentError, setPaymentError] = useState("");
+  const [paymentConsents, setPaymentConsents] = useState<PaidConsentFlags>(EMPTY_PAID_CONSENTS);
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
   // 抽牌前通行碼輸入
   const [preDrawCode, setPreDrawCode] = useState("");
@@ -3361,6 +3369,8 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
 
   function openPaidDrawModal() {
     setPaymentStatus("idle");
+    setPaymentError("");
+    setPaymentConsents(EMPTY_PAID_CONSENTS);
     setPaymentModalOpen(true);
   }
 
@@ -3404,6 +3414,12 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
     if (paymentStatus === "processing") return;
     const plan    = selectedPlan ?? PASS_PLANS[0];
     const planKey = plan.key === "single" ? "single" : plan.key === "five" ? "five_pack" : "ten_pack";
+    const consentAccepted = arePaidConsentsAccepted(paymentConsents);
+
+    if (!consentAccepted) {
+      setPaymentError("請先確認年齡、付款授權與數位內容提供規則後，再前往付款。");
+      return;
+    }
 
     setPaymentStatus("processing");
     setPaymentError("");
@@ -3415,6 +3431,18 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
         body:    JSON.stringify({
           planId:     planKey,
           buyerEmail: checkoutEmail.trim() || undefined,
+          consents: {
+            ...paymentConsents,
+            consentVersion: PAID_CONSENT_VERSION,
+            consentAcceptedAt: new Date().toISOString(),
+            userAgent: navigator.userAgent,
+            pagePath: window.location.pathname,
+            tarotMode: planKey === "single"
+              ? (lineResultId ? "tarot_unlock_full" : mode === "three_card" ? "three" : "single")
+              : "codePurchase",
+            amount: plan.price,
+            currency: "TWD",
+          },
         }),
       });
 
@@ -4609,6 +4637,17 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
                   </p>
                 </div>
 
+                <PaymentConsentChecklist
+                  value={paymentConsents}
+                  onChange={setPaymentConsents}
+                  disabled={paymentStatus === "processing"}
+                />
+                {!arePaidConsentsAccepted(paymentConsents) && (
+                  <p className="mt-2 text-[11px] leading-5 text-moon/40">
+                    請先確認年齡、付款授權與數位內容提供規則後，再前往付款。
+                  </p>
+                )}
+
                 {paymentError && (
                   <p className="mt-3 text-xs text-red-300/80" role="alert">{paymentError}</p>
                 )}
@@ -4624,8 +4663,8 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
                   <button
                     type="button"
                     onClick={() => void startEcpayPayment()}
-                    disabled={paymentStatus === "processing"}
-                    className="flex-1 rounded-full bg-[#d8bd70] px-5 py-3 text-sm font-semibold text-midnight shadow-[0_0_28px_rgba(216,189,112,0.28)] transition hover:bg-moon disabled:opacity-60"
+                    disabled={paymentStatus === "processing" || !arePaidConsentsAccepted(paymentConsents)}
+                    className="flex-1 rounded-full bg-[#d8bd70] px-5 py-3 text-sm font-semibold text-midnight shadow-[0_0_28px_rgba(216,189,112,0.28)] transition hover:bg-moon disabled:opacity-55"
                   >
                     {paymentStatus === "processing" ? "導向付款頁…" : "前往綠界安全付款"}
                   </button>
