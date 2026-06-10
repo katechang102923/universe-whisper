@@ -235,6 +235,22 @@ function isCareerChangeQuestion(question: string): boolean {
   return CAREER_CHANGE_KEYWORDS.some((k) => question.includes(k));
 }
 
+// ── 考試/學業/證照/升學問題關鍵字 ─────────────────────────────────────────────
+// 注意：刻意不含「面試」「履歷」（那屬於轉職類），避免把求職面試誤判成考試。
+const EXAM_KEYWORDS = [
+  "考試", "考運", "考上", "考過", "期末考", "期中考", "段考", "模擬考", "小考",
+  "會考", "學測", "指考", "統測", "分科測驗", "國考", "高普考", "公職",
+  "證照", "檢定", "多益", "托福", "雅思", "日檢", "駕照",
+  "論文", "口試", "畢業", "升學", "讀書", "複習", "唸書", "補習", "學業",
+  "選哪間學校", "選學校", "錄取分數", "上榜",
+];
+
+/** 判斷是否為考試/學業/證照/升學問題（career 的姊妹類別，需要學業導向解讀） */
+function isExamQuestion(question: string): boolean {
+  if (!question) return false;
+  return EXAM_KEYWORDS.some((k) => question.includes(k));
+}
+
 // ── 日常運勢關鍵字 ────────────────────────────────────────────────────────────
 const DAILY_FORTUNE_KEYWORDS = [
   "今天", "今日", "明天", "最近狀態", "最近運勢", "這幾天", "運勢如何",
@@ -252,7 +268,10 @@ type QuestionTopic =
   | "businessTarget"  // 業績/成交/追單
   | "careerChange"    // 轉職/離職/職涯困境
   | "investment"      // 股票/投資/市場
+  | "exam"            // 考試/學業/證照/升學
   | "love"            // 感情/關係
+  | "relationship"    // 人際/朋友/同事/合作/家人
+  | "health"          // 身心健康/壓力
   | "daily"           // 日常運勢
   | "general";        // 其他綜合
 
@@ -260,21 +279,28 @@ const QUESTION_TOPIC_LABELS: Record<QuestionTopic, string> = {
   businessTarget: "業績／工作目標類",
   careerChange:   "職涯困境／職場人際類",
   investment:     "投資／股票／市場類",
+  exam:           "考試／學業／升學類",
   love:           "情感／關係類",
+  relationship:   "人際／合作／家人類",
+  health:         "身心健康／壓力調適類",
   daily:          "日常運勢／短期提醒類",
   general:        "綜合運勢類",
 };
 
 /**
  * 根據使用者原始問題判斷主題，優先順序：
- * 投資 > 業績 > 轉職 > 感情 > 日常 > 綜合
+ * 投資 > 業績 > 考試 > 轉職 > 感情 > 人際 > 健康 > 日常 > 綜合
+ * （考試早於轉職：考試關鍵字刻意不含面試/履歷，兩者不會互搶）
  */
 function detectQuestionTopic(question: string, focus: QuestionFocus): QuestionTopic {
   if (!question) return "general";
   if (isInvestmentQuestion(question))                                    return "investment";
   if (isBusinessTargetQuestion(question) && !isCareerChangeQuestion(question)) return "businessTarget";
+  if (isExamQuestion(question))                                          return "exam";
   if (isCareerChangeQuestion(question))                                  return "careerChange";
   if (focus.primary === "love")                                          return "love";
+  if (focus.primary === "relationship")                                  return "relationship";
+  if (focus.primary === "health")                                        return "health";
   if (isDailyFortuneQuestion(question))                                  return "daily";
   return "general";
 }
@@ -321,12 +347,36 @@ function getTopicBoundaryRules(topic: QuestionTopic, question: string): string {
 
 【必填免責聲明】safetyNote 必須填入：「以上為塔羅牌面參考，不構成投資建議，實際操作仍請自行評估風險。」`;
 
+    case "exam":
+      return `${header}
+
+✅ 本次允許討論：準備狀態、讀書效率、理解程度、複習策略、臨場反應、粗心風險、考運起伏、時間分配、錄取/上榜機率、心態調整
+❌ 本次嚴禁（整個解讀不得出現以下任何方向）：衝動離職、換工作、轉職、業績、客戶成交、創業、投資理財、破財、桃花、前任復合、感情考驗、靈魂課題、靈魂伴侶
+牌義若出現「改變、放下、重新開始」意象，必須轉譯成學業情境：調整讀書方法、放掉沒效率的複習方式、重新分配時間，不得轉譯成職涯或感情。
+是非題（能不能考上/過/錄取）必須在牌陣總結或每張牌給明確傾向：偏向有利／偏向不利／機會普通／需要調整後才有機會。`;
+
     case "love":
       return `${header}
 
 ✅ 本次允許討論：情感連結、心理投射、溝通落差、相處氛圍、安全感、依戀、距離感、關係節奏、復合可能、雙方狀態
 ❌ 本次嚴禁：業績、客戶、報價、追單、履歷、轉職、股票、投資操作
 ❌ 本次嚴禁絕對斷言：一定會結婚、一定會分手、一定會復合、對方一定愛你`;
+
+    case "relationship":
+      return `${header}
+
+✅ 本次允許討論：對方真實態度、信任程度、溝通誤會、利益衝突、合作風險、界線感、關係是否失衡、家人相處、修復可能
+❌ 本次嚴禁（整個解讀不得出現以下任何方向）：感情復合、曖昧追求、桃花、業績達標、客戶成交、股票投資、轉職離職、考試錄取（除非使用者問題明確提及）
+這是人際／合作／家人關係，不是愛情題：不要把「對方態度」解讀成戀愛好感，而是友情、同事、合作或家人之間的信任與誤會。
+分析型問題（對方是不是討厭我／可不可信任）要直接講對方態度（偏正面／偏防備／有保留），不要硬給「有機會／沒機會」。`;
+
+    case "health":
+      return `${header}
+
+✅ 本次允許討論：身心狀態、壓力來源、睡眠作息、情緒循環、體力與恢復、過度消耗、生活步調調整、身體警訊
+❌ 本次嚴禁（整個解讀不得出現以下任何方向）：職涯發展、離職、轉職、升遷、業績達標、客戶追單、股票投資、感情復合、人生方向、靈魂課題
+牌義若出現「改變、放下、結束」意象，必須轉譯成身心情境：調整作息、放掉一個耗能習慣、讓自己恢復、減壓，不得轉譯成職涯或感情。
+不提供醫療診斷，但可從牌面給身心狀態提醒。`;
 
     case "daily":
       return `${header}
@@ -361,6 +411,20 @@ const YES_NO_KEYWORDS = [
   // 考試 / 面試 / 申請類
   "考上嗎", "錄取嗎", "上嗎", "通過嗎", "過嗎",
   "面試會過", "面試能過", "面試通過", "會被錄取",
+  "會不會錄取", "能不能錄取", "會錄取", "能錄取",
+  "能不能考上", "會不會考上", "能考上", "考得上嗎", "考得過嗎",
+  // 感情結果類（復合 / 在一起 / 結婚 / 對方心意）
+  "會不會復合", "會復合", "能不能復合", "能復合", "復合嗎",
+  "會不會在一起", "能不能在一起", "會在一起", "能在一起",
+  "會不會結婚", "能不能結婚", "會結婚", "結得成嗎",
+  // 註：對方心意（喜不喜歡我/愛不愛我…）改歸「分析型」，見 ANALYSIS_KEYWORDS
+  // 業績 / 簽約 / 成交結果類
+  "會簽約", "簽約嗎", "會不會簽約", "簽得成嗎", "會不會下單", "會下單",
+  // 財運 / 投資結果類（會不會賺、破財、加薪、收入、拿得回來）
+  "會賺錢", "賺錢嗎", "會不會賺", "會不會賺錢", "賺得到嗎", "有沒有賺頭",
+  "拿得回來", "拿得回來嗎", "拿得回嗎", "要得回來嗎", "討得回來嗎",
+  "會破財", "破財嗎", "會不會破財", "會加薪", "加薪嗎", "會不會加薪",
+  "收入會增加", "收入增加嗎", "會不會漲薪",
   // 一般性達成問
   "能達到", "可以達到", "做得到嗎", "做得成嗎",
 ];
@@ -369,6 +433,236 @@ const YES_NO_KEYWORDS = [
 function isYesNoQuestion(question: string): boolean {
   if (!question) return false;
   return YES_NO_KEYWORDS.some((k) => question.includes(k));
+}
+
+// ── 問題回答類型分類（結論語氣依類型切換，避免全部套「有機會/沒機會」模板）──────
+// 第一類 result：問結果會不會發生 → 用「有機會/難度偏高/不太看好」傾向詞
+// 第二類 choice：問該不該做某事 → 用「偏向適合/可以考慮/暫時不建議/風險偏高」
+// 第三類 analysis：問原因/對方想法 → 不給有機會/沒機會，直接分析狀態與卡點
+// 第四類 timing：問何時發生 → 用「短期內/未來一到三個月/時機未到」，不給精確日期
+
+const CHOICE_KEYWORDS = [
+  "要不要", "該不該", "需不需要", "值不值得", "值得嗎", "該選", "要選哪",
+  "選哪個", "選哪一", "適不適合", "適合嗎", "接不接受", "接受這份", "接受這個",
+  "去不去", "留不留", "換不換", "分不分", "要接受", "要不要接受", "要不要去",
+  "可不可以做", "能不能放下", "該放下嗎", "該離開嗎", "要離職嗎", "要不要離職",
+  "要不要創業", "要不要投資", "要不要結婚", "要不要搬家", "要不要復合",
+  // 「應該／該／適合 + 動作」句型（涵蓋「我這個月應該要離職換跑道嗎」）
+  "應不應該", "應該要", "應該離職", "該離職", "該不該離職", "適合離職",
+  "應該換", "該換", "該不該換", "適合換工作", "適合換跑道", "適合創業",
+  "適合投資", "適合搬家", "該不該創業", "該不該分手", "要不要分手",
+  // 生活選擇 / 買房 / 搬家 / 合作（涵蓋「這間房子適合我嗎」「要不要合作」）
+  "適合我嗎", "適合我", "要不要買房", "適合買房", "適合搬家嗎", "該不該買",
+  "該不該搬", "要不要去外地", "要不要合作", "該不該合作", "值得買嗎",
+  "要不要跟他合作", "適合去", "該攤牌嗎", "該不該攤牌",
+];
+
+const ANALYSIS_KEYWORDS = [
+  "怎麼看我", "怎麼看待", "印象如何", "印象怎樣", "對我的看法", "怎麼想",
+  "在想什麼", "心裡在想", "目前的想法", "為什麼", "為何", "什麼原因",
+  "怎麼會", "怎麼回事", "哪裡出問題", "卡在哪", "為什麼一直", "為什麼總是",
+  "遲遲不", "為什麼還不", "對我有沒有意見", "怎麼評價", "如何看我",
+  // 對方心意 / 態度（屬分析題：要分析好感與穩定度，不給「有機會/沒機會」）
+  "喜不喜歡我", "喜歡我嗎", "愛不愛我", "在不在意我", "有沒有喜歡我",
+  "對我有沒有感覺", "對我有意思嗎", "在乎我嗎", "還喜歡我嗎", "對我的感覺",
+  "是不是認真", "認真的嗎", "是不是真心", "有沒有第三者", "有第三者嗎",
+  "會不會後悔", "怎麼看我", "現在怎麼看",
+  // 人際／合作態度（分析對方真實態度，不給有機會/沒機會）
+  "是不是討厭", "討厭我嗎", "討厭我", "是不是針對", "針對我", "在利用我",
+  "是不是在利用", "可以信任嗎", "值得信任嗎", "是不是對我有意見", "對我有意見嗎",
+];
+
+const TIMING_KEYWORDS = [
+  "什麼時候", "何時", "幾月", "多久", "什麼時機", "哪時候", "幾時",
+  "多快", "要等多久", "什麼時候會", "何時能", "何時才", "什麼時候才",
+];
+
+function isChoiceQuestion(question: string): boolean {
+  if (!question) return false;
+  return CHOICE_KEYWORDS.some((k) => question.includes(k));
+}
+function isAnalysisQuestion(question: string): boolean {
+  if (!question) return false;
+  return ANALYSIS_KEYWORDS.some((k) => question.includes(k));
+}
+function isTimingQuestion(question: string): boolean {
+  if (!question) return false;
+  return TIMING_KEYWORDS.some((k) => question.includes(k));
+}
+
+type AnswerType = "result" | "choice" | "analysis" | "timing" | "none";
+
+/**
+ * 判斷問題的回答類型，決定結論語氣。
+ * 優先序：時間 > 選擇 > 分析 > 結果
+ *  - 時間最高：「什麼時候達標」要給時間區間，不是給機率
+ *  - 選擇優先於結果：「要不要離職」是選擇題，不該套「達標機率」
+ *  - 分析優先於結果：「他怎麼看我」要分析心態，不該硬給有/沒機會
+ */
+function detectAnswerType(question: string): AnswerType {
+  if (!question) return "none";
+  if (isTimingQuestion(question))   return "timing";
+  if (isChoiceQuestion(question))   return "choice";
+  if (isAnalysisQuestion(question)) return "analysis";
+  if (isYesNoQuestion(question))    return "result";
+  return "none";
+}
+
+/**
+ * 依回答類型產生「結論語氣強制規則」，注入 prompt（最高優先）。
+ * result 型沿用既有 yesNoHint 機制，這裡只處理 choice / analysis / timing。
+ * conclusionField：單張牌為 "oneLineConclusion"，三張牌為 "overallSummary 的「整體答案：」"
+ */
+function getAnswerTypeHint(answerType: AnswerType, question: string, conclusionField: string): string {
+  const q = question || "（未填寫問題）";
+  switch (answerType) {
+    case "choice":
+      return `\n【選擇型問題 — 結論語氣強制規則（最高優先）】
+使用者問的是「${q}」，這是「該不該做某件事」的選擇題，不是「會不會發生」的結果題。
+${conclusionField} 的第一句必須給出選擇傾向，只能用以下語氣（擇一）：
+「偏向適合」「可以考慮」「需要再觀察」「暫時不建議」「風險偏高」。
+✗ 嚴禁套用結果題模板：「非常有機會」「成功率高」「達標機率」「錄取率高」「會成功」（這對選擇題不自然）。
+必須說明「為什麼適合或不適合」：目前條件成不成熟、資源夠不夠、時機對不對、貿然行動的風險是什麼。
+範例：「這組牌比較偏向暫時不建議離職，目前新機會還沒成熟，貿然離開反而容易增加壓力。」`;
+
+    case "analysis":
+      return `\n【分析型問題 — 結論語氣強制規則（最高優先）】
+使用者問的是「${q}」，這是想知道「原因／對方想法／現況」的分析題，不是預測結果。
+✗ 嚴禁硬給：「有機會」「沒機會」「成功率高」「達標機率」這類結果型結論（這會答非所問）。
+${conclusionField} 與每張牌必須直接分析四件事：目前狀態是什麼、背後真實原因、核心卡點在哪、後續可能怎麼發展。
+語氣可用：「目前比較像……」「真正的原因可能是……」「最大的卡點是……」「接下來若不變，容易……」。
+範例：「這組牌顯示主管其實有注意到你的能力，但對穩定度還在觀察，所以評價是保留偏正面。」`;
+
+    case "timing":
+      return `\n【時間型問題 — 結論語氣強制規則（最高優先）】
+使用者問的是「${q}」，這是想知道「何時發生」的時間題。
+✗ 嚴禁亂給精確日期（幾月幾號）。✗ 嚴禁只用「有機會/沒機會」帶過。
+${conclusionField} 必須給時間感的判斷，只能用以下語氣（擇一或組合）：
+「短期內」「未來一到三個月」「中期發展」「需要較長時間」「目前時機未到」。
+並說明「為什麼是這個時間區間」：目前進展快或慢、卡在哪個環節、什麼條件到位才會發生。
+範例：「這組牌顯示短期內仍偏慢，較有機會落在未來一到三個月後，先把目前卡住的環節處理好。」`;
+
+    default:
+      return "";
+  }
+}
+
+// ── 限制類問題（不可給絕對答案：生死、重病、明牌、他人隱私、醫療、官司、保證獲利）──
+const RESTRICTED_KEYWORDS = [
+  // 生死 / 重大疾病
+  "什麼時候會死", "什麼時候死", "會不會死", "死期", "我會死嗎", "還能活多久",
+  "會不會得癌", "會不會得癌症", "會得癌症嗎", "會不會罹癌", "罹癌", "得絕症",
+  // 樂透 / 明牌
+  "樂透", "彩券號碼", "中獎號碼", "明牌", "威力彩", "大樂透", "頭獎號碼", "幾號會中",
+  // 他人隱私（全名 / 精確位置）
+  "全名是什麼", "真名是什麼", "他的全名", "精確在哪", "現在在哪裡", "住在哪裡", "住址",
+  // 醫療決策
+  "要不要停止治療", "該不該停藥", "要不要停藥", "停止治療", "要不要開刀", "該不該手術",
+  // 官司 / 法律勝負
+  "官司會贏", "官司會輸", "法院會贏", "會勝訴", "會敗訴", "會不會被判",
+  // 保證獲利
+  "一定會賺", "保證賺", "穩賺", "穩賺不賠", "一定賺", "百分之百會賺",
+];
+
+function isRestrictedQuestion(question: string): boolean {
+  if (!question) return false;
+  return RESTRICTED_KEYWORDS.some((k) => question.includes(k));
+}
+
+/** 限制類問題的開場句（fallback 與摘要共用，第一句即明確表態不給絕對答案）*/
+const RESTRICTED_REFRAME =
+  "這類問題不適合用塔羅給絕對答案，但牌面可以提醒你目前最需要注意的風險與下一步。";
+
+/** 限制類問題的 prompt 強制規則（最高優先，凌駕一切其他結論規則）*/
+function getRestrictedHint(question: string): string {
+  if (!isRestrictedQuestion(question)) return "";
+  return `\n【限制類問題 — 最高優先，凌駕一切其他結論規則】
+使用者問的是「${question}」，這屬於不適合用塔羅給絕對答案的問題（生死、重大疾病、樂透明牌、他人全名或精確位置、是否停止治療、官司勝負、保證獲利）。
+第一句（結論欄位）必須是：「${RESTRICTED_REFRAME}」
+接著只能給：風險提醒、情緒整理、下一步可以做的事。
+✗ 絕對禁止：具體死亡/發病時間、明牌或中獎號碼、他人姓名/地址/精確位置、醫療指示（停藥/停止治療/開刀與否）、官司勝負保證、獲利保證（一定賺/保證賺/穩賺）。
+語氣保持溫柔、務實，把焦點拉回使用者當下能掌握與面對的部分。`;
+}
+
+/** 健康／身心題的深化規則：要求具體生活層面分析，不可只說「累／休息」*/
+function getHealthDepthHint(focus: QuestionFocus, question: string): string {
+  if (focus.primary !== "health") return "";
+  return `\n【健康／身心題 — 深化規則（最高優先）】
+使用者問的是「${question}」，這是身心狀態題。第一句必須是具體的身心評估（例如：身體負荷偏高／壓力偏高且偏長期／狀態有回穩跡象／恢復偏慢），不可以只用「你最近比較累」「你需要休息」「身心要平衡」帶過。
+整段解析必須自然涵蓋以下至少三個面向（不要用條列，要像占卜師連貫說話）：
+目前壓力來源、身體疲勞或精神消耗的程度、睡眠品質或作息狀態、恢復能力、情緒負荷、生活習慣與節奏、近期最需要注意的地方、接下來可以怎麼調整。
+「你需要休息」「要好好照顧自己」這類話可以出現，但不能成為主要內容。
+【安全邊界】只能做生活提醒與身心狀態觀察：✗ 不可診斷疾病或病名、✗ 不可判斷是否罹癌或重大疾病、✗ 不可建議停藥/停治療/延誤就醫、✗ 不可說「你一定生病了」「你一定沒事」「不用看醫生」。
+若使用者已有明顯不適，要補一句：實際狀況仍以醫師檢查為準，塔羅只能提醒近期狀態與需要注意的方向。`;
+}
+
+// ── 牌面強弱訊號 → 結論力度 ────────────────────────────────────────────────────
+// 強訊號：出現明顯有利的強牌（太陽/世界/星星/皇帝/女皇/聖杯二/聖杯十/權杖六/錢幣十）
+//          且負面牌極少 → 結論力度可升級（很有機會／機率偏高／趨勢明顯有利）
+// 弱訊號：出現明顯負面強牌（高塔/惡魔/寶劍十/寶劍三/月亮逆位/錢幣五/權杖十逆位）
+//          且正面支撐不足 → 結論力度可下修（難度偏高／目前不太看好／短期不樂觀）
+
+type SpreadSignal = "strong" | "weak" | "neutral";
+
+/** 判斷單張牌是否為強正面 / 強負面牌（避免宮廷牌「○○皇后」被誤判成女皇）*/
+function classifyCardStrength(card: TarotReadingCard): "pos" | "neg" | null {
+  const up = card.position === "upright";
+  const n = `${card.name ?? ""}${card.nameZh ?? ""}`;
+  const isMinorOrCourt = /權杖|聖杯|寶劍|錢幣/.test(n);
+
+  // 強正面牌（只在正位算強；逆位削弱不計）
+  const strongPos = isMinorOrCourt
+    ? /聖杯二|聖杯十|權杖六|錢幣十/.test(n)
+    : /太陽|世界|星星|皇帝|皇后|女皇/.test(n); // major Empress=皇后；宮廷皇后已被上面分流排除
+  if (strongPos && up) return "pos";
+
+  // 強負面牌：高塔/惡魔/寶劍十/寶劍三/錢幣五 正位，月亮/權杖十 逆位
+  const strongNegUp = (isMinorOrCourt ? /寶劍十|寶劍三|錢幣五/.test(n) : /高塔|惡魔/.test(n)) && up;
+  const strongNegRev = !up && /月亮|權杖十/.test(n);
+  if (strongNegUp || strongNegRev) return "neg";
+
+  return null;
+}
+
+/**
+ * 綜合牌陣強弱：
+ * 強訊號 = 至少一張強正牌、沒有強負牌、且逆位牌不過半（負面極少）
+ * 弱訊號 = 至少一張強負牌、且沒有強正牌（正面支撐不足）
+ * 其餘為中性
+ */
+function getSpreadSignal(cards: TarotReadingCard[]): SpreadSignal {
+  let strongPos = 0;
+  let strongNeg = 0;
+  let reversed = 0;
+  for (const c of cards) {
+    const cls = classifyCardStrength(c);
+    if (cls === "pos") strongPos++;
+    else if (cls === "neg") strongNeg++;
+    if (c.position === "reversed") reversed++;
+  }
+  const total = cards.length || 1;
+  if (strongPos >= 1 && strongNeg === 0 && reversed <= Math.floor(total / 2)) return "strong";
+  if (strongNeg >= 1 && strongPos === 0) return "weak";
+  return "neutral";
+}
+
+/** 牌面強弱 → 結論力度的 prompt 強制規則（注入 AI prompt，最高優先）*/
+function getStrengthHint(cards: TarotReadingCard[]): string {
+  const signal = getSpreadSignal(cards);
+  if (signal === "neutral") return "";
+  const names = cards
+    .map((c) => `${c.name ?? c.nameZh ?? ""}（${c.position === "upright" ? "正位" : "逆位"}）`)
+    .join("、");
+  if (signal === "strong") {
+    return `\n【牌面強度 → 結論力度（強訊號，最高優先）】
+本次牌面（${names}）出現明顯有利的強牌，且負面牌極少。結論力度必須跟著拉高：
+請用「很有機會／機率偏高／趨勢明顯有利」這類更肯定的說法，不要把明顯偏多的牌還只講成「有機會／需要再觀察／仍有變數」。
+仍不可給絕對保證：不使用「一定會」「保證」「百分之百」「穩贏」。`;
+  }
+  return `\n【牌面強度 → 結論力度（弱訊號，最高優先）】
+本次牌面（${names}）出現明顯的負面強牌，且正面支撐不足。結論力度必須跟著下修：
+請用「難度偏高／目前不太看好／短期不樂觀」這類說法，不要把明顯偏弱的牌還含糊講成「有機會／仍有變數／需要觀察」。
+但不要恐嚇或斷言絕對的壞結果，仍保留「調整後仍可能改善」的空間。`;
 }
 
 const FOCUS_KEYWORDS: Record<Exclude<QuestionFocusPrimary, "general">, string[]> = {
@@ -1097,7 +1391,181 @@ function formatThreeCardReading(r: ThreeCardReading): string {
 // Fallback 靜態文字輔助函式（AI 不可用時使用）
 // ═════════════════════════════════════════════════════════════════════════════
 
-function getFallbackConclusion(focus: QuestionFocus): string {
+/**
+ * 依「回答類型」產生直接回答問題的第一句結論（fallback 與摘要共用）。
+ * 對應四類問題的明確結論語氣，避免迴避式開頭（「這件事有解」「先不要急著做決定」）。
+ * 回傳空字串代表 answerType=none，呼叫端沿用原本焦點導向的結論。
+ */
+function getDirectConclusionSentence(
+  answerType: AnswerType,
+  focus: QuestionFocus,
+  question: string,
+  hasReversed: boolean,
+  signal: SpreadSignal = "neutral"
+): string {
+  const q = question || "";
+  const f = focus.primary;
+  const isExam = isExamQuestion(q);
+  const isInvest = isInvestmentQuestion(q);
+  // 感情語境（用於 focus 落在 general 但問句明顯是感情時，仍走感情語氣）
+  const loveCtx = /復合|結婚|交往|分手|告白|曖昧|追求|挽回|聯絡他|聯絡她|主動聯絡|脫單|喜歡|對方|前任/.test(q);
+
+  // ── 限制類問題：第一句即明確表態不給絕對答案 ─────────────────────────────────
+  if (isRestrictedQuestion(q)) return RESTRICTED_REFRAME;
+
+  // ── 健康／身心：直接評估身心狀態，不只說「累／休息」（最高優先於答案類型）──────
+  if (f === "health") {
+    if (/壓力/.test(q)) {
+      return hasReversed
+        ? "這組牌顯示你的壓力偏高，而且比較像長期累積，不是單一事件造成的，身體已經在反映了。"
+        : "這組牌顯示你的壓力目前還在可承受範圍，但已經開始累積，要留意別讓它變成慢性負荷。";
+    }
+    if (/睡眠|失眠|睡不|作息/.test(q)) {
+      return hasReversed
+        ? "這組牌顯示睡眠改善偏慢，作息還不夠穩定，得先把睡前節奏和上床時間固定下來。"
+        : "這組牌顯示睡眠有機會慢慢改善，但前提是先把作息和睡前習慣調回規律。";
+    }
+    return hasReversed
+      ? "這組牌顯示你最近身體負荷偏高，疲勞累積得比你以為的明顯，尤其要注意睡眠品質與壓力釋放。"
+      : "這組牌顯示你的狀態有回穩跡象，但恢復速度還偏慢，作息與情緒負荷是接下來的關鍵。";
+  }
+
+  // ── 選擇型：偏向適合 / 可以考慮 / 暫時不建議 / 風險偏高 ──────────────────────
+  if (answerType === "choice") {
+    if (isInvest || /買股|買這檔|這檔|加碼|要不要買進/.test(q)) {
+      return hasReversed
+        ? "這筆投資風險偏高，偏向暫時不建議衝動進場，先觀望等訊號明確再說。"
+        : "這筆投資可以考慮，但別急著重壓，先控制部位、分批進場比較穩。";
+    }
+    if (/買房|房子|搬家|外地|移居|旅行|租屋/.test(q)) {
+      return hasReversed
+        ? "這個選擇目前風險偏高，偏向再觀察，先把財務壓力與實際條件算清楚再決定。"
+        : "這個選擇可以考慮，但別太倉促，先把財務壓力與實際條件算清楚再行動。";
+    }
+    if (/合作|合夥/.test(q)) {
+      return hasReversed
+        ? "這個合作偏向再觀察，條件還沒談清楚前先別急著答應。"
+        : "這個合作可以談，但條件要寫清楚，不適合只靠信任就投入。";
+    }
+    if (f === "career" || /離職|換工作|換跑道|跳槽/.test(q)) {
+      return hasReversed
+        ? "這組牌偏向暫時不建議現在離職，新方向還沒穩定成形，貿然轉換容易讓壓力變大。"
+        : "這組牌顯示換跑道可以考慮，但不適合立刻衝動執行，先確認收入、職缺與下一步規劃再動。";
+    }
+    if (f === "love" || loveCtx) {
+      return hasReversed
+        ? "這組牌偏向需要再觀察，現在還不是主動的好時機，先看對方有沒有穩定的回應再決定。"
+        : "這組牌顯示可以考慮，但先別急著主動，再觀察一陣子對方的態度會更穩。";
+    }
+    if (f === "finance" || /創業/.test(q)) {
+      return hasReversed
+        ? "這組牌偏向暫時不建議現在投入，目前風險偏高、資源準備還不夠。"
+        : "這組牌顯示這個想法不是不行，但現階段先別急著全押，準備足夠再行動。";
+    }
+    return hasReversed
+      ? "這組牌偏向暫時不建議現在行動，條件還沒成熟，先再觀察一下。"
+      : "這組牌顯示這件事可以考慮，但不適合立刻衝動執行，先把準備補齊再動。";
+  }
+
+  // ── 分析型：直接分析對方態度 / 核心原因，不給有機會、沒機會 ─────────────────
+  if (answerType === "analysis") {
+    if (f === "relationship" || /朋友|同事|合夥|合作|討厭|針對|利用|信任/.test(q)) {
+      return hasReversed
+        ? "這組牌顯示對方不是完全對你有意見，但目前對你有些防備，誤會需要有人先講開。"
+        : "這組牌顯示對方對你大致是正面的，只是有些小誤會還沒說清楚。";
+    }
+    if (f === "love" || loveCtx || /喜歡|愛|在意|他|她/.test(q)) {
+      if (/認真|真心/.test(q)) {
+        return hasReversed
+          ? "這組牌顯示對方的認真度還有保留，目前比較像在觀望，沒有把態度說明白。"
+          : "這組牌顯示對方有一定的真心，但還在觀察階段，還沒完全把心定下來。";
+      }
+      if (/放下|忘記/.test(q)) {
+        return hasReversed
+          ? "這組牌顯示對方其實還沒完全放下，只是選擇壓著、不表現出來。"
+          : "這組牌顯示對方還有在意，沒有真的放下，只是行動上比較收。";
+      }
+      if (/逃避|躲/.test(q)) {
+        return "這組牌顯示對方比較像在逃避面對，不是沒感覺，而是還沒準備好把話說開。";
+      }
+      return hasReversed
+        ? "這組牌顯示對方對你有過好感，但目前行動力不足，喜歡的感覺還不夠穩定。"
+        : "這組牌顯示對方對你有好感，只是還沒到穩定投入的程度。";
+    }
+    if (f === "career" || /主管|老闆|客戶|同事|面試官/.test(q)) {
+      return hasReversed
+        ? "這組牌顯示對方其實有看到你的能力，但對穩定度仍在觀察，所以態度偏保留。"
+        : "這組牌顯示對方對你的評價是保留偏正面，有肯定，但也還在觀察。";
+    }
+    return "這組牌顯示目前的卡點不在表面，而在一個還沒被正視的核心原因。";
+  }
+
+  // ── 時間型：時間區間，不給精確日期 ─────────────────────────────────────────
+  if (answerType === "timing") {
+    return hasReversed
+      ? "這組牌顯示短期內跡象還不明顯，較有機會落在未來一到三個月後。"
+      : "這組牌顯示短期內已開始有起色，未來一到三個月較有機會看到明確進展。";
+  }
+
+  // ── 結果型：牌面強弱決定力度（強→很有機會；弱→難度偏高；中→有機會）─────────────
+  if (answerType === "result") {
+    // 依問題子類別取四檔語氣：strong / weak / 中性正向(posMild) / 中性偏弱(negMild)
+    const cat =
+      isExam ? "exam" :
+      (isInvest || /投資|股票|這檔|賺錢|破財|拿得回來|要得回來|討得回來/.test(q)) ? "invest" :
+      (f === "love" || /復合|在一起|結婚/.test(q)) ? "love" :
+      (f === "career" || f === "finance" || /業績|達標|成交|簽約|錄取/.test(q)) ? "biz" :
+      "general";
+
+    const TEXT: Record<string, { strong: string; weak: string; posMild: string; negMild: string }> = {
+      exam: {
+        strong:  "這次考試機率偏高，牌面趨勢明顯有利，維持目前節奏，穩穩過關的把握很大。",
+        weak:    "這次考試短期不太看好，難度偏高，若不補強弱項，很可能差臨門一腳。",
+        posMild: "這組牌顯示考試仍有機會過關，但目前準備還不夠穩，接下來要把弱項補起來才比較安全。",
+        negMild: "這組牌目前不太看好一次就過，準備方向容易分散，若沒補強弱項，過關難度會偏高。",
+      },
+      invest: {
+        strong:  "這筆牌面偏強，趨勢明顯有利，但仍建議分批、控好部位，別追在最高點。",
+        weak:    "這筆牌面偏弱，短期不樂觀，目前不適合進場，先觀望避開下跌風險。",
+        posMild: "這筆牌面尚可，有回報空間但不是穩賺，建議控制部位、分批進場，別重壓。",
+        negMild: "這筆牌面偏弱，短線風險偏高，目前不太看好，不適合衝動進場，先觀望等訊號明確。",
+      },
+      biz: {
+        strong:  "這件事機率偏高，牌面趨勢明顯有利，把握現在的動能，很有機會直接拿下。",
+        weak:    "這件事達標難度偏高、短期不樂觀，得先解決掉最大的卡點，再談衝刺。",
+        posMild: "這組牌顯示有機會達標，但過程不輕鬆，要把資源集中在最有把握的地方。",
+        negMild: "這組牌顯示照目前節奏，達標難度偏高，得先把力氣集中在勝率最高的幾個目標上。",
+      },
+      love: {
+        strong:  "這件事很有機會，牌面趨勢明顯有利，主動一點反而能加速，不用一直等。",
+        weak:    "這件事短期不太看好，難度偏高，先別急著把期待全壓上去，給彼此一點空間。",
+        posMild: "這組牌顯示仍有機會，只是進展速度不會太快，需要實際行動推一把。",
+        negMild: "這組牌顯示目前進展偏慢，機會還在，但短期內不容易有明確結果。",
+      },
+      general: {
+        strong:  "這件事很有機會，牌面趨勢明顯有利，順著現在的動能去做就對了。",
+        weak:    "這件事目前不太看好、難度偏高，得先把最大的那個卡點處理掉再說。",
+        posMild: "這組牌顯示有機會，但要先把最關鍵的一件事做到位。",
+        negMild: "這組牌顯示目前難度偏高，機會還在，但要先補上那個關鍵的缺口。",
+      },
+    };
+    const t = TEXT[cat]!;
+    if (signal === "strong") return t.strong;
+    if (signal === "weak")   return t.weak;
+    return hasReversed ? t.negMild : t.posMild;
+  }
+
+  return "";
+}
+
+function getFallbackConclusion(focus: QuestionFocus, question = "", cards?: TarotReadingCard[]): string {
+  // 先依問題回答類型給直接結論，避免迴避式開頭；牌面強弱影響結論力度
+  const answerType  = detectAnswerType(question);
+  const signal      = cards?.length ? getSpreadSignal(cards) : "neutral";
+  const hasReversed = cards?.some((c) => c.position === "reversed") ?? false;
+  const direct = getDirectConclusionSentence(answerType, focus, question, hasReversed, signal);
+  if (direct) return direct;
+
   switch (focus.primary) {
     case "finance":      return "近期財務有機會調整，但需要先把收支看清楚，而不是等待大機會自己出現。";
     case "career":       return "工作上卡住了，主要是方向還沒確認清楚。先把真正想走的路說清楚，再決定下一步。";
@@ -1299,7 +1767,7 @@ function buildSingleCardFallback(
     questionFocus:     questionFocusText,
     cardMessage,
     questionAnswer,
-    oneLineConclusion: getFallbackConclusion(focus),
+    oneLineConclusion: getFallbackConclusion(focus, question, [card]),
     todayAction:       getFallbackTodayAction(focus),
     gentleReminder:    getFallbackGentleReminder(focus, question),
     blessing:          getFallbackBlessing(focus, question),
@@ -1709,6 +2177,7 @@ function getFallbackOverallSummary(focus: QuestionFocus, cardNamesStr: string, c
   const n3 = c3 ? `${c3.name}（${c3.position === "upright" ? "正位" : "逆位"}）` : "第三張牌";
   const hasRevCard = cards?.some(c => c.position === "reversed") ?? false;
 
+  const base = ((): string => {
   switch (focus.primary) {
     case "finance":
       // 投資/股市問題：市場導向解讀
@@ -1729,6 +2198,22 @@ function getFallbackOverallSummary(focus: QuestionFocus, cardNamesStr: string, c
     default:
       return `整體答案：\n這件事有解，只是先不要急著做最終決定。先把目前最核心的卡點找出來，從你能控制的一件事開始處理，不要試圖同時解決全部。\n\n為什麼會這樣：\n${n1} 反映你走到這裡的背景，${n2} 指出讓你現在動不了的核心問題。${n3} 告訴你接下來比較適合走的方向，你有資源，只是目前被太多方向分散，讓你找不到起點。\n\n接下來的方向：\n把現在在想的事分成「我能控制的」和「我不能控制的」兩欄，把注意力放在能控制的那欄，從最小但能做到的一件事開始行動。`;
   }
+  })();
+
+  // 依問題回答類型，用直接結論覆蓋「整體答案」第一段，保留「為什麼會這樣／接下來的方向」。
+  // 修正：考試題不再回「這件事有解」、離職題不再回「留下來硬撐還是衝動離職」。
+  // 牌面強弱影響結論力度（強→很有機會；弱→難度偏高）。
+  const answerType = detectAnswerType(question);
+  const signal = cards?.length ? getSpreadSignal(cards) : "neutral";
+  const direct = getDirectConclusionSentence(answerType, focus, question, hasRevCard, signal);
+  if (!direct) return base;
+
+  const why       = extractSectionByPosition(base, "為什麼會這樣", ["接下來的方向"]);
+  const direction = extractSectionByPosition(base, "接下來的方向", []);
+  const parts = [`整體答案：\n${direct}`];
+  if (why)       parts.push(`為什麼會這樣：\n${why}`);
+  if (direction) parts.push(`接下來的方向：\n${direction}`);
+  return parts.join("\n\n");
 }
 
 /** Fallback 三張牌整合訊息（combinedReading），依焦點回傳 150～250 字 */
@@ -1844,8 +2329,19 @@ function buildSingleCardPrompt(
     ? `\n【短問題提示】此問題字數少（「${question}」），請先推測使用者最想確認的核心，在 questionFocus 和 oneLineConclusion 直接給出結論性回答，不要輸出通用療癒內容。`
     : "";
 
-  // 是非題 / 達標題：強制先給明確傾向判斷
-  const yesNoHint = isYesNoQuestion(question)
+  // 限制類問題：最高優先，不給絕對答案
+  const restrictedHint = getRestrictedHint(question);
+  // 健康／身心題：要求具體生活層面分析，不可只說「累/休息」
+  const healthDepthHint = getHealthDepthHint(focus, question);
+  // 牌面強弱 → 結論力度
+  const strengthHint = getStrengthHint([card]);
+
+  // 回答類型：選擇/分析/時間題用對應結論語氣（結果型沿用下方 yesNoHint）
+  const answerType    = detectAnswerType(question);
+  const answerTypeHint = getAnswerTypeHint(answerType, question, "oneLineConclusion");
+
+  // 是非題 / 達標題（結果型）：強制先給明確傾向判斷
+  const yesNoHint = answerType === "result"
     ? `\n【是非題強制規則 — 最高優先】
 使用者問的是「${question}」，這是一個需要明確答案的問題。
 
@@ -1950,6 +2446,10 @@ ${categoryLockRules}
 ${TAROT_READING_STYLE_RULES}
 ${topicGuidance}
 ${shortHint}
+${restrictedHint}
+${healthDepthHint}
+${strengthHint}
+${answerTypeHint}
 ${yesNoHint}
 ${investmentHint}
 ${antiSimilarityHint}
@@ -2046,8 +2546,19 @@ function buildThreeCardPrompt(
     ? `\n【短問題提示】此問題字數少（「${question}」），請先推測使用者最想確認的核心，在 questionFocus 和 overallSummary 直接給出結論性回答，不要輸出通用療癒內容。`
     : "";
 
-  // 是非題 / 達標題：強制先給明確傾向判斷（三張牌版）
-  const threeCardYesNoHint = isYesNoQuestion(question)
+  // 限制類問題：最高優先，不給絕對答案
+  const restrictedHint = getRestrictedHint(question);
+  // 健康／身心題：要求具體生活層面分析，不可只說「累/休息」
+  const healthDepthHint = getHealthDepthHint(focus, question);
+  // 牌面強弱 → 結論力度
+  const strengthHint = getStrengthHint(cards);
+
+  // 回答類型：選擇/分析/時間題用對應結論語氣（結果型沿用下方 yesNoHint）
+  const answerType     = detectAnswerType(question);
+  const answerTypeHint = getAnswerTypeHint(answerType, question, "overallSummary 的「整體答案：」");
+
+  // 是非題 / 達標題（結果型）：強制先給明確傾向判斷（三張牌版）
+  const threeCardYesNoHint = answerType === "result"
     ? `\n【是非題強制規則 — 最高優先】
 使用者問的是「${question}」，這是一個需要明確答案的問題。
 
@@ -2125,6 +2636,10 @@ ${cardDescriptions}
 ${TAROT_READING_STYLE_RULES}
 ${topicGuidance}
 ${shortHint}
+${restrictedHint}
+${healthDepthHint}
+${strengthHint}
+${answerTypeHint}
 ${threeCardYesNoHint}
 ${threeCardInvestmentHint}
 ${antiSimilarityHint}
