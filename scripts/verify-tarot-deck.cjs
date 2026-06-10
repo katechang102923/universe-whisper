@@ -12,9 +12,9 @@ function loadTs(filePath, customRequire = require) {
     },
   }).outputText;
 
-  const module = { exports: {} };
-  new Function("exports", "require", "module", output)(module.exports, customRequire, module);
-  return module.exports;
+  const mod = { exports: {} };
+  new Function("exports", "require", "module", output)(mod.exports, customRequire, mod);
+  return mod.exports;
 }
 
 if (!Object.groupBy) {

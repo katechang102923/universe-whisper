@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<title>匯出 LINE 圖文選單 PNG｜宇宙偷偷話</title>
+<style>
+  body { background:#0a0a22; color:#e8e0f0; font-family:'Noto Sans TC','Microsoft JhengHei',sans-serif; margin:0; padding:24px; }
+  h1 { font-size:18px; color:#d8bd70; }
+  p { font-size:14px; line-height:1.8; color:#b8a0f0; max-width:880px; }
+  button { background:linear-gradient(135deg,#d8bd70,#b89adf); border:0; color:#171042; font-weight:700;
+           font-size:15px; padding:12px 26px; border-radius:999px; cursor:pointer; }
+  #preview { width:100%; max-width:900px; border:1px solid rgba(184,160,240,.3); border-radius:12px; margin-top:16px; display:block; }
+  code { background:rgba(184,160,240,.12); padding:2px 6px; border-radius:6px; }
+</style>
+</head>
+<body>
+  <h1>匯出 LINE 圖文選單圖片（2500 × 843 PNG）</h1>
+  <p>
+    這是零依賴的圖片匯出工具。直接用瀏覽器打開這個檔案，按下方按鈕即可下載
+    <code>line-rich-menu-universe-whisper.png</code>，再把它放進專案的 <code>public/</code> 資料夾。<br />
+    （設計來源為 <code>public/line-rich-menu-universe-whisper.svg</code>，要改設計就改那個 SVG，並把這裡的 SVG 內容同步。）
+  </p>
+  <button id="dl">下載 PNG（2500×843）</button>
+  <img id="preview" alt="預覽" />
+
+  <!-- 設計來源：與 public/line-rich-menu-universe-whisper.svg 內容一致（inline 以避免 file:// 的 canvas 汙染問題） -->
+  <svg id="src" xmlns="http://www.w3.org/2000/svg" width="2500" height="843" viewBox="0 0 2500 843" style="display:none">
+    <defs>
+      <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#0a0a22"/><stop offset="0.5" stop-color="#171042"/><stop offset="1" stop-color="#2a1a5a"/>
+      </linearGradient>
+      <radialGradient id="glow" cx="0.5" cy="0.3" r="0.8">
+        <stop offset="0" stop-color="#6a4fb0" stop-opacity="0.35"/><stop offset="1" stop-color="#6a4fb0" stop-opacity="0"/>
+      </radialGradient>
+      <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#f3e0a6"/><stop offset="1" stop-color="#d8bd70"/>
+      </linearGradient>
+    </defs>
+    <rect width="2500" height="843" fill="url(#bg)"/>
+    <rect width="2500" height="843" fill="url(#glow)"/>
+    <g fill="#ffffff">
+      <circle cx="120" cy="110" r="3" opacity="0.8"/><circle cx="300" cy="180" r="2" opacity="0.6"/><circle cx="520" cy="90" r="2.5" opacity="0.7"/><circle cx="700" cy="220" r="2" opacity="0.5"/><circle cx="160" cy="620" r="2.5" opacity="0.7"/><circle cx="420" cy="700" r="2" opacity="0.5"/><circle cx="640" cy="640" r="3" opacity="0.8"/><circle cx="980" cy="140" r="2" opacity="0.6"/><circle cx="1180" cy="240" r="2.5" opacity="0.7"/><circle cx="900" cy="700" r="2" opacity="0.5"/><circle cx="1240" cy="660" r="3" opacity="0.8"/><circle cx="1480" cy="120" r="2.5" opacity="0.7"/><circle cx="1700" cy="200" r="2" opacity="0.5"/><circle cx="1560" cy="690" r="2.5" opacity="0.7"/><circle cx="1820" cy="640" r="2" opacity="0.6"/><circle cx="2020" cy="150" r="3" opacity="0.8"/><circle cx="2220" cy="230" r="2" opacity="0.5"/><circle cx="2360" cy="120" r="2.5" opacity="0.7"/><circle cx="2080" cy="680" r="2.5" opacity="0.7"/><circle cx="2300" cy="620" r="2" opacity="0.6"/>
+    </g>
+    <g fill="#d8bd70">
+      <circle cx="240" cy="320" r="2" opacity="0.6"/><circle cx="1080" cy="420" r="2" opacity="0.5"/><circle cx="1380" cy="380" r="2" opacity="0.6"/><circle cx="1920" cy="400" r="2" opacity="0.5"/>
+    </g>
+    <g transform="translate(110,70)"><circle cx="0" cy="0" r="34" fill="#f3e6c4"/><circle cx="14" cy="-6" r="30" fill="#171042"/></g>
+    <text x="1250" y="86" text-anchor="middle" fill="#b8a0f0" font-family="'Noto Sans TC','Microsoft JhengHei',sans-serif" font-size="40" letter-spacing="14" opacity="0.85">宇宙偷偷話</text>
+    <line x1="833" y1="170" x2="833" y2="690" stroke="#b8a0f0" stroke-width="2" opacity="0.25"/>
+    <line x1="1667" y1="170" x2="1667" y2="690" stroke="#b8a0f0" stroke-width="2" opacity="0.25"/>
+    <g text-anchor="middle" font-family="'Noto Sans TC','Microsoft JhengHei','Apple Color Emoji','Segoe UI Emoji',sans-serif">
+      <text x="416" y="430" font-size="150">🌙</text><text x="416" y="560" fill="url(#gold)" font-size="90" font-weight="700" letter-spacing="6">回到官網</text>
+    </g>
+    <g text-anchor="middle" font-family="'Noto Sans TC','Microsoft JhengHei','Apple Color Emoji','Segoe UI Emoji',sans-serif">
+      <text x="1250" y="430" font-size="150">🔮</text><text x="1250" y="560" fill="url(#gold)" font-size="90" font-weight="700" letter-spacing="6">開始抽牌</text>
+    </g>
+    <g text-anchor="middle" font-family="'Noto Sans TC','Microsoft JhengHei','Apple Color Emoji','Segoe UI Emoji',sans-serif">
+      <text x="2084" y="430" font-size="150">✨</text><text x="2084" y="560" fill="url(#gold)" font-size="90" font-weight="700" letter-spacing="6">查詢結果</text>
+    </g>
+  </svg>
+
+<script>
+  function render() {
+    const svg = document.getElementById('src');
+    const xml = new XMLSerializer().serializeToString(svg);
+    const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml);
+    const img = new Image();
+    img.onload = function () {
+      const canvas = document.createElement('canvas');
+      canvas.width = 2500; canvas.height = 843;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, 2500, 843);
+      document.getElementById('preview').src = canvas.toDataURL('image/png');
+      canvas.toBlob(function (blob) {
+        const a = document.getElementById('dl');
+        a.onclick = function () {
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(blob);
+          link.download = 'line-rich-menu-universe-whisper.png';
+          link.click();
+        };
+      }, 'image/png');
+    };
+    img.src = url;
+  }
+  render();
+</script>
+</body>
+</html>

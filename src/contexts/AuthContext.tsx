@@ -118,13 +118,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const auth = getClientAuth();
     if (!auth) {
-      // Firebase env vars not set — mark unconfigured and stop loading.
-      setFirebaseConfigured(false);
-      setLoading(false);
+      // Firebase env vars not set — firebaseConfigured 預設已是 false；延後到 microtask 停止 loading，
+      // 避免在 effect body 內同步 setState（行為與原本一致）。
+      queueMicrotask(() => setLoading(false));
       return;
     }
-    setFirebaseConfigured(true);
+    // 延後到 microtask 標記已設定，避免在 effect body 內同步 setState（行為不變）。
+    queueMicrotask(() => setFirebaseConfigured(true));
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      // 此 callback 為非同步觸發，不屬於 effect 同步階段，setState 安全。
       setUser(firebaseUser);
       setLoading(false);
     });

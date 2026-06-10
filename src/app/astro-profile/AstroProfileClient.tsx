@@ -1113,7 +1113,17 @@ function PostUnlockActions({
   };
 
   const LINE_OA_ID = process.env.NEXT_PUBLIC_LINE_OA_ID ?? "453gfmok";
+  // LINE App deep link — 手機/桌機已安裝 LINE 時直接喚起 App（不跳 QR Code 頁）
+  const LINE_DEEP_LINK = `line://ti/p/@${LINE_OA_ID}`;
+  // Web fallback — 未安裝 LINE 或無法喚起 App 時的加好友頁
   const LINE_OA_URL = `https://line.me/R/ti/p/%40${LINE_OA_ID}`;
+
+  // 主要按鈕：優先用 line:// deep link 直接開 LINE App，避免桌機瀏覽器跳 QR Code 頁
+  const handleOpenLineApp = () => {
+    if (typeof window !== "undefined") {
+      window.location.href = LINE_DEEP_LINK;
+    }
+  };
 
   const handleGenerateLineClaim = async () => {
     if (lineLoading) return;
@@ -1265,15 +1275,25 @@ function PostUnlockActions({
                 >
                   {lineClaimCopied ? "已複製！" : "複製代碼"}
                 </button>
+                <button
+                  type="button"
+                  onClick={handleOpenLineApp}
+                  className="flex-1 rounded-full border border-[#06C755]/40 bg-[#06C755]/10 py-2.5 text-center text-sm font-semibold text-[#06C755] transition hover:bg-[#06C755]/20 active:scale-[0.98]"
+                >
+                  開啟 LINE 官方帳號
+                </button>
+              </div>
+              <p className="text-xs text-moon/38">
+                若無法開啟 LINE，請
                 <a
                   href={LINE_OA_URL}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex-1 rounded-full border border-[#06C755]/40 bg-[#06C755]/10 py-2.5 text-center text-sm font-semibold text-[#06C755] transition hover:bg-[#06C755]/20 active:scale-[0.98]"
+                  className="ml-1 underline underline-offset-2 hover:text-moon/60"
                 >
-                  開啟 LINE 官方帳號
+                  點此前往 @{LINE_OA_ID}
                 </a>
-              </div>
+              </p>
               <button
                 onClick={() => { setLineClaimCode(""); setLineClaimError(""); setLineClaimCopied(false); }}
                 className="w-full text-xs text-moon/30 underline underline-offset-2 hover:text-moon/50"

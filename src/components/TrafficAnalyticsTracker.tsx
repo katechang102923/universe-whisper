@@ -124,8 +124,8 @@ export function TrafficAnalyticsTracker() {
   const pathname = usePathname();
   const activeSecondsRef = useRef(0);
   const pageActiveSecondsRef = useRef(0);
-  const sessionStartedAtRef = useRef(Date.now());
-  const lastTickRef = useRef(Date.now());
+  const sessionStartedAtRef = useRef(0);
+  const lastTickRef = useRef(0);
   const sessionIdRef = useRef("");
   const anonymousIdRef = useRef("");
   const currentPathRef = useRef(pathname || "/");
@@ -167,6 +167,12 @@ export function TrafficAnalyticsTracker() {
   }, [pathname]);
 
   useEffect(() => {
+    // 在 effect 內初始化時間戳（避免在 render 期間呼叫 Date.now()）；
+    // 若 pathname effect 已先設定則保留其值，行為與原本一致。
+    const mountNow = Date.now();
+    if (!sessionStartedAtRef.current) sessionStartedAtRef.current = mountNow;
+    if (!lastTickRef.current) lastTickRef.current = mountNow;
+
     const tick = (beacon = false) => {
       const now = Date.now();
       const elapsed = Math.max(0, now - lastTickRef.current);

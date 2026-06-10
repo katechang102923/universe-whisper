@@ -109,6 +109,38 @@ https://你的網域.vercel.app/api/line/webhook
 宇宙正在傾聽你✨
 ```
 
+此外，當使用者輸入「官網／網址／首頁／抽牌／連結／網站／link／website」其中之一，webhook 會直接回覆官網網址（讓電腦版 LINE 也能看到連結）。所有結果訊息（塔羅單張／三張、三重星座、序號查詢、補發）底部也會附上「🌙 官網入口」。
+
+## LINE 圖文選單（Rich Menu）
+
+手機版 LINE 會顯示圖文選單；電腦版不會（所以才用上面的關鍵字回覆＋訊息底部官網入口補足）。
+
+設定圖文選單步驟：
+
+1. **產生圖片**：用瀏覽器打開 `scripts/export-rich-menu-png.html`，按「下載 PNG」，把 `line-rich-menu-universe-whisper.png` 放到 `public/` 底下。
+   - 設計來源為 `public/line-rich-menu-universe-whisper.svg`（深藍紫星空風，三區塊：🌙 回到官網／🔮 開始抽牌／✨ 查詢結果）。要改設計改這個 SVG（並同步 `export-rich-menu-png.html` 內的 SVG）。
+   - 也可自行準備一張 **2500 × 843** 的 PNG，放到同一路徑。
+2. **設定環境變數** `LINE_CHANNEL_ACCESS_TOKEN`（請勿寫進程式碼或 git）。
+3. **執行 script**（Node 18+）：
+
+   ```powershell
+   # PowerShell
+   $env:LINE_CHANNEL_ACCESS_TOKEN="你的token"; node scripts/setup-line-rich-menu.mjs
+   ```
+
+   ```bash
+   # macOS / Linux
+   LINE_CHANNEL_ACCESS_TOKEN="你的token" node scripts/setup-line-rich-menu.mjs
+   ```
+
+   成功後會 `console.log` 出 `richMenuId`，並把該選單設為 default。手機版 LINE 重新進入聊天室即可看到。
+
+   三個區塊的 URI（依 `NEXT_PUBLIC_SITE_URL`，預設正式站）：
+
+   - 🌙 回到官網 → `/`
+   - 🔮 開始抽牌 → `/tarot`
+   - ✨ 查詢結果 → `/tarot/lookup`
+
 ## Vercel Deploy
 
 1. 將專案推到 GitHub。

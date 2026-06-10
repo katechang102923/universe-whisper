@@ -2353,7 +2353,6 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
         /* fail open */
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getIdToken]);
 
   // ??? Reset ????????????????????????????????????????????????????????????????
@@ -2431,7 +2430,6 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
 
       window.localStorage.removeItem(TAROT_PENDING_PAYMENT_KEY);
     } catch { /* ignore */ }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 付費完成且解讀完成後，自動儲存至 localStorage

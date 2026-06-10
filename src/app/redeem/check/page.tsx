@@ -36,11 +36,13 @@ function RedeemCheckForm() {
   // Auto-fill and check if ?code= is in URL
   useEffect(() => {
     const paramCode = searchParams.get("code");
-    if (paramCode) {
-      const upper = paramCode.toUpperCase();
+    if (!paramCode) return;
+    const upper = paramCode.toUpperCase();
+    // 延後到 microtask 再更新狀態，避免在 effect body 內同步 setState（行為不變）
+    queueMicrotask(() => {
       setCode(upper);
       void doCheck(upper);
-    }
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

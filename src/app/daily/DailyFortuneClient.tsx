@@ -376,7 +376,7 @@ export function DailyFortuneClient() {
 
   useEffect(() => {
     const saved = window.localStorage.getItem(LS_KEY) as ZodiacSlug | null;
-    if (saved && ZODIAC_ORDER.includes(saved)) setSelectedSlug(saved);
+    if (saved && ZODIAC_ORDER.includes(saved)) queueMicrotask(() => setSelectedSlug(saved));
 
     fetch("/api/daily-horoscope")
       .then((r) => {

@@ -1,6 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { normalizePlainText } from "@/lib/textUtils";
+import { LINE_WEBSITE_FOOTER } from "@/lib/lineSite";
 
 export type LineResultType = "tarot" | "daily" | "whisper";
 export type LinePushStatus = "pending" | "sent" | "failed";
@@ -624,25 +625,28 @@ export function buildLineResultMessage(result: LineResultData, resultId: string,
     (result.fullText || result.shortText || "").replace(/\*\*/g, ""),
   );
 
+  let message: string;
   if (result.cards.length === 3) {
-    return buildLineThreeCardMessage(result, questionText, resultUrl, fullText);
-  }
-  if (result.cards.length >= 1) {
-    return buildLineSingleCardMessage(result, questionText, resultUrl, fullText);
+    message = buildLineThreeCardMessage(result, questionText, resultUrl, fullText);
+  } else if (result.cards.length >= 1) {
+    message = buildLineSingleCardMessage(result, questionText, resultUrl, fullText);
+  } else {
+    // 兜底（無牌資料）
+    message = [
+      "宇宙偷偷話｜本次占卜結果",
+      "",
+      `你的問題：\n${questionText}`,
+      "",
+      fullText ? `✨ 宇宙給你的重點\n\n${sliceAtSentence(fullText, 400)}` : "宇宙的訊息正在整理中。",
+      "",
+      DIVIDER,
+      "",
+      `📚 收藏版完整排版：\n${resultUrl}`,
+    ].join("\n");
   }
 
-  // 兜底（無牌資料）
-  return [
-    "宇宙偷偷話｜本次占卜結果",
-    "",
-    `你的問題：\n${questionText}`,
-    "",
-    fullText ? `✨ 宇宙給你的重點\n\n${sliceAtSentence(fullText, 400)}` : "宇宙的訊息正在整理中。",
-    "",
-    DIVIDER,
-    "",
-    `📚 收藏版完整排版：\n${resultUrl}`,
-  ].join("\n");
+  // 只在結果訊息底部加上官網入口（電腦版 LINE 也看得到網址），不改既有排版
+  return `${message}\n\n${LINE_WEBSITE_FOOTER}`;
 }
 
 export async function pushLineTextMessage(lineUserId: string, message: string) {

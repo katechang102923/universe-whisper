@@ -407,7 +407,7 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
   }, []);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => void load());
   }, [load]);
 
   const toggle = (id: string) => {
