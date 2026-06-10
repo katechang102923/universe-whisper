@@ -126,7 +126,7 @@ export function RevenueTabClient() {
     }
   }, []);
 
-  useEffect(() => { void load(year, month); }, [year, month, load]);
+  useEffect(() => { queueMicrotask(() => void load(year, month)); }, [year, month, load]);
 
   // 年份選項（近 3 年）
   const yearOptions = [now.getFullYear() - 2, now.getFullYear() - 1, now.getFullYear()];

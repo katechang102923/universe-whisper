@@ -39,10 +39,10 @@ export function TarotShuffleAnimation({
   const selectCalledRef = useRef(false);
 
   useEffect(() => {
-    if (stage === "selecting") {
-      setPickedIndices([]);
-      selectCalledRef.current = false;
-    }
+    if (stage !== "selecting") return;
+    selectCalledRef.current = false;
+    // 延後到 microtask 再清空已選牌，避免在 effect body 內同步 setState（行為不變）
+    queueMicrotask(() => setPickedIndices([]));
   }, [stage]);
 
   function handleGridPick(idx: number) {

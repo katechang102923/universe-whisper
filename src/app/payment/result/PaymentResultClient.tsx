@@ -165,7 +165,7 @@ export default function PaymentResultClient() {
 
   useEffect(() => {
     if (!merchantTradeNo) {
-      setOrder({ status: "not_found", merchantTradeNo: "" });
+      queueMicrotask(() => setOrder({ status: "not_found", merchantTradeNo: "" }));
       return;
     }
     let cancelled = false;
@@ -186,13 +186,15 @@ export default function PaymentResultClient() {
   useEffect(() => {
     const code = order.redeemCode ?? order.redeemCodeId ?? null;
     if ((order.status === "paid" && code) || order.status === "failed") {
-      setPollStopped(true);
-      setPollCount(MAX_POLLS);
+      queueMicrotask(() => {
+        setPollStopped(true);
+        setPollCount(MAX_POLLS);
+      });
     }
   }, [order.status, order.redeemCode, order.redeemCodeId]);
 
   useEffect(() => {
-    if (order.emailSent) setCodeSaved(true);
+    if (order.emailSent) queueMicrotask(() => setCodeSaved(true));
   }, [order.emailSent]);
 
   // 讀取塔羅抽牌暫存（單次付款接續流程用）
@@ -206,7 +208,7 @@ export default function PaymentResultClient() {
         createdAt?: number;
       };
       if (parsed.createdAt && Date.now() - parsed.createdAt > 2 * 60 * 60 * 1000) return;
-      setPendingTarot(parsed);
+      queueMicrotask(() => setPendingTarot(parsed));
     } catch { /* ignore */ }
   }, []);
 

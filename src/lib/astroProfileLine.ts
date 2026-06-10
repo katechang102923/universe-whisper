@@ -4,6 +4,8 @@
  * Do NOT import this from any tarot-related file.
  */
 
+import { LINE_WEBSITE_FOOTER } from "@/lib/lineSite";
+
 const DIVIDER = "━━━━━━━━━━━━━━";
 
 /** Safely truncate text at sentence boundary, max maxChars */
@@ -191,6 +193,10 @@ export function buildLineAstroProfileMessage(data: AstroProfileClaimData): strin
 
   parts.push(DIVIDER);
   parts.push("宇宙偷偷話 Universe Whisper");
+
+  // 只在結果訊息底部加上官網入口（電腦版 LINE 也看得到網址）
+  parts.push("");
+  parts.push(LINE_WEBSITE_FOOTER);
 
   return parts.join("\n").trim();
 }

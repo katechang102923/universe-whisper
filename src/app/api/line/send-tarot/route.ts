@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebaseAdmin";
+import { LINE_WEBSITE_FOOTER } from "@/lib/lineSite";
 
 type LineTarotCard = {
   name?: string;
@@ -103,6 +104,7 @@ function buildLineMessage(payload: SendTarotPayload, resultUrl: string) {
     if (actionText) parts.push(``, `🕯️ 接下來 3～7 天\n${actionText}`);
     if (blessing) parts.push(``, `💫 給你的祝福\n${blessing}`);
     parts.push(``, `🔮 完整解讀請回到網站查看：\n${resultUrl}`);
+    parts.push(``, LINE_WEBSITE_FOOTER);
     return parts.join("\n");
   }
 
@@ -123,7 +125,9 @@ ${cardText}
 ${core}
 
 🔮 完整解讀請回到網站查看：
-${resultUrl}`;
+${resultUrl}
+
+${LINE_WEBSITE_FOOTER}`;
 }
 
 async function saveTarotResult(userId: string, payload: SendTarotPayload, resultId: string, deliveryStatus: string) {

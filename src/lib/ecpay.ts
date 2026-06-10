@@ -90,7 +90,6 @@ export function generateCheckMacValue(
   hashKey: string,
   hashIV: string,
 ): string {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { CheckMacValue: _removed, ...rest } = params;
 
   // Case-insensitive sort（符合綠界官方規格）
