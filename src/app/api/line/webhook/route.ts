@@ -12,6 +12,7 @@ import {
   buildLineAstroProfileMessage,
   type AstroProfileClaimData,
 } from "@/lib/astroProfileLine";
+import { matchesWebsiteKeyword, LINE_WEBSITE_KEYWORD_REPLY } from "@/lib/lineSite";
 
 // -------------------------------------------------------------------
 // LINE Webhook  —  處理所有來自 LINE 的事件
@@ -285,6 +286,13 @@ export async function POST(request: Request) {
       if (CLAIM_CODE_RE.test(upperText)) {
         await handleClaimCode(upperText, replyToken, lineUserId);
         return { type: "claim", claimCode: upperText };
+      }
+
+      // 官網關鍵字（官網/網址/首頁/抽牌/連結/網站/link/website）→ 回覆官網網址。
+      // 必須放在 fallback「宇宙正在傾聽你✨」與一般聊天回覆之前。
+      if (matchesWebsiteKeyword(rawText)) {
+        await replyWithText(replyToken, LINE_WEBSITE_KEYWORD_REPLY);
+        return { type: "website" };
       }
 
       // 其他訊息 → 既有 fallback 回覆（完全不動）
