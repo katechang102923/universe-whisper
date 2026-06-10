@@ -93,6 +93,12 @@ function loadResultFromStorage(sessionId: string): CalcResult | null {
   }
 }
 
+// 完整三重星座解析必須同時具備太陽、月亮、上升與金星星座，缺一即視為不完整，
+// 不得進入付款 / 序號兌換 / 完整結果。也用來擋下舊資料（付款返回或序號兌換載入的舊結果）。
+function isCompleteResult(r: CalcResult): boolean {
+  return !!(r.sunSign && r.moonSign && r.risingSign && r.venusSign);
+}
+
 function generateSessionId(): string {
   return crypto.randomUUID
     ? crypto.randomUUID()
@@ -122,21 +128,23 @@ export function AstroProfileClient() {
 
   // Form fields
   const [birthDate, setBirthDate] = useState("");
-  // 出生時間：精確到分鐘的 "HH:mm"；空字串代表「不知道出生時間」。
+  // 出生時間：精確到分鐘的 "HH:mm"；空字串代表尚未填寫。
   const [birthTime, setBirthTime] = useState("");
-  const [timeUnknown, setTimeUnknown] = useState(true);
   const [birthCity, setBirthCity] = useState<BirthCity | null>(null);
   const [error, setError] = useState("");
+  // 手動星座模式：使用者已知道月亮 / 上升 / 金星星座，改為手動選滿。
   const [showManual, setShowManual] = useState(false);
   const [manualMoon, setManualMoon] = useState<ZodiacSign | "">("");
   const [manualRising, setManualRising] = useState<ZodiacSign | "">("");
   const [manualVenus, setManualVenus] = useState<ZodiacSign | "">("");
 
   const sunSign = getSunSign(birthDate);
-  const hasTime = !timeUnknown && /^\d{2}:\d{2}$/.test(birthTime);
+  const hasTime = /^\d{2}:\d{2}$/.test(birthTime);
   const hasCity = birthCity !== null;
+  const hasAllManual = !!(manualMoon && manualRising && manualVenus);
   const canCalcFull = !!(birthDate && hasTime && hasCity);
-  const canCalcMoon = !!(birthDate && hasTime);
+  // 是否符合送出條件：自動模式需日期+時間+城市；手動模式需日期+三顆星座全選。
+  const canSubmit = !!birthDate && (showManual ? hasAllManual : (hasTime && hasCity));
 
   // On mount: check URL params for returning from payment
   useEffect(() => {
@@ -188,31 +196,49 @@ export function AstroProfileClient() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!birthDate) { setError("請填寫出生日期"); return; }
+    // 出生日期在兩種模式下都必填（太陽星座與基本資料需依生日判斷）。
+    if (!birthDate) { setError("請先填寫出生日期。"); return; }
     if (!sunSign) { setError("日期格式有誤，請重新輸入"); return; }
-    setError("");
-    // 儀表化：使用者實際送出表單（行為事件，不含出生資料）。best-effort，不阻擋流程。
-    trackTripleZodiac("triple_zodiac_started");
 
     let moonSign: ZodiacSign | null = null;
     let risingSign: ZodiacSign | null = null;
     let venusSign: ZodiacSign | null = null;
     let risingCalcNote: string | null = null;
 
-    if (canCalcMoon) {
-      try { moonSign = calcMoonSign(birthDate, birthTime); } catch { /* leave null */ }
-    }
-    if (canCalcFull) {
+    if (showManual) {
+      // 條件 B：手動星座模式——月亮 / 上升 / 金星 必須全部選滿，缺一不可。
+      if (!manualMoon || !manualRising || !manualVenus) {
+        setError("請完整選擇月亮、上升與金星星座，才能產生完整解析。");
+        return;
+      }
+      moonSign = manualMoon;
+      risingSign = manualRising;
+      venusSign = manualVenus;
+    } else {
+      // 條件 A：自動計算模式——出生日期、出生時間、出生城市皆必填。
+      if (!hasTime || !hasCity) {
+        setError("為了產生完整三重星座解析，請填寫出生時間與出生城市，或改用手動選擇月亮／上升／金星星座。");
+        return;
+      }
       try {
+        moonSign = calcMoonSign(birthDate, birthTime);
         risingSign = calcRisingSign(birthDate, birthTime, birthCity!.latitude, birthCity!.longitude);
         venusSign = calcVenusSign(birthDate, birthTime);
         risingCalcNote = "上升星座依出生時間與城市估算，若出生時間不確定，結果可能有誤差。";
-      } catch { /* leave null */ }
+      } catch {
+        setError("星座計算發生問題，請確認出生日期、時間與城市後再試一次。");
+        return;
+      }
+      // 防呆：計算後若仍缺任一星座，視為資料不足，不允許產生完整解析。
+      if (!moonSign || !risingSign || !venusSign) {
+        setError("為了產生完整三重星座解析，請填寫出生時間與出生城市，或改用手動選擇月亮／上升／金星星座。");
+        return;
+      }
     }
 
-    if (manualMoon) moonSign = manualMoon;
-    if (manualRising) risingSign = manualRising;
-    if (manualVenus) venusSign = manualVenus;
+    setError("");
+    // 儀表化：使用者實際送出表單（行為事件，不含出生資料）。best-effort，不阻擋流程。
+    trackTripleZodiac("triple_zodiac_started");
 
     const result: CalcResult = { sunSign, moonSign, risingSign, venusSign, risingCalcNote };
     setCalcResult(result);
@@ -287,43 +313,33 @@ export function AstroProfileClient() {
           )}
         </div>
 
+        {/* 完整資料說明：清楚告知產生完整解析所需的條件，避免誤會 */}
+        <div className="mb-6 rounded-xl border border-white/8 bg-white/3 px-4 py-3">
+          <p className="text-xs leading-6 text-moon/55">
+            完整三重星座解析需要出生日期、出生時間與出生城市。若你已知道自己的月亮、上升與金星星座，也可以改用手動選擇。
+          </p>
+        </div>
+
         {/* Birth time */}
         <div className="mb-6">
           <label className="mb-2 block text-sm font-medium text-moon/80">
             出生時間
-            <span className="ml-1.5 text-xs text-moon/38">（選填，知道越精準，上升星座越準）</span>
+            <span className="ml-1.5 text-xs text-aurora/70">
+              {showManual ? "（手動模式可不填）" : "（必填，需精確到分鐘）"}
+            </span>
           </label>
-          <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
-            <input
-              type="time"
-              step="60"
-              value={timeUnknown ? "" : birthTime}
-              placeholder="08:23"
-              onChange={(e) => {
-                const v = e.target.value;
-                setBirthTime(v);
-                setTimeUnknown(v === "");
-              }}
-              className="w-full flex-1 rounded-xl border border-white/14 bg-[#0a1028] px-4 py-2.5 text-sm text-moon outline-none transition focus:border-lavender/60 focus:ring-2 focus:ring-lavender/20 disabled:opacity-45 sm:w-auto"
-            />
-            <label className="flex shrink-0 cursor-pointer select-none items-center gap-2 text-xs text-moon/60">
-              <input
-                type="checkbox"
-                checked={timeUnknown}
-                onChange={(e) => {
-                  setTimeUnknown(e.target.checked);
-                  if (e.target.checked) setBirthTime("");
-                }}
-                className="h-4 w-4 accent-lavender"
-              />
-              不知道出生時間
-            </label>
-          </div>
-          {!hasTime && (
-            <div className="mt-3 space-y-1.5 rounded-xl border border-white/8 bg-white/3 px-4 py-3 text-xs">
-              <p className="text-moon/50">不提供出生時間也可以產生解析，<br />但月亮、上升、金星可能無法精準判定。</p>
-              <p className="text-moon/35">若未提供資料，系統會以你手動選擇的星座<br />或通用人格方向進行分析，<br />內容適合參考與自我探索，<br />不代表完整精準命盤。</p>
-            </div>
+          <input
+            type="time"
+            step="60"
+            value={birthTime}
+            placeholder="08:23"
+            onChange={(e) => setBirthTime(e.target.value)}
+            className="w-full rounded-xl border border-white/14 bg-[#0a1028] px-4 py-2.5 text-sm text-moon outline-none transition focus:border-lavender/60 focus:ring-2 focus:ring-lavender/20"
+          />
+          {!showManual && !hasTime && (
+            <p className="mt-2 text-xs leading-6 text-moon/40">
+              請填寫出生時間，月亮、上升與金星星座才能精準計算。
+            </p>
           )}
         </div>
 
@@ -331,36 +347,30 @@ export function AstroProfileClient() {
         <div className="mb-6">
           <label className="mb-2 block text-sm font-medium text-moon/80">
             出生城市
-            <span className="ml-1.5 text-xs text-moon/38">（選填，可提升準確度）</span>
+            <span className="ml-1.5 text-xs text-aurora/70">
+              {showManual ? "（手動模式可不填）" : "（必填）"}
+            </span>
           </label>
           <CosmicSelect
-            options={["不知道出生城市", ...BIRTH_CITIES.map((c) => c.name)]}
-            value={birthCity?.name ?? "不知道出生城市"}
+            options={["請選擇出生城市", ...BIRTH_CITIES.map((c) => c.name)]}
+            value={birthCity?.name ?? "請選擇出生城市"}
             onChange={(v) => {
-              if (v === "不知道出生城市") { setBirthCity(null); return; }
+              if (v === "請選擇出生城市") { setBirthCity(null); return; }
               setBirthCity(BIRTH_CITIES.find((c) => c.name === v) ?? null);
             }}
-            placeholder="不知道出生城市"
+            placeholder="請選擇出生城市"
           />
-          {!hasCity && (
-            <div className="mt-3 space-y-1.5 rounded-xl border border-white/8 bg-white/3 px-4 py-3 text-xs">
-              <p className="text-moon/50">不提供出生城市也可以產生解析，<br />但上升星座與部分延伸解讀可能產生誤差。</p>
-              <p className="text-moon/35">若知道出生城市，建議填寫，<br />結果會更貼近你的個人狀態。</p>
-            </div>
+          {!showManual && !hasCity && (
+            <p className="mt-2 text-xs leading-6 text-moon/40">
+              請選擇出生城市，上升星座才能準確判定。
+            </p>
           )}
         </div>
 
-        {canCalcFull && (
+        {!showManual && canCalcFull && (
           <div className="mb-6 rounded-xl border border-aurora/20 bg-aurora/5 px-4 py-3">
             <p className="text-xs text-aurora/80">
               ✦ 資料齊全，將自動計算月亮星座、上升星座與金星星座
-            </p>
-          </div>
-        )}
-        {canCalcMoon && !canCalcFull && (
-          <div className="mb-6 rounded-xl border border-lavender/20 bg-lavender/5 px-4 py-3">
-            <p className="text-xs text-lavender/80">
-              ✦ 提供出生時間，將自動計算月亮星座
             </p>
           </div>
         )}
@@ -373,21 +383,24 @@ export function AstroProfileClient() {
             className="flex items-center gap-1.5 text-xs text-moon/40 transition hover:text-moon/60"
           >
             <span className={`transition-transform ${showManual ? "rotate-90" : ""}`}>▶</span>
-            我已知道月亮 / 上升 / 金星星座，手動選擇
+            我已知道月亮 / 上升 / 金星星座，改用手動選擇
           </button>
           {showManual && (
             <div className="mt-4 space-y-4 rounded-xl border border-white/8 bg-white/3 p-4">
+              <p className="text-xs leading-6 text-moon/50">
+                手動模式需完整選擇月亮、上升與金星星座，才能產生完整解析。
+              </p>
               <div>
-                <label className="mb-2 block text-xs text-moon/60">手動指定月亮星座（覆蓋自動計算）</label>
-                <ZodiacSelect value={manualMoon} onChange={setManualMoon} placeholder="不指定" />
+                <label className="mb-2 block text-xs text-moon/60">月亮星座<span className="ml-1 text-aurora/70">（必填）</span></label>
+                <ZodiacSelect value={manualMoon} onChange={setManualMoon} placeholder="請選擇月亮星座" />
               </div>
               <div>
-                <label className="mb-2 block text-xs text-moon/60">手動指定上升星座（覆蓋自動計算）</label>
-                <ZodiacSelect value={manualRising} onChange={setManualRising} placeholder="不指定" />
+                <label className="mb-2 block text-xs text-moon/60">上升星座<span className="ml-1 text-aurora/70">（必填）</span></label>
+                <ZodiacSelect value={manualRising} onChange={setManualRising} placeholder="請選擇上升星座" />
               </div>
               <div>
-                <label className="mb-2 block text-xs text-moon/60">手動指定金星星座（覆蓋自動計算）</label>
-                <ZodiacSelect value={manualVenus} onChange={setManualVenus} placeholder="不指定" />
+                <label className="mb-2 block text-xs text-moon/60">金星星座<span className="ml-1 text-aurora/70">（必填）</span></label>
+                <ZodiacSelect value={manualVenus} onChange={setManualVenus} placeholder="請選擇金星星座" />
               </div>
             </div>
           )}
@@ -400,13 +413,14 @@ export function AstroProfileClient() {
         )}
 
         <div className="mb-4 space-y-1 text-center">
-          <p className="text-xs text-moon/45">✨ 只需出生日期即可開始參考解析</p>
-          <p className="text-xs text-moon/35">✨ 出生時間與城市越完整，結果越接近個人命盤</p>
+          <p className="text-xs text-moon/45">✨ 完整資料才能產生精準的三重星座解析</p>
+          <p className="text-xs text-moon/35">✨ 自動模式需出生日期、時間與城市，或手動選滿月亮 / 上升 / 金星</p>
         </div>
 
         <button
           type="submit"
-          className="w-full rounded-full py-3.5 text-base font-semibold text-midnight transition hover:brightness-105 active:scale-[0.98]"
+          disabled={!canSubmit}
+          className="w-full rounded-full py-3.5 text-base font-semibold text-midnight transition hover:brightness-105 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
           style={{ background: "linear-gradient(135deg, #d8bd70 0%, #b89adf 60%, #d8bd70 100%)" }}
         >
           開始解析我的三重星座 ✨
@@ -457,6 +471,12 @@ function ResultView({
   const sunTexts = ASTRO_PROFILE_TEXTS[sunSign];
   const isUnlocked = unlockState === "unlocked" || isAdminTestUnlocked;
 
+  // 資料不完整（例如付款返回或序號兌換載入到缺欄位的舊結果）時，不顯示半成品卡片，
+  // 也不開放付款 / 解鎖，僅提示使用者重新填寫。
+  if (!isCompleteResult(result)) {
+    return <IncompleteResultView onReset={onReset} />;
+  }
+
   return (
     <div className={`mx-auto w-full px-4 py-8 sm:px-6 sm:py-12 ${isUnlocked ? "max-w-4xl" : "max-w-lg"}`}>
       {/* Header */}
@@ -484,8 +504,8 @@ function ResultView({
             <p className="mb-4 text-xs uppercase tracking-[0.24em] text-lavender/60">三重星座概覽</p>
             <div className="space-y-2.5">
               <SignRow label="太陽星座" sublabel="核心自我・靈魂的本質與主導性格" sign={sunSign} accentColor="text-[#d8bd70]" />
-              <SignRow label="月亮星座" sublabel="情感內在・潛意識的日常安全感來源" sign={moonSign} accentColor="text-lavender" emptyNote="尚未提供" />
-              <SignRow label="上升星座" sublabel="外在面具・你給世界的第一印象與處事風格" sign={risingSign} accentColor="text-aurora" emptyNote="尚未提供" />
+              <SignRow label="月亮星座" sublabel="情感內在・潛意識的日常安全感來源" sign={moonSign} accentColor="text-lavender" />
+              <SignRow label="上升星座" sublabel="外在面具・你給世界的第一印象與處事風格" sign={risingSign} accentColor="text-aurora" />
             </div>
             {risingCalcNote && (
               <p className="mt-4 text-xs leading-5 text-moon/35">✦ {risingCalcNote}</p>
@@ -496,18 +516,8 @@ function ResultView({
         {/* ── 金星延伸（免費） ── */}
         <div className="rounded-2xl border border-white/8 bg-white/3 px-5 py-4">
           <p className="mb-3 text-xs uppercase tracking-[0.2em] text-moon/38">延伸參考</p>
-          <SignRow label="金星星座" sublabel="感情吸引力 · 延伸參考" sign={venusSign} accentColor="text-[#c9a0dc]/80" emptyNote="尚未提供" compact />
+          <SignRow label="金星星座" sublabel="感情吸引力 · 延伸參考" sign={venusSign} accentColor="text-[#c9a0dc]/80" compact />
         </div>
-
-        {/* ── 缺少項目提示 ── */}
-        {!moonSign && <Notice>尚未提供月亮星座，完整解析以太陽星座為主。</Notice>}
-        {!risingSign && (
-          <Notice>
-            {isUnlocked
-              ? "尚未提供上升星座，外在氣質解析將暫時略過。"
-              : "尚未提供上升星座，外在氣質解析解鎖後將顯示。"}
-          </Notice>
-        )}
 
         {/* ── 短摘要（免費預覽） ── */}
         <div className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-midnight/50 shadow-glow backdrop-blur-sm">
@@ -566,6 +576,37 @@ function ResultView({
   );
 }
 
+// ── Incomplete data guard ───────────────────────────────────────────────────────
+
+// 當載入到不完整的解析資料（缺月亮 / 上升 / 金星）時顯示，取代半成品結果，
+// 同時不提供任何付款或解鎖入口。
+function IncompleteResultView({ onReset }: { onReset: () => void }) {
+  return (
+    <div className="mx-auto w-full max-w-lg px-4 py-12 sm:px-6">
+      <div className="overflow-hidden rounded-[1.5rem] border border-[#d8bd70]/25 bg-midnight/50 backdrop-blur-sm">
+        <div className="h-1 bg-gradient-to-r from-[#d8bd70]/50 via-lavender/40 to-aurora/30" />
+        <div className="p-6 sm:p-8">
+          <p className="text-xs uppercase tracking-[0.24em] text-[#d8bd70]/70">資料不完整</p>
+          <h1 className="mt-3 text-2xl font-semibold text-moon">無法產生完整解析</h1>
+          <p className="mt-4 text-sm leading-7 text-moon/70">
+            這筆解析資料不完整，請重新填寫出生時間與出生城市，或手動選擇月亮／上升／金星星座後再產生。
+          </p>
+          <p className="mt-3 text-sm leading-7 text-moon/50">
+            請先完成出生資料，才能解鎖完整人格命盤。
+          </p>
+          <button
+            onClick={onReset}
+            className="mt-6 w-full rounded-full py-3.5 text-base font-semibold text-midnight transition hover:brightness-105 active:scale-[0.98]"
+            style={{ background: "linear-gradient(135deg, #d8bd70 0%, #b89adf 60%, #d8bd70 100%)" }}
+          >
+            重新填寫出生資料
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Paid content sections ──────────────────────────────────────────────────────
 
 function PaidContent({
@@ -606,29 +647,25 @@ function PaidContent({
 
         {/* 3. 內在情感｜月亮星座 */}
         <ResultCard label="內在情感｜月亮星座" accent="from-lavender/40 to-nebula/24" icon="🌙">
-          {moonSign ? (
+          {moonSign && (
             <>
               <div className="mb-1 flex items-center gap-2">
                 <span className="text-base font-semibold text-lavender">{ZODIAC_SYMBOLS[moonSign]} {moonSign}</span>
               </div>
               <p className="mt-2 leading-8">{ASTRO_PROFILE_TEXTS[moonSign].moonInnerText}</p>
             </>
-          ) : (
-            <p className="leading-8 text-moon/45">尚未提供月亮星座，這次先以太陽星座為主解讀。</p>
           )}
         </ResultCard>
 
         {/* 4. 外在展現｜上升星座 */}
         <ResultCard label="外在展現｜上升星座" accent="from-aurora/36 to-nebula/22" icon="⬆">
-          {risingSign ? (
+          {risingSign && (
             <>
               <div className="mb-1 flex items-center gap-2">
                 <span className="text-base font-semibold text-aurora">{ZODIAC_SYMBOLS[risingSign]} {risingSign}</span>
               </div>
               <p className="mt-2 leading-8">{ASTRO_PROFILE_TEXTS[risingSign].risingOuterText}</p>
             </>
-          ) : (
-            <p className="leading-8 text-moon/45">尚未提供上升星座，外在氣質解析將暫時略過。</p>
           )}
         </ResultCard>
 
@@ -642,15 +679,13 @@ function PaidContent({
               <span className="ml-1 rounded-full border border-white/10 px-2 py-0.5 text-[10px] normal-case tracking-wide text-moon/30">延伸解析</span>
             </p>
             <div className="text-sm leading-8 text-moon/75">
-              {venusSign ? (
+              {venusSign && (
                 <>
                   <div className="mb-1 flex items-center gap-2">
                     <span className="text-sm font-semibold text-[#c9a0dc]/80">{ZODIAC_SYMBOLS[venusSign]} {venusSign}</span>
                   </div>
                   <p className="mt-2">{ASTRO_PROFILE_TEXTS[venusSign].venusLoveText}</p>
                 </>
-              ) : (
-                <p className="text-moon/40">尚未提供金星星座，感情與吸引力解析將暫時略過。</p>
               )}
             </div>
           </div>
@@ -1327,14 +1362,6 @@ function SignRow({
   );
 }
 
-function Notice({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/4 px-4 py-3">
-      <p className="text-xs leading-6 text-moon/50">✦ {children}</p>
-    </div>
-  );
-}
-
 function ResultCard({
   label, accent, icon, children,
 }: {
@@ -1372,9 +1399,12 @@ function BirthDateSelect({
   const [day, setDay] = useState(parsed.day);
 
   useEffect(() => {
-    setYear(parsed.year);
-    setMonth(parsed.month);
-    setDay(parsed.day);
+    // 延後到 microtask 同步年月日，避免在 effect body 內同步 setState（行為不變）
+    queueMicrotask(() => {
+      setYear(parsed.year);
+      setMonth(parsed.month);
+      setDay(parsed.day);
+    });
   }, [parsed.year, parsed.month, parsed.day]);
 
   const dayOptions = useMemo(() => {
