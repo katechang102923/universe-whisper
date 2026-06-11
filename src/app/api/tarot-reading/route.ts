@@ -1624,6 +1624,56 @@ function getBizLifeConclusion(
   return T[scenario][tier];
 }
 
+/** 四場景的「為什麼會這樣／接下來的方向」段落（避免掉回工作/離職模板）*/
+function getBizLifeWhyDirection(scenario: BizLifeScenario): { why: string; direction: string } {
+  const M: Record<BizLifeScenario, { why: string; direction: string }> = {
+    relocation: {
+      why: "這組牌不是在說外地沒有機會，而是提醒你，目前真正卡住的是落腳條件還不夠穩。過去累積的能力可以帶著走，但現在的焦慮和消耗感，容易讓你把換個地方想成一次解決所有問題。",
+      direction: "先確認外地住哪裡、收入怎麼接上、生活成本能不能承擔，還有那邊有沒有可以依靠的支援系統，再決定是否行動，不要只靠一股想離開現況的衝動。",
+    },
+    business_start: {
+      why: "這組牌不是說這個生意做不起來，而是提醒你，能不能撐成長期生意，要看客群、商圈和資金準備夠不夠扎實。想法的吸引力和實際的營運能力是兩回事。",
+      direction: "先把目標客群、商圈人流、開業成本和每月營運能撐多久算清楚，再決定開業時機與規模，別只憑一股熱情就開下去。",
+    },
+    franchise: {
+      why: "這組牌提醒你，加盟的成敗不在品牌名氣，而在合約條件、總部支援和加盟金回本的速度。這套標準化模式適不適合你的個性和經營方式，比招牌更關鍵。",
+      direction: "先把合約限制、加盟金與回本期、總部提供的資源和商圈保護一條條問清楚，再評估這套模式適不適合自己，別急著被名氣推著簽約。",
+    },
+    expansion: {
+      why: "這組牌比較像在提醒你，問題不是不能擴張，而是原本的營運、人力和現金流還需要再穩一點。若現在硬開第二個點，管理壓力會放大，反而拖累原本的店。",
+      direction: "先檢查原店能不能不靠你一直盯著也穩定運作，再評估新地點、人手、租金和現金流。展店不是不能做，但要等制度比熱情更穩。",
+    },
+  };
+  return M[scenario];
+}
+
+/** 四場景的 3～7 天行動建議（取代會掉回履歷/離職的工作版）*/
+function getBizLifeActionSteps(scenario: BizLifeScenario): string {
+  const M: Record<BizLifeScenario, string> = {
+    relocation: [
+      "Day 1～2｜盤點落腳條件\n把外地的住處、預估生活成本和收入要怎麼接上，具體列出來，看哪一塊還沒著落。",
+      "Day 3～4｜確認支援系統\n看看外地有沒有可以依靠的人脈或資源，以及離開熟悉環境後，情緒和生活有沒有支撐。",
+      "Day 5～7｜先小規模試水溫\n有機會先短期過去走一趟、或遠端接觸當地機會，用實際體驗代替想像，再決定要不要長期搬。",
+    ].join("\n\n"),
+    business_start: [
+      "Day 1～2｜定客群與商圈\n寫清楚目標客群是誰、想開在哪個商圈，以及那裡的人流符不符合你的產品定位。",
+      "Day 3～4｜算開業成本\n把啟動成本、每月固定支出，和手上資金能撐幾個月，算到具體數字。",
+      "Day 5～7｜小規模驗證\n先用擺攤、預購或小量方式測市場反應，再決定正式開業的時機與規模。",
+    ].join("\n\n"),
+    franchise: [
+      "Day 1～2｜看懂合約\n把加盟合約的限制、加盟金、權利金和合約年限一條條看懂，別漏掉退場條款。",
+      "Day 3～4｜查總部與回本\n了解總部的實際支援、商圈保護，並打聽同品牌其他加盟主大概多久回本。",
+      "Day 5～7｜評估適配度\n誠實評估這套標準化模式適不適合你的個性與經營節奏，再決定簽不簽。",
+    ].join("\n\n"),
+    expansion: [
+      "Day 1～2｜檢查原店\n確認原本的店在你不盯著時能不能穩定運作，把最依賴你的環節列出來。",
+      "Day 3～4｜算人力與現金流\n評估第二個點需要的人手、租金和啟動資金，確認現金流撐不撐得起兩邊。",
+      "Day 5～7｜選點與建制度\n看新地點的人流與條件，同時把可複製的營運制度整理好，制度穩了再展店。",
+    ].join("\n\n"),
+  };
+  return M[scenario];
+}
+
 /**
  * 依「回答類型」產生直接回答問題的第一句結論（fallback 與摘要共用）。
  * 對應四類問題的明確結論語氣，避免迴避式開頭（「這件事有解」「先不要急著做決定」）。
@@ -1885,6 +1935,9 @@ function getFallbackTodayAction(focus: QuestionFocus): string {
 }
 
 function getFallbackNext3To7Days(focus: QuestionFocus, question = ""): string {
+  // 外地發展／開店／加盟／展店：用場景行動，避免掉回履歷/離職的工作版
+  const bizScn = getBizLifeScenario(question);
+  if (bizScn) return getBizLifeActionSteps(bizScn);
   switch (focus.primary) {
     case "finance":
       if (isInvestmentQuestion(question)) {
@@ -2084,7 +2137,10 @@ function buildSingleCardFallback(
   question: string
 ): string {
   // 問題關鍵字偵測為 general 時退回使用者選擇的分類，避免財運問題跑出愛情/通用 fallback
-  const focus      = mergeFocusWithTopic(detectQuestionFocus(question), _topic);
+  // 外地發展/開店/加盟/展店：強制 focus=general，避免焦點文案掉回工作/離職模板。
+  const focus      = getBizLifeScenario(question)
+    ? ({ primary: "general" } as QuestionFocus)
+    : mergeFocusWithTopic(detectQuestionFocus(question), _topic);
   // 永遠使用使用者選擇的分類，而非 detectQuestionFocus 的結果
   const focusLabel = getTopicLabel(_topic);
   const ori        = card.position === "upright" ? "正位" : "逆位";
@@ -2437,7 +2493,10 @@ function buildThreeCardFallback(
   question: string
 ): string {
   // 問題關鍵字偵測為 general 時退回使用者選擇的分類，避免財運問題跑出愛情/通用 fallback
-  const focus      = mergeFocusWithTopic(detectQuestionFocus(question), _topic);
+  // 外地發展/開店/加盟/展店：強制 focus=general，避免 per-card 等焦點文案掉回工作/離職模板。
+  const focus      = getBizLifeScenario(question)
+    ? ({ primary: "general" } as QuestionFocus)
+    : mergeFocusWithTopic(detectQuestionFocus(question), _topic);
   // 永遠使用使用者選擇的分類，而非 detectQuestionFocus 的結果
   const focusLabel = getTopicLabel(_topic);
   const spreadLabels = getSpreadLabels();
@@ -2565,6 +2624,16 @@ function getFallbackOverallSummary(focus: QuestionFocus, cardNamesStr: string, c
   }
   })();
 
+  // 外地發展／開店／加盟／展店：整段（整體答案＋為什麼＋接下來方向）都用場景文案，
+  // 不能掉回 career/finance base（避免出現履歷、離職、工作狀態、進場等誤套語）。
+  const bizScn = getBizLifeScenario(question);
+  if (bizScn) {
+    const sig = cards?.length ? getSpreadSignal(cards) : "neutral";
+    const tier = sig === "strong" ? "strong" : sig === "weak" ? "weak" : (hasRevCard ? "negMild" : "posMild");
+    const wd = getBizLifeWhyDirection(bizScn);
+    return `整體答案：\n${getBizLifeConclusion(bizScn, tier)}\n\n為什麼會這樣：\n${wd.why}\n\n接下來的方向：\n${wd.direction}`;
+  }
+
   // 依問題回答類型，用直接結論覆蓋「整體答案」第一段，保留「為什麼會這樣／接下來的方向」。
   // 修正：考試題不再回「這件事有解」、離職題不再回「留下來硬撐還是衝動離職」。
   // 牌面強弱影響結論力度（強→很有機會；弱→難度偏高）。
@@ -2680,9 +2749,11 @@ function buildSingleCardPrompt(
   const focus              = detectQuestionFocus(question);
   const questionTopic      = detectQuestionTopic(question, focus);
   const topicBoundaryRules = getTopicBoundaryRules(questionTopic, question);
-  const categoryLockRules  = getCategoryLockRules(topic);
+  // 外地發展/開店/加盟/展店：不套財運鎖定（改由場景 hint 主導）
+  const categoryLockRules  = getBizLifeScenario(question) ? "" : getCategoryLockRules(topic);
   const focusLabel         = getFocusLabel(focus);
-  const topicGuidance      = getTopicGuidance(topic, focus, question);
+  // 外地發展/開店/加盟/展店：不套用工作/財運的 topicGuidance（改由場景 hint 主導），避免「離職/履歷/進場」誤套
+  const topicGuidance      = getBizLifeScenario(question) ? "" : getTopicGuidance(topic, focus, question);
   const ori           = card.position === "upright" ? "正位" : "逆位";
   const kw            = card.keywords?.length ? `關鍵字：${card.keywords.join("、")}` : "";
   const base          = card.baseMeaning  ? `牌面核心：${card.baseMeaning}`  : "";
@@ -2899,9 +2970,11 @@ function buildThreeCardPrompt(
   const focus              = detectQuestionFocus(question);
   const questionTopic      = detectQuestionTopic(question, focus);
   const topicBoundaryRules = getTopicBoundaryRules(questionTopic, question);
-  const categoryLockRules  = getCategoryLockRules(topic);
+  // 外地發展/開店/加盟/展店：不套財運鎖定（改由場景 hint 主導）
+  const categoryLockRules  = getBizLifeScenario(question) ? "" : getCategoryLockRules(topic);
   const focusLabel         = getFocusLabel(focus);
-  const topicGuidance      = getTopicGuidance(topic, focus, question);
+  // 外地發展/開店/加盟/展店：不套用工作/財運的 topicGuidance（改由場景 hint 主導），避免「離職/履歷/進場」誤套
+  const topicGuidance      = getBizLifeScenario(question) ? "" : getTopicGuidance(topic, focus, question);
   const spreadLabels       = getSpreadLabels();
 
   const defaultPositions = ["目前狀態", "阻礙或盲點", "接下來的建議"];
