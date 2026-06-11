@@ -206,13 +206,13 @@ const INVESTMENT_KEYWORDS = [
   "適合進場", "適合出場",
 ];
 
-// ── 生活／居住決策關鍵字（買房/租屋/搬家/店面/地點/外地）──────────────────────
+// ── 生活／居住決策關鍵字（買房/租屋/搬家/換房/住宅）──────────────────────────
 // 這類問題雖涉及金錢，但不是股票投資題，禁止套用「進場/加碼/停損/獲利/訊號」等市場語氣。
+// 註：外地發展/換城市改歸「relocation」場景；開店/加盟/展店改歸「business/franchise/expansion」。
 const HOUSING_LIFE_KEYWORDS = [
   "買房", "買屋", "購屋", "這間房", "這房子", "房子", "套房", "公寓", "華廈", "透天",
   "租屋", "租這間", "租房", "承租", "退租",
   "搬家", "搬到", "搬去", "換房", "換屋", "遷居", "搬遷",
-  "外地", "外縣市", "換城市", "去外地", "到外地", "異地",
   "居住", "住處", "住哪", "定居", "住宅", "適合住", "適合居住",
 ];
 
@@ -222,22 +222,43 @@ const HOUSING_INVEST_KEYWORDS = [
   "出租", "買來投資", "投資出租", "房地產投資", "房產投資", "賺",
 ];
 
-// ── 創業/開店問題關鍵字（獨立於居住類，回答聚焦市場/客群/商圈/營運/資金/開業時機）──
-const STARTUP_KEYWORDS = [
-  "開店", "創業", "加盟", "展店", "商圈", "店面", "營業", "開業",
-  "做生意", "擺攤", "選址", "店租", "開分店", "頂讓", "經營",
+// ── 外地發展關鍵字（獨立場景：新環境/生活成本/支援系統/落腳條件，非離職/投資/財運）──
+const RELOCATION_KEYWORDS = [
+  "外地發展", "去外地", "外地工作", "外地", "外縣市", "換城市", "搬去外地",
+  "異地發展", "異地", "離開原本城市", "到外地", "外派", "到外縣市",
 ];
 
-/** 判斷是否為創業/開店題（優先於居住與財運判斷）*/
-function isBusinessStartupQuestion(question: string): boolean {
-  if (!question) return false;
-  return STARTUP_KEYWORDS.some((k) => question.includes(k));
+type BizLifeScenario = "relocation" | "franchise" | "expansion" | "business_start";
+
+/**
+ * 細分創業/開店/加盟/展店/外地發展場景（純語境判斷，用於選對結論文案）。
+ * 順序：加盟 > 展店 > 開店創業 > 外地發展。回傳 null 表示不屬於這幾類。
+ */
+function getBizLifeScenario(question: string): BizLifeScenario | null {
+  if (!question) return null;
+  const q = question;
+  if (/加盟/.test(q)) return "franchise";
+  if (/展店|開第二間|第二間店|擴店|擴點|拓點|分店|開分店|再開一間|多開一間|多一間店/.test(q)) return "expansion";
+  if (/開店|創業|開業|開公司|開工作室|自己做生意|做生意|擺攤|頂讓|商圈|選址|店面|開一間店/.test(q)) return "business_start";
+  if (RELOCATION_KEYWORDS.some((k) => q.includes(k))) return "relocation";
+  return null;
 }
 
-/** 判斷是否為生活／居住決策題（買房/租屋/搬家/外地），且非房產投資、非創業開店題 */
+/** 是否為創業/開店/加盟/展店題（不含外地發展）*/
+function isBusinessStartupQuestion(question: string): boolean {
+  const s = getBizLifeScenario(question);
+  return s === "franchise" || s === "expansion" || s === "business_start";
+}
+
+/** 是否為外地發展題（新環境/生活成本/支援系統，非離職、非投資）*/
+function isRelocationQuestion(question: string): boolean {
+  return getBizLifeScenario(question) === "relocation";
+}
+
+/** 判斷是否為生活／居住決策題（買房/租屋/搬家/換房），且非房產投資、非創業/外地發展題 */
 function isHousingLifeQuestion(question: string): boolean {
   if (!question) return false;
-  if (isBusinessStartupQuestion(question)) return false; // 開店/店面歸創業類，不歸居住類
+  if (getBizLifeScenario(question)) return false; // 開店/加盟/展店/外地發展不歸居住類
   const isHousing = HOUSING_LIFE_KEYWORDS.some((k) => question.includes(k));
   if (!isHousing) return false;
   const isHousingInvest = HOUSING_INVEST_KEYWORDS.some((k) => question.includes(k));
@@ -247,8 +268,8 @@ function isHousingLifeQuestion(question: string): boolean {
 /** 判斷是否為投資/股市問題（finance 的子類別，需要市場導向解讀） */
 function isInvestmentQuestion(question: string): boolean {
   if (!question) return false;
-  // 買房/租屋/搬家等生活決策、創業開店都不算股票投資（避免「該買/賺」等字誤判成進場題）
-  if (isHousingLifeQuestion(question) || isBusinessStartupQuestion(question)) return false;
+  // 居住決策、創業開店、外地發展都不算股票投資（避免「該買/賺」等字誤判成進場題）
+  if (isHousingLifeQuestion(question) || getBizLifeScenario(question)) return false;
   return INVESTMENT_KEYWORDS.some((k) => question.includes(k));
 }
 
@@ -708,7 +729,7 @@ function getStrengthHint(cards: TarotReadingCard[]): string {
 但不要恐嚇或斷言絕對的壞結果，仍保留「調整後仍可能改善」的空間。`;
 }
 
-/** 居住搬遷類（買房/租屋/搬家/換房/住宅/外地）— 禁止股票投資語氣 */
+/** 居住搬遷類（買房/租屋/搬家/換房/住宅）— 禁止股票投資語氣 */
 function getHousingChoiceHint(question: string): string {
   if (!isHousingLifeQuestion(question)) return "";
   return `\n【居住搬遷類問題 — 嚴禁投資語氣（最高優先）】
@@ -719,14 +740,31 @@ function getHousingChoiceHint(question: string): string {
 （例外：只有當使用者明確問「房子會不會漲／投報率／買來投資／轉手賺錢」時，才允許投資語境。）`;
 }
 
-/** 創業開店類（開店/創業/加盟/展店/商圈/店面/營業/開業）— 禁止當成財運或股票投資 */
+/** 創業／開店／加盟／展店類 — 依細分場景給專屬回答重點，禁止當成財運/股票/離職/業績 */
 function getStartupChoiceHint(question: string): string {
-  if (!isBusinessStartupQuestion(question)) return "";
-  return `\n【創業開店類問題 — 嚴禁回答成財運或股票投資（最高優先）】
-使用者問的是「${question}」，這是開店／創業／加盟／展店／選址這類經營決策，不是財運分析，也不是股票投資題。
-✗ 絕對禁止把它當成「財運如何／會不會破財／進場加碼停損獲利報酬率」這種理財或股市語氣。
-✓ 回答重點只圍繞：市場需求、客群匹配、商圈與地點條件、營運風險、資金壓力、開業時機。
-第一句要直接給經營傾向（可以考慮／需要再評估／風險偏高／暫時不建議），再說明商圈、客群、資金與時機要先確認什麼。`;
+  const scn = getBizLifeScenario(question);
+  if (scn !== "franchise" && scn !== "expansion" && scn !== "business_start") return "";
+  const focusMap: Record<"franchise" | "expansion" | "business_start", string> = {
+    business_start: "市場需求、客群匹配、資金壓力、營運能力、商圈與人流、產品定位、開業時機。",
+    franchise:      "品牌支援、合約條件、加盟金與回本壓力、總部資源、商圈保護、營運限制，以及這套模式適不適合自己。",
+    expansion:      "現有店的穩定度、人力、現金流、管理能力、新地點、擴張時機，以及是否會稀釋原本的資源。",
+  };
+  const labelMap = { business_start: "開店創業", franchise: "加盟", expansion: "展店" };
+  return `\n【${labelMap[scn]}類問題 — 嚴禁套財運/股票/離職/業績模板（最高優先）】
+使用者問的是「${question}」，這是${labelMap[scn]}這類經營決策。
+✗ 絕對禁止套用：業績達標／資源集中、離職／工作卡住、轉職方向不清、財運如何／會不會破財、進場加碼停損獲利報酬率。
+✓ 回答重點只圍繞：${focusMap[scn]}
+第一句要直接給經營傾向（可以考慮／需要再評估／風險偏高／暫時不建議），再說明上述重點要先確認什麼。`;
+}
+
+/** 外地發展類 — 新環境/生活成本/支援系統/落腳條件，禁止只當離職或投資/感情 */
+function getRelocationHint(question: string): string {
+  if (!isRelocationQuestion(question)) return "";
+  return `\n【外地發展類問題 — 嚴禁只套離職/投資/感情模板（最高優先）】
+使用者問的是「${question}」，這是去外地／換城市／異地發展這類人生地點決策，重點不只是「離不離職」。
+✗ 絕對禁止只回答成離職／工作卡住，也不可套投資、單純財運或感情模板。
+✓ 回答重點圍繞：新環境適應、生活成本、支援系統（人脈／家人／資源）、工作機會與收入來源、落腳條件（住處）、風險承擔、是否準備好了。
+第一句要直接給傾向（可以考慮／需要再觀察／暫時不建議／風險偏高），再說明住處、收入、支援系統等落腳條件要先確認什麼。`;
 }
 
 // ── 敘事模式輪替（每次隨機選一種語氣，避免所有回答長得一樣）──────────────────
@@ -1550,6 +1588,43 @@ function formatThreeCardReading(r: ThreeCardReading): string {
 // ═════════════════════════════════════════════════════════════════════════════
 
 /**
+ * 外地發展／開店創業／加盟／展店 四種場景的第一句結論（依強弱四檔）。
+ * 各場景回答重點互不重疊，禁止套用離職/業績/投資/財運模板。
+ */
+function getBizLifeConclusion(
+  scenario: BizLifeScenario,
+  tier: "strong" | "weak" | "posMild" | "negMild"
+): string {
+  const T: Record<BizLifeScenario, Record<"strong" | "weak" | "posMild" | "negMild", string>> = {
+    relocation: {
+      strong:  "外地發展機會其實不錯，新環境和工作機會都對得上，把住處、收入和支援系統安排好就能順勢出發。",
+      weak:    "外地發展短期不太樂觀，住處、收入來源和支援系統都還沒到位，貿然離開原本城市風險偏高。",
+      posMild: "可以考慮外地發展，但目前不適合只靠衝動。真正要先確認的是新環境適應、生活成本、住處、收入來源和支援系統。",
+      negMild: "外地發展機會還在，但落腳條件和支援系統還沒準備好，先把生活成本和收入來源算清楚再決定。",
+    },
+    business_start: {
+      strong:  "這個開店／創業機會不錯，市場需求和客群都對得上，把資金和營運節奏抓穩就能順勢開業。",
+      weak:    "這個開店／創業短期不太樂觀，客群或市場需求還不夠，資金壓力下貿然開業風險偏高。",
+      posMild: "開店不是完全沒機會，但更需要先把客群、成本和營運節奏算清楚，能不能撐成長期生意要看前期準備是否扎實。",
+      negMild: "想法有吸引力，但客群、資金壓力和營運能力目前還沒站穩，開業時機和商圈條件要先評估過。",
+    },
+    franchise: {
+      strong:  "這個加盟其實條件不錯，總部支援和商圈都對得上，把合約細節和加盟金回收算清楚就能談。",
+      weak:    "這個加盟短期不太建議，合約限制、加盟金回收速度或總部支援還沒看清楚，貿然簽約風險偏高。",
+      posMild: "加盟可以考慮，但不能只看品牌名氣。真正要確認的是合約限制、總部支援、加盟金回收速度，以及這套模式適不適合你的經營方式。",
+      negMild: "加盟還有機會，但合約條件、回本壓力和營運限制都還沒釐清，先確認總部資源和商圈保護再決定。",
+    },
+    expansion: {
+      strong:  "展店時機算成熟，原店穩、人力和現金流也撐得住，挑好地點就可以推進第二個點。",
+      weak:    "展店時機還沒到，原店穩定度、人力或現金流還沒站穩，現在擴點容易反過來拉扯原本的店。",
+      posMild: "展店時機還沒完全成熟，但可以開始準備。問題不是不能擴張，而是人力、現金流和管理制度要先穩住，否則第二個點會稀釋原本的資源。",
+      negMild: "展店的方向可以，但現有店的穩定度和現金流還不夠，先把管理制度和人力補起來，再談擴點。",
+    },
+  };
+  return T[scenario][tier];
+}
+
+/**
  * 依「回答類型」產生直接回答問題的第一句結論（fallback 與摘要共用）。
  * 對應四類問題的明確結論語氣，避免迴避式開頭（「這件事有解」「先不要急著做決定」）。
  * 回傳空字串代表 answerType=none，呼叫端沿用原本焦點導向的結論。
@@ -1590,19 +1665,11 @@ function getDirectConclusionSentence(
 
   // ── 選擇型：偏向適合 / 可以考慮 / 暫時不建議 / 風險偏高 ──────────────────────
   if (answerType === "choice") {
-    // 創業／開店決策（市場/客群/商圈/營運/資金/開業時機）— 嚴禁股票投資與純財運語氣，最先判斷
-    if (isBusinessStartupQuestion(q)) {
-      return hasReversed
-        ? "這個創業／開店的點子目前偏向再評估，商圈客群和資金壓力還沒站穩，貿然開業風險偏高。"
-        : "這個創業／開店可以考慮，但別只憑一股衝勁，先把市場需求、客群匹配、商圈條件和資金壓力算清楚再決定開業時機。";
-    }
-    // 生活／居住決策（買房/租屋/搬家/外地）— 嚴禁投資語氣，先於投資判斷
+    // 外地發展／開店創業／加盟／展店 — 各自獨立語境，嚴禁套離職/業績/投資/財運模板，最先判斷
+    const bizScn = getBizLifeScenario(q);
+    if (bizScn) return getBizLifeConclusion(bizScn, hasReversed ? "negMild" : "posMild");
+    // 生活／居住決策（買房/租屋/搬家）— 嚴禁投資語氣，先於投資判斷
     if (isHousingLifeQuestion(q)) {
-      if (/外地|外縣市|換城市|異地/.test(q)) {
-        return hasReversed
-          ? "去外地目前偏向需要再觀察，先把工作機會、收入與生活適應準備好，再決定要不要動。"
-          : "去外地可以考慮，但別太倉促，先確認工作機會、收入和生活適應，準備好了再行動。";
-      }
       if (/租/.test(q)) {
         return hasReversed
           ? "這間房子目前偏向再觀察，先把租金負擔、生活機能和合約細節確認清楚，別急著簽。"
@@ -1699,13 +1766,17 @@ function getDirectConclusionSentence(
 
   // ── 結果型：依「問題場景 × 牌面強弱」客製第一句，禁止跨場景套句 ─────────────────
   if (answerType === "result") {
-    // 場景判斷（順序：創業開店 > 面試 > 考試 > 投資 > 簽約 > 業績 > 感情 > 其他）
-    const isStartup   = isBusinessStartupQuestion(q);
+    // 外地發展／開店創業／加盟／展店 — 各自獨立場景，最先判斷（依強弱四檔）
+    const bizScn = getBizLifeScenario(q);
+    if (bizScn) {
+      const tier = signal === "strong" ? "strong" : signal === "weak" ? "weak" : (hasReversed ? "negMild" : "posMild");
+      return getBizLifeConclusion(bizScn, tier);
+    }
+    // 場景判斷（順序：面試 > 考試 > 投資 > 簽約 > 業績 > 感情 > 其他）
     const isInterview = /面試/.test(q) || (/錄取|會不會上|有沒有上|上不上得了/.test(q) && !isExam);
     const isDeal      = /簽約|這張單|這筆案子|案子會成|客戶會不會|客戶最後|下單|訂單|成交|談成|報價會過|會不會接這/.test(q);
     const isTarget    = /業績|達標|年度目標|月目標|這個月業績|下半年業績|本季業績|銷售目標|KPI/.test(q);
     const cat =
-      isStartup ? "startup" :
       isInterview ? "interview" :
       isExam ? "exam" :
       (isInvest || /投資|股票|這檔|賺錢|破財|拿得回來|要得回來|討得回來/.test(q)) ? "invest" :
@@ -1716,12 +1787,6 @@ function getDirectConclusionSentence(
       "general";
 
     const TEXT: Record<string, { strong: string; weak: string; posMild: string; negMild: string }> = {
-      startup: {
-        strong:  "這個開店／創業機會其實不錯，市場需求和客群都對得上，把商圈和資金規劃做紮實就能順勢開業。",
-        weak:    "這個開店／創業短期不太樂觀，市場需求或客群匹配還不夠，資金壓力下貿然開業風險偏高。",
-        posMild: "開店不是沒機會，但成敗關鍵在市場需求、客群匹配和商圈條件，先把這幾項和資金壓力算清楚。",
-        negMild: "這個點子還有空間，但客群和商圈條件目前還沒站穩，營運成本和開業時機要先評估過。",
-      },
       target: {
         strong:  "這個月業績很有機會補上來，牌面站在你這邊，把最後幾筆名單推進就能把數字做出來。",
         weak:    "照目前的跟進節奏，業績達標難度偏高，差距得靠更精準的客戶推進，別再平均灑力氣。",
@@ -1771,12 +1836,9 @@ function getDirectConclusionSentence(
     return hasReversed ? t.negMild : t.posMild;
   }
 
-  // ── 創業／開店：即使 answerType 落在 none，也給場景化結論（不回成財運/投資）──────
-  if (isBusinessStartupQuestion(q)) {
-    return hasReversed
-      ? "這個開店／創業目前偏向再評估，市場需求、客群匹配和資金壓力還沒站穩，貿然開業風險偏高。"
-      : "這個開店／創業可以考慮，但成敗在市場需求、客群匹配、商圈條件和資金壓力，先把這幾項和開業時機算清楚。";
-  }
+  // ── 外地發展／開店／加盟／展店：即使 answerType 落在 none，也給場景化結論 ──────────
+  const bizScnFallback = getBizLifeScenario(q);
+  if (bizScnFallback) return getBizLifeConclusion(bizScnFallback, hasReversed ? "negMild" : "posMild");
   // ── 居住搬遷：即使 answerType 落在 none，也給場景化結論（不回成投資）──────────────
   if (isHousingLifeQuestion(q)) {
     return hasReversed
@@ -1881,7 +1943,7 @@ function getFallbackNext3To7Days(focus: QuestionFocus, question = ""): string {
 // 這只是「選不同的人話文字」的內部工具，不改動任何分類/路由/signal 邏輯。
 type QuestionFlavor =
   | "love_feel" | "love_reunite" | "love_action" | "love_single"
-  | "biz_target" | "biz_deal" | "invest" | "housing" | "startup" | "exam"
+  | "biz_target" | "biz_deal" | "invest" | "housing" | "startup" | "relocation" | "exam"
   | "career_change" | "career_general" | "finance_general"
   | "relationship" | "health" | "general";
 
@@ -1890,6 +1952,7 @@ function getQuestionFlavor(question: string, focus: QuestionFocus): QuestionFlav
   const q = question || "";
   const at = detectAnswerType(q);
   if (isBusinessStartupQuestion(q)) return "startup";
+  if (isRelocationQuestion(q)) return "relocation";
   if (isHousingLifeQuestion(q)) return "housing";
   if (isExamQuestion(q) || /面試|錄取|口試|複試/.test(q)) return "exam";
   // 健康早於投資：避免「壓力（身心）」撞到投資關鍵字「壓力（壓力區）」而誤選文案
@@ -1925,6 +1988,7 @@ function getFlavorQuestionFocus(flavor: QuestionFlavor, isUpright: boolean): str
     invest:        ["你想知道能不能進，但其實更怕的是買了就套。", "你已經有點被情緒帶著走，越想凹回來，越容易做錯決定。"],
     housing:       ["你對這個地方有感覺，只是那筆長期的負擔讓你不敢太快點頭。", "你怕的不是買貴，而是買了之後生活被綁得太緊。"],
     startup:       ["你對這個開店的點子有熱情，只是還不確定市場和客群撐不撐得起來。", "你想衝，但心裡也清楚資金和商圈這關還沒真的算過。"],
+    relocation:    ["你嚮往換個城市重來，只是還沒確定那邊的生活和收入接不接得住。", "你想離開現在的環境，但心裡也清楚，落腳的條件還沒真的安排好。"],
     exam:          ["你準備了，但心裡那個『會不會還是不夠』的聲音一直在。", "你不是沒讀，而是讀得有點散，抓不到重點讓你更焦慮。"],
     career_change: ["你想走，只是還沒確定外面那條路是不是真的比較好。", "你受夠的不一定是工作本身，而是那種一直耗著的感覺。"],
     career_general:["你其實知道自己要什麼，只是不確定現在是不是動的時機。", "你比你以為的更清楚問題在哪，只是還不想正面承認那個答案。"],
@@ -1949,6 +2013,7 @@ function getFlavorGentleReminder(flavor: QuestionFlavor): string {
     invest:        "先把能承受的最大虧損想清楚，再決定要不要進。紀律會替你擋掉大部分的衝動。",
     housing:       "別被『現在不買就沒了』的急迫感推著走。把每月實際負擔算到底，安心比划算更重要。",
     startup:       "開店別只看裝潢和熱情，先把客群、商圈和能撐多久的資金算清楚，活下來比開起來更難。",
+    relocation:    "換城市別只看當下的嚮往，先把住處、收入來源和能依靠的支援系統安排好，落得了腳才走得久。",
     exam:          "與其再讀新的，不如把錯過的、不熟的補起來——穩住基本盤比衝難題更能保分。",
     career_change: "離開或留下都可以，但先確認你是走向想要的，而不是只想逃離現在的。",
     career_general:"先看清楚手上能掌握的資源，再決定往哪走。方向比速度重要。",
@@ -1972,6 +2037,7 @@ function getFlavorBlessing(flavor: QuestionFlavor): string {
     invest:        "願你進退都有紀律，賺的時候不貪，虧的時候不慌。",
     housing:       "願你選的那個家，住起來安心，也撐得起往後的日子。",
     startup:       "願你的店不只開得成，也經營得久，撐得過最辛苦的前幾個月。",
+    relocation:    "願你去到的那個城市，不只讓你嚮往，也接得住你的生活與往後的日子。",
     exam:          "願你讀過的每一頁，都在關鍵的那一刻幫上你。",
     career_change: "願你的去留，都是想清楚之後的選擇，而不是逃。",
     career_general:"願你的能力被看見，也願你走到更適合自己的位置。",
@@ -2636,6 +2702,8 @@ function buildSingleCardPrompt(
   const housingHint = getHousingChoiceHint(question);
   // 創業／開店決策題：禁止當成財運或股票投資
   const startupHint = getStartupChoiceHint(question);
+  // 外地發展決策題：禁止只當離職或投資
+  const relocationHint = getRelocationHint(question);
   // 牌面強弱 → 結論力度
   const strengthHint = getStrengthHint([card]);
   // 降低模板感：敘事模式輪替、宇宙偷偷話去模板、逆位多面向、結論給根據
@@ -2755,6 +2823,7 @@ ${restrictedHint}
 ${healthDepthHint}
 ${housingHint}
 ${startupHint}
+${relocationHint}
 ${strengthHint}
 ${narrativeRules}
 ${answerTypeHint}
@@ -2862,6 +2931,8 @@ function buildThreeCardPrompt(
   const housingHint = getHousingChoiceHint(question);
   // 創業／開店決策題：禁止當成財運或股票投資
   const startupHint = getStartupChoiceHint(question);
+  // 外地發展決策題：禁止只當離職或投資
+  const relocationHint = getRelocationHint(question);
   // 牌面強弱 → 結論力度
   const strengthHint = getStrengthHint(cards);
   // 降低模板感：敘事模式輪替、去模板、逆位多面向、結論給根據、牌與牌互動敘事
@@ -2954,6 +3025,7 @@ ${restrictedHint}
 ${healthDepthHint}
 ${housingHint}
 ${startupHint}
+${relocationHint}
 ${strengthHint}
 ${narrativeRules}
 ${answerTypeHint}
