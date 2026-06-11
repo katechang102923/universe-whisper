@@ -206,9 +206,37 @@ const INVESTMENT_KEYWORDS = [
   "適合進場", "適合出場",
 ];
 
+// ── 生活／居住決策關鍵字（買房/租屋/搬家/店面/地點/外地）──────────────────────
+// 這類問題雖涉及金錢，但不是股票投資題，禁止套用「進場/加碼/停損/獲利/訊號」等市場語氣。
+const HOUSING_LIFE_KEYWORDS = [
+  "買房", "買屋", "購屋", "這間房", "這房子", "房子", "套房", "公寓", "華廈", "透天",
+  "租屋", "租這間", "租房", "承租", "退租",
+  "搬家", "搬到", "搬去", "換房", "換屋", "遷居", "搬遷",
+  "外地", "外縣市", "換城市", "去外地", "到外地", "異地",
+  "居住", "住處", "住哪", "定居",
+  "店面", "開店", "展店", "店租", "這個地點", "這地點", "選址", "做生意的地點",
+];
+
+// 明確問「房產投資/出租投報/會不會漲」時，才回到投資語境
+const HOUSING_INVEST_KEYWORDS = [
+  "投資", "投報", "報酬率", "報酬", "會不會漲", "會漲", "增值", "轉手", "包租",
+  "出租", "買來投資", "投資出租", "房地產投資", "房產投資", "賺",
+];
+
+/** 判斷是否為生活／居住決策題（買房/租屋/搬家/店面/外地），且非房產投資題 */
+function isHousingLifeQuestion(question: string): boolean {
+  if (!question) return false;
+  const isHousing = HOUSING_LIFE_KEYWORDS.some((k) => question.includes(k));
+  if (!isHousing) return false;
+  const isHousingInvest = HOUSING_INVEST_KEYWORDS.some((k) => question.includes(k));
+  return !isHousingInvest;
+}
+
 /** 判斷是否為投資/股市問題（finance 的子類別，需要市場導向解讀） */
 function isInvestmentQuestion(question: string): boolean {
   if (!question) return false;
+  // 買房/租屋/搬家等生活決策不算股票投資（避免「該買」等字誤判成進場題）
+  if (isHousingLifeQuestion(question)) return false;
   return INVESTMENT_KEYWORDS.some((k) => question.includes(k));
 }
 
@@ -421,7 +449,7 @@ const YES_NO_KEYWORDS = [
   // 業績 / 簽約 / 成交結果類
   "會簽約", "簽約嗎", "會不會簽約", "簽得成嗎", "會不會下單", "會下單",
   // 財運 / 投資結果類（會不會賺、破財、加薪、收入、拿得回來）
-  "會賺錢", "賺錢嗎", "會不會賺", "會不會賺錢", "賺得到嗎", "有沒有賺頭",
+  "會賺錢", "賺錢嗎", "會賺嗎", "賺嗎", "會不會賺", "會不會賺錢", "賺得到嗎", "有沒有賺頭",
   "拿得回來", "拿得回來嗎", "拿得回嗎", "要得回來嗎", "討得回來嗎",
   "會破財", "破財嗎", "會不會破財", "會加薪", "加薪嗎", "會不會加薪",
   "收入會增加", "收入增加嗎", "會不會漲薪",
@@ -455,6 +483,9 @@ const CHOICE_KEYWORDS = [
   "適合我嗎", "適合我", "要不要買房", "適合買房", "適合搬家嗎", "該不該買",
   "該不該搬", "要不要去外地", "要不要合作", "該不該合作", "值得買嗎",
   "要不要跟他合作", "適合去", "該攤牌嗎", "該不該攤牌",
+  // 居住 / 店面決策（涵蓋「適合自住嗎」「適合開店嗎」「適合租嗎」）
+  "適合自住", "適合居住", "適合住", "適合開店", "適合租", "適合承租",
+  "適合做生意", "這個地點適合", "適合開", "要不要租", "要不要搬",
 ];
 
 const ANALYSIS_KEYWORDS = [
@@ -663,6 +694,52 @@ function getStrengthHint(cards: TarotReadingCard[]): string {
 本次牌面（${names}）出現明顯的負面強牌，且正面支撐不足。結論力度必須跟著下修：
 請用「難度偏高／目前不太看好／短期不樂觀」這類說法，不要把明顯偏弱的牌還含糊講成「有機會／仍有變數／需要觀察」。
 但不要恐嚇或斷言絕對的壞結果，仍保留「調整後仍可能改善」的空間。`;
+}
+
+/** 生活／居住決策題（買房/租屋/搬家/店面/外地）— 禁止股票投資語氣 */
+function getHousingChoiceHint(question: string): string {
+  if (!isHousingLifeQuestion(question)) return "";
+  return `\n【生活／居住決策題 — 嚴禁投資語氣（最高優先）】
+使用者問的是「${question}」，這是買房／租屋／搬家／店面／外地這類生活決策，不是股票投資題。
+✗ 整段解讀絕對禁止出現這些市場用語：進場、加碼、減碼、停損、停利、短線、波段、獲利、賺、投資標的、訊號、等訊號、報酬率、風險報酬、資金丟進去、回本、滿倉、部位、控倉。
+✓ 請改用生活決策語境：居住需求、生活成本、貸款／租金壓力、財務負擔、地點與交通條件、生活機能、環境適應、長期穩定度、家庭需求、合約細節、後續維護成本、是否適合現在決定。
+第一句仍要直接給選擇傾向（可以考慮／需要再觀察／暫時不建議／風險偏高），再說明要先確認哪些實際條件。
+（例外：只有當使用者明確問「房子會不會漲／投報率／買來投資／轉手賺錢」時，才允許投資語境。）`;
+}
+
+// ── 敘事模式輪替（每次隨機選一種語氣，避免所有回答長得一樣）──────────────────
+const NARRATIVE_MODES: { key: string; desc: string }[] = [
+  { key: "觀察型",     desc: "像坐在你對面觀察，點出你自己可能沒留意到的細節與慣性。" },
+  { key: "畫面型",     desc: "用一個具體的生活情境／畫面把狀態說清楚（畫面放在第一句之後，不可用畫面開場）。" },
+  { key: "朋友聊天型", desc: "像熟朋友跟你講白話，語氣直接、口語、不端架子。" },
+  { key: "直球分析型", desc: "條理清楚地拆解：為什麼是這個判斷、哪張牌造成、下一步怎麼辦。" },
+  { key: "提問型",     desc: "用一兩個切中要害的反問把你帶到重點（反問放在答案之後，不可用問句開場）。" },
+];
+
+function pickNarrativeMode(): { key: string; desc: string } {
+  return NARRATIVE_MODES[Math.floor(Math.random() * NARRATIVE_MODES.length)]!;
+}
+
+/** 降低模板感的品質規則：敘事模式輪替、去模板、逆位多面向、結論給根據、牌與牌互動敘事 */
+function getNarrativeRules(isThree: boolean, mode: { key: string; desc: string }): string {
+  const base = `\n【降低 AI 套公式感 — 本次最高品質要求】
+0.（敘事模式輪替）本次請採「${mode.key}」語氣：${mode.desc}
+   不要每題都長一樣——這次明顯走「${mode.key}」的味道。但無論哪種模式，第一段（第一句結論）一律是直接回答問題的判斷，禁止用故事、畫面、比喻、反問或心靈雞湯開場；模式只影響「第一句之後」的展開方式。
+1.（宇宙偷偷話禁止套模板）questionFocus 必須由「這次抽到的牌 ＋ 使用者問題類型 ＋ 牌面情緒」三者共同生成，不可以是一句換個題目也能用的萬用句。
+   嚴格禁止這些固定模板：「有些路不是不能走，而是要先學會不再勉強自己」「答案會在慢下來後更清楚」「先不要急著決定」「宇宙正在提醒你」。
+   同一張牌在不同問題下這句要明顯不同：感情題偏情緒與互動、工作／離職題偏選擇與壓力、財運／投資題偏風險與節奏。
+2.（逆位不要只會寫卡住）逆位牌不要每張都用「卡住／延遲／阻礙／不順」。請依牌義改用更精準的面向：過度投入、過度控制、不願放手、反覆循環、逃避面對、失衡、執著、補償心理、情緒內耗、能量耗損。
+   例：錢幣六逆位不要只寫「互動失衡」，可寫「習慣一直給，卻忘了讓自己也被回饋」。
+3.（結論要有根據）第一句直接回答問題後，後面必須說明「為什麼」——是哪張牌帶出阻力、哪張牌保留了空間，讓判斷看得出是從牌面推導出來的，不要只丟一句「有機會」就結束。
+4.（每種問題專屬語氣，禁止共用一套）感情→情緒與互動；工作→執行與資源；投資→風險與報酬；買房→財務負擔、生活機能、長期規劃；簽約→條件、談判、流程；考試→準備程度、穩定度、臨場表現；離職→轉職風險、下一步是否成形。
+5.（收尾金句不要像勵志語錄）gentleReminder 與 blessing 必須跟這次牌陣內容直接相關，禁止「相信自己／順其自然／宇宙會給你答案／一切都是最好的安排」這類萬用語錄，也不要和 questionFocus 講同一個意思。
+   例（買房）：「別被怕買不到推著走，算清楚比搶得快重要。」例（感情）：「與其猜他在想什麼，不如看他願不願意做什麼。」例（業績）：「把最有機會成交的先談完，比追全部名單有效。」`;
+  if (!isThree) return base;
+  return `${base}
+6.（牌陣必須互動，不能各講各的）不要「過去牌講完、現在牌講完、未來牌講完就收工」。請寫成因果鏈：先解釋牌A，再解釋牌B並說明A如何影響B，再解釋牌C並說明B如何推動C。
+   反例（禁止）：「寶劍六逆位代表延遲。命運之輪逆位代表不穩定。權杖五代表競爭。」
+   正例：「前面一直沒解決的事拖進了現在，命運之輪逆位讓整體節奏失控，所以未來才會冒出權杖五那種競爭與拉扯。」
+   overallSummary 的「為什麼會這樣」與每張牌的「對你的問題代表」要彼此呼應，讀起來像同一個故事，而不是三段各說各話。`;
 }
 
 const FOCUS_KEYWORDS: Record<Exclude<QuestionFocusPrimary, "general">, string[]> = {
@@ -1432,15 +1509,36 @@ function getDirectConclusionSentence(
 
   // ── 選擇型：偏向適合 / 可以考慮 / 暫時不建議 / 風險偏高 ──────────────────────
   if (answerType === "choice") {
+    // 生活／居住決策（買房/租屋/搬家/店面/外地）— 嚴禁投資語氣，先於投資判斷
+    if (isHousingLifeQuestion(q)) {
+      if (/店面|開店|展店|做生意|地點|選址/.test(q)) {
+        return hasReversed
+          ? "這個地點目前偏向需要再評估，先把人流、租金、客群和長期經營成本算清楚，別只憑第一眼的直覺。"
+          : "這個地點可以考慮，但條件要再看細一點：人流、租金、客群和長期經營成本，比一開始的直覺更重要。";
+      }
+      if (/外地|外縣市|換城市|異地/.test(q)) {
+        return hasReversed
+          ? "去外地目前偏向需要再觀察，先把工作機會、收入與生活適應準備好，再決定要不要動。"
+          : "去外地可以考慮，但別太倉促，先確認工作機會、收入和生活適應，準備好了再行動。";
+      }
+      if (/租/.test(q)) {
+        return hasReversed
+          ? "這間房子目前偏向再觀察，先把租金負擔、生活機能和合約細節確認清楚，別急著簽。"
+          : "這間房子可以考慮租下來，但先把租金負擔、生活機能與合約細節看清楚再決定。";
+      }
+      if (/搬家|搬到|搬去|遷居|搬遷/.test(q)) {
+        return hasReversed
+          ? "搬家目前偏向再觀察，別只看當下喜歡，新環境的生活成本和適應問題要先想清楚。"
+          : "搬家可以考慮，但別太倉促，新環境的生活成本、通勤和適應狀況先評估過再決定。";
+      }
+      return hasReversed
+        ? "這間房子可以再考慮，但目前不建議急著決定，貸款壓力、生活成本與後續維護條件都還要算清楚。"
+        : "這間房子可以考慮，但現在不必急著下決定，先把財務負擔、交通生活機能與合約細節確認清楚再出手。";
+    }
     if (isInvest || /買股|買這檔|這檔|加碼|要不要買進/.test(q)) {
       return hasReversed
         ? "這筆投資風險偏高，偏向暫時不建議衝動進場，先觀望等訊號明確再說。"
         : "這筆投資可以考慮，但別急著重壓，先控制部位、分批進場比較穩。";
-    }
-    if (/買房|房子|搬家|外地|移居|旅行|租屋/.test(q)) {
-      return hasReversed
-        ? "這個選擇目前風險偏高，偏向再觀察，先把財務壓力與實際條件算清楚再決定。"
-        : "這個選擇可以考慮，但別太倉促，先把財務壓力與實際條件算清楚再行動。";
     }
     if (/合作|合夥/.test(q)) {
       return hasReversed
@@ -1500,53 +1598,81 @@ function getDirectConclusionSentence(
     return "這組牌顯示目前的卡點不在表面，而在一個還沒被正視的核心原因。";
   }
 
-  // ── 時間型：時間區間，不給精確日期 ─────────────────────────────────────────
+  // ── 時間型：時間區間，不給精確日期（依場景換語境）──────────────────────────
   if (answerType === "timing") {
+    if (f === "love" || loveCtx || /脫單|桃花|對象|曖昧|聯絡|復合/.test(q)) {
+      return hasReversed
+        ? "短期內桃花跡象還不明顯，比較有機會落在未來一到三個月，先把生活過得有光，互動機會自然會多。"
+        : "近期已經開始有一些互動的苗頭，未來一到三個月較有機會遇到對的人，保持開放、別急著定義。";
+    }
+    if (f === "career" || /工作|職缺|錄取|offer|轉職/.test(q)) {
+      return hasReversed
+        ? "短期內機會還不明朗，較可能落在未來一到三個月，這段時間先把履歷和方向準備好。"
+        : "近期開始有一些苗頭，未來一到三個月較有機會有明確的工作消息，先備好條件再等時機。";
+    }
     return hasReversed
-      ? "這組牌顯示短期內跡象還不明顯，較有機會落在未來一到三個月後。"
-      : "這組牌顯示短期內已開始有起色，未來一到三個月較有機會看到明確進展。";
+      ? "這件事短期內跡象還不明顯，較有機會落在未來一到三個月後，先把眼前能做的做好。"
+      : "這件事短期內已開始有起色，未來一到三個月較有機會看到明確進展。";
   }
 
-  // ── 結果型：牌面強弱決定力度（強→很有機會；弱→難度偏高；中→有機會）─────────────
+  // ── 結果型：依「問題場景 × 牌面強弱」客製第一句，禁止跨場景套句 ─────────────────
   if (answerType === "result") {
-    // 依問題子類別取四檔語氣：strong / weak / 中性正向(posMild) / 中性偏弱(negMild)
+    // 場景判斷（順序：面試 > 考試 > 投資 > 簽約 > 業績 > 感情 > 其他）
+    const isInterview = /面試/.test(q) || (/錄取|會不會上|有沒有上|上不上得了/.test(q) && !isExam);
+    const isDeal      = /簽約|這張單|這筆案子|案子會成|客戶會不會|客戶最後|下單|訂單|成交|談成|報價會過|會不會接這/.test(q);
+    const isTarget    = /業績|達標|年度目標|月目標|這個月業績|下半年業績|本季業績|銷售目標|KPI/.test(q);
     const cat =
+      isInterview ? "interview" :
       isExam ? "exam" :
       (isInvest || /投資|股票|這檔|賺錢|破財|拿得回來|要得回來|討得回來/.test(q)) ? "invest" :
+      isDeal ? "deal" :
+      isTarget ? "target" :
       (f === "love" || /復合|在一起|結婚/.test(q)) ? "love" :
-      (f === "career" || f === "finance" || /業績|達標|成交|簽約|錄取/.test(q)) ? "biz" :
+      (f === "career" || f === "finance") ? "target" :
       "general";
 
     const TEXT: Record<string, { strong: string; weak: string; posMild: string; negMild: string }> = {
+      target: {
+        strong:  "這個月業績很有機會補上來，牌面站在你這邊，把最後幾筆名單推進就能把數字做出來。",
+        weak:    "照目前的跟進節奏，業績達標難度偏高，差距得靠更精準的客戶推進，別再平均灑力氣。",
+        posMild: "業績有機會補上來，但關鍵在最後幾筆名單能不能推進，先挑成交率高的集中跟。",
+        negMild: "數字摸得到邊，但差距不小，得先把最有機會成交的那幾筆顧好，才追得回來。",
+      },
+      deal: {
+        strong:  "這張單很有機會簽下來，牌面偏向順利，把條件和時程確認好就能推到拍板。",
+        weak:    "這張單短期內不太看好，客戶顧慮和條件還沒解開，硬催反而容易把對方推遠。",
+        posMild: "簽約有機會，但下一步要把報價、時程和對方真正擔心的點講清楚，單才推得動。",
+        negMild: "這張單還沒死，但目前卡在條件確認和客戶顧慮沒完全解開，先別急著逼對方拍板。",
+      },
+      interview: {
+        strong:  "這次錄取機會偏高，牌面對你有利，把自己的優勢講清楚，臨門一腳問題不大。",
+        weak:    "這次錄取難度偏高，競爭和職缺條件還沒站在你這邊，最後評估前得把差距補起來。",
+        posMild: "錄取有機會，但還不是穩上，關鍵在主管最後怎麼比人選，把優勢講清楚會加分。",
+        negMild: "不是沒機會，只是職缺條件和對方的評估還沒定下來，主管心裡那把尺還在比。",
+      },
       exam: {
-        strong:  "這次考試機率偏高，牌面趨勢明顯有利，維持目前節奏，穩穩過關的把握很大。",
-        weak:    "這次考試短期不太看好，難度偏高，若不補強弱項，很可能差臨門一腳。",
-        posMild: "這組牌顯示考試仍有機會過關，但目前準備還不夠穩，接下來要把弱項補起來才比較安全。",
-        negMild: "這組牌目前不太看好一次就過，準備方向容易分散，若沒補強弱項，過關難度會偏高。",
+        strong:  "這次考試過關機會偏高，牌面穩，維持節奏別大意，分數站得住。",
+        weak:    "這次過關難度偏高，弱項若不補，光靠臨場運氣很容易差幾分。",
+        posMild: "這次考試有機會過關，但準備穩定度還要再補強，弱項先補起來比較保險。",
+        negMild: "分數摸得到門檻，但不太穩，粗心和臨場狀態是變數，不能靠運氣硬撐。",
       },
       invest: {
-        strong:  "這筆牌面偏強，趨勢明顯有利，但仍建議分批、控好部位，別追在最高點。",
-        weak:    "這筆牌面偏弱，短期不樂觀，目前不適合進場，先觀望避開下跌風險。",
-        posMild: "這筆牌面尚可，有回報空間但不是穩賺，建議控制部位、分批進場，別重壓。",
-        negMild: "這筆牌面偏弱，短線風險偏高，目前不太看好，不適合衝動進場，先觀望等訊號明確。",
-      },
-      biz: {
-        strong:  "這件事機率偏高，牌面趨勢明顯有利，把握現在的動能，很有機會直接拿下。",
-        weak:    "這件事達標難度偏高、短期不樂觀，得先解決掉最大的卡點，再談衝刺。",
-        posMild: "這組牌顯示有機會達標，但過程不輕鬆，要把資源集中在最有把握的地方。",
-        negMild: "這組牌顯示照目前節奏，達標難度偏高，得先把力氣集中在勝率最高的幾個目標上。",
+        strong:  "這筆牌面偏多、有獲利空間，但仍建議分批、控好資金，別追在最高點。",
+        weak:    "這筆短期風險偏高，目前不太看好，不適合重壓，先觀望避開波動。",
+        posMild: "獲利不是沒可能，但短期波動不小，控管資金、別重壓比追高更重要。",
+        negMild: "牌面偏弱、短期風險偏高，進出節奏一亂就容易把利潤吐回去，先保守。",
       },
       love: {
-        strong:  "這件事很有機會，牌面趨勢明顯有利，主動一點反而能加速，不用一直等。",
-        weak:    "這件事短期不太看好，難度偏高，先別急著把期待全壓上去，給彼此一點空間。",
-        posMild: "這組牌顯示仍有機會，只是進展速度不會太快，需要實際行動推一把。",
-        negMild: "這組牌顯示目前進展偏慢，機會還在，但短期內不容易有明確結果。",
+        strong:  "復合機會其實不小，關係溫度還在，對方也有靠近的意願，把舊問題談開就有機會。",
+        weak:    "短期內復合不太樂觀，對方主動性偏弱，舊問題沒解開前很難直接回到穩定。",
+        posMild: "復合不是完全沒機會，但短期內對方主動性偏弱，需要有人先把話說開。",
+        negMild: "這段感情還沒完全斷，只是目前缺少真正把話說開的契機，進展會偏慢。",
       },
       general: {
-        strong:  "這件事很有機會，牌面趨勢明顯有利，順著現在的動能去做就對了。",
+        strong:  "這件事很有機會，牌面趨勢明顯站在你這邊，順著現在的動能去做就對了。",
         weak:    "這件事目前不太看好、難度偏高，得先把最大的那個卡點處理掉再說。",
-        posMild: "這組牌顯示有機會，但要先把最關鍵的一件事做到位。",
-        negMild: "這組牌顯示目前難度偏高，機會還在，但要先補上那個關鍵的缺口。",
+        posMild: "這件事有機會，但要先把最關鍵的一步做到位，不能只等它自己成。",
+        negMild: "目前難度偏高，機會還在，但得先補上那個一直沒解決的關鍵缺口。",
       },
     };
     const t = TEXT[cat]!;
@@ -1648,39 +1774,118 @@ function getFallbackNext3To7Days(focus: QuestionFocus, question = ""): string {
   }
 }
 
-function getFallbackGentleReminder(focus: QuestionFocus, question = ""): string {
-  switch (focus.primary) {
-    case "finance":
-      if (isInvestmentQuestion(question)) {
-        return `市場走勢沒有人能精準預測，塔羅給的是這個時間點的牌面傾向，不是保證。這段時間最重要的事：控制倉位，不讓單一判斷影響整體資金。情緒進場和出場是散戶最常見的虧損來源，先把停損點設好，讓紀律替你做決定。`;
-      }
-      return `這段時間先讓錢的流向變清楚，比急著賺更多重要。當你開始知道錢去哪裡，財務才會慢慢穩下來。財務問題很少需要大動作才能改善，有時候從一件小事開始整理，反而最有效。`;
-    case "career":
-      return `你不需要今晚就把所有未來想清楚。先看清楚目前手上能掌握的資源，再決定下一步要往哪裡走。工作上的卡關，常常是現在的位置和你真正想要的還有一段距離——知道這件事，就已經開始在改變了。`;
-    case "love":
-      return `如果這段關係讓你心動，也讓你不安，今晚先不要急著逼自己選邊站。真正適合你的人，不會只讓你猜，而會慢慢讓你感覺安定。觀察對方的行動，比反覆揣測對方的心意，要清楚得多。`;
-    case "relationship":
-      return `關係裡的誤解，很多時候不是壞心，只是大家都習慣不說出口。如果你覺得距離在拉大，先試著用一句話把你的感受說出來——不用說得完整，說真實的就好。`;
-    case "health":
-      return `身體給你的訊號，值得被認真對待。不一定要馬上改變所有習慣，先找出一個讓你持續消耗的來源，能減少一點是一點——這比同時改變很多事更容易撐下去。`;
-    default:
-      return `今晚先把最吵的念頭放下，有些事可以明天再想。從一件你能控制的小事開始行動，其他的事情會跟著慢慢清晰。`;
+// ── 句庫去重：依「問題風味」選不同的宇宙偷偷話／提醒／祝福，避免同焦點問題撞句 ──────
+// 這只是「選不同的人話文字」的內部工具，不改動任何分類/路由/signal 邏輯。
+type QuestionFlavor =
+  | "love_feel" | "love_reunite" | "love_action" | "love_single"
+  | "biz_target" | "biz_deal" | "invest" | "housing" | "exam"
+  | "career_change" | "career_general" | "finance_general"
+  | "relationship" | "health" | "general";
+
+/** 依問題內容挑一個「文字風味」鍵（重用既有偵測，不新增分類系統）*/
+function getQuestionFlavor(question: string, focus: QuestionFocus): QuestionFlavor {
+  const q = question || "";
+  const at = detectAnswerType(q);
+  if (isHousingLifeQuestion(q)) return "housing";
+  if (isExamQuestion(q) || /面試|錄取|口試|複試/.test(q)) return "exam";
+  // 健康早於投資：避免「壓力（身心）」撞到投資關鍵字「壓力（壓力區）」而誤選文案
+  if (focus.primary === "health" || /壓力|睡眠|失眠|疲勞|身心|作息|焦慮|健康/.test(q)) return "health";
+  if (isInvestmentQuestion(q) || /投資|股票|這檔|報酬|賺/.test(q)) return "invest";
+  if (isCareerChangeQuestion(q) || /離職|轉職|換工作|跳槽/.test(q)) return "career_change";
+  if (isBusinessTargetQuestion(q)) {
+    return /簽約|客戶|成交|下單|訂單|報價|談成/.test(q) ? "biz_deal" : "biz_target";
   }
+  const loveCtx = /復合|結婚|交往|分手|告白|曖昧|追求|挽回|聯絡|脫單|喜歡|對方|前任|心意|在一起|喜不喜歡|愛不愛/.test(q);
+  if (focus.primary === "love" || loveCtx) {
+    if (at === "timing" || /脫單|什麼時候|何時/.test(q)) return "love_single";
+    if (at === "choice") return "love_action";
+    if (at === "result" || /復合|在一起|結婚|會不會/.test(q)) return "love_reunite";
+    return "love_feel";
+  }
+  if (focus.primary === "career") return "career_general";
+  if (focus.primary === "finance") return "finance_general";
+  if (focus.primary === "relationship") return "relationship";
+  return "general"; // health 已於前面（壓力/睡眠/身心）提早處理
+}
+
+/** 宇宙偷偷話（單張 fallback 用）：依風味 × 牌面情緒（正/逆）給不同人話 */
+function getFlavorQuestionFocus(flavor: QuestionFlavor, isUpright: boolean): string {
+  const M: Record<QuestionFlavor, [string, string]> = {
+    // [正位偏向, 逆位偏向]
+    love_feel:     ["對方其實有在意你，只是還沒打算把態度說得很明白。", "你一直在讀對方的反應，但越解讀，反而越看不清他真正的心。"],
+    love_reunite:  ["你心裡其實還留著位置，只是不確定對方走的是不是同一個方向。", "你想要的不是回到過去，而是這次能不能真的不一樣。"],
+    love_action:   ["你想主動，又怕主動之後換來的是更明顯的冷淡。", "你不是不敢開口，而是還在等一個讓自己不那麼狼狽的時機。"],
+    love_single:   ["你嘴上說隨緣，心裡其實已經在偷偷期待了。", "你不是遇不到人，而是還在從上一段裡慢慢走出來。"],
+    biz_target:    ["你知道數字還差一段，只是不確定該衝量還是顧好手上這幾個。", "你有點累了，業績的壓力讓你開始懷疑是不是方法出了問題。"],
+    biz_deal:      ["這筆你很想成，但又怕太主動會把對方推遠。", "對方遲遲不點頭，你心裡其實已經在猜是不是哪個條件卡住了。"],
+    invest:        ["你想知道能不能進，但其實更怕的是買了就套。", "你已經有點被情緒帶著走，越想凹回來，越容易做錯決定。"],
+    housing:       ["你對這個地方有感覺，只是那筆長期的負擔讓你不敢太快點頭。", "你怕的不是買貴，而是買了之後生活被綁得太緊。"],
+    exam:          ["你準備了，但心裡那個『會不會還是不夠』的聲音一直在。", "你不是沒讀，而是讀得有點散，抓不到重點讓你更焦慮。"],
+    career_change: ["你想走，只是還沒確定外面那條路是不是真的比較好。", "你受夠的不一定是工作本身，而是那種一直耗著的感覺。"],
+    career_general:["你其實知道自己要什麼，只是不確定現在是不是動的時機。", "你比你以為的更清楚問題在哪，只是還不想正面承認那個答案。"],
+    finance_general:["你已經很努力了，真正需要的是把錢的流向看清楚。", "財務上的焦慮，多半來自一個你一直繞開、沒去面對的選擇。"],
+    relationship:  ["你已經感覺到有些話該說了，只是不確定對方願不願意聽。", "你一直在衡量值不值得開口，那個遲疑本身就是答案。"],
+    health:        ["你嘴上說還撐得住，身體其實已經在跟你抗議了。", "你不是不知道要休息，而是一直把自己排在所有事情的最後。"],
+    general:       ["你已經想得夠久了，現在需要的是一個方向，不是更多思考。", "有件事你一直繞著走，先把它說清楚，其他才會跟著清楚。"],
+  };
+  const [up, down] = M[flavor];
+  return isUpright ? up : down;
+}
+
+/** 收尾金句（gentleReminder）依風味給不同人話，避免撞句 */
+function getFlavorGentleReminder(flavor: QuestionFlavor): string {
+  const M: Record<QuestionFlavor, string> = {
+    love_feel:     "與其一直猜他的心意，不如看他願不願意為你做一點具體的事——行動比表情誠實。",
+    love_reunite:  "要不要再續，不急著今天決定。先看對方是回到關係，還是只是回到習慣。",
+    love_action:   "主動沒有錯，但把姿態放輕一點：先丟一個輕鬆的話題，比一上來就攤牌更容易有回應。",
+    love_single:   "緣分快不來，但你可以先把生活過得有光，對的人通常是在你發亮的時候靠近的。",
+    biz_target:    "別再廣撒網了。把最有機會成交的那幾個先顧好，比追一堆不確定的名單實在。",
+    biz_deal:      "對方沒簽，多半是還有一個顧慮沒被解決。與其催，不如直接問他最在意的是哪一點。",
+    invest:        "先把能承受的最大虧損想清楚，再決定要不要進。紀律會替你擋掉大部分的衝動。",
+    housing:       "別被『現在不買就沒了』的急迫感推著走。把每月實際負擔算到底，安心比划算更重要。",
+    exam:          "與其再讀新的，不如把錯過的、不熟的補起來——穩住基本盤比衝難題更能保分。",
+    career_change: "離開或留下都可以，但先確認你是走向想要的，而不是只想逃離現在的。",
+    career_general:"先看清楚手上能掌握的資源，再決定往哪走。方向比速度重要。",
+    finance_general:"先讓錢的流向變清楚，比急著賺更多有用。從一件小事開始整理就好。",
+    relationship:  "關係裡的誤會很少自己消失。用一句真實的話先開口，比一直憋著更能找到出路。",
+    health:        "先找出最消耗你的那一件事，減少一點是一點，比一次改變全部更撐得住。",
+    general:       "今晚先把最吵的念頭放下，從一件你能控制的小事開始，其他會慢慢清楚。",
+  };
+  return M[flavor];
+}
+
+/** 祝福句（blessing）依風味給不同人話，避免財運/工作/感情/投資撞同一句 */
+function getFlavorBlessing(flavor: QuestionFlavor): string {
+  const M: Record<QuestionFlavor, string> = {
+    love_feel:     "願你喜歡的人，不只讓你心動，也願意讓你安心。",
+    love_reunite:  "願這段關係無論走向哪裡，都讓你越來越清楚自己要的是什麼。",
+    love_action:   "願你願意主動的那份心意，遇到一個值得、也接得住的人。",
+    love_single:   "願對的人出現時，你剛好也準備好把心打開。",
+    biz_target:    "願你的每一分力氣，都換成看得見的成績。",
+    biz_deal:      "願你談的每一筆，都在對的條件下順利落地。",
+    invest:        "願你進退都有紀律，賺的時候不貪，虧的時候不慌。",
+    housing:       "願你選的那個家，住起來安心，也撐得起往後的日子。",
+    exam:          "願你讀過的每一頁，都在關鍵的那一刻幫上你。",
+    career_change: "願你的去留，都是想清楚之後的選擇，而不是逃。",
+    career_general:"願你的能力被看見，也願你走到更適合自己的位置。",
+    finance_general:"願你的收入與支出，慢慢走向安穩與自由。",
+    relationship:  "願你在複雜的關係裡，也記得自己值得被好好對待。",
+    health:        "願你把照顧自己排進每一天，哪怕只是一件很小的事。",
+    general:       "願你在不確定裡，也能一步一步走回自己的節奏。",
+  };
+  return M[flavor];
+}
+
+function getFallbackGentleReminder(focus: QuestionFocus, question = ""): string {
+  // 投資題保留風險紀律版；其餘走風味句庫去重
+  if (focus.primary === "finance" && isInvestmentQuestion(question)) {
+    return `市場走勢沒有人能精準預測，塔羅給的是這個時間點的牌面傾向，不是保證。這段時間最重要的事：控制部位，不讓單一判斷影響整體資金。情緒進出是最常見的虧損來源，先把能承受的最大虧損想清楚，讓紀律替你做決定。`;
+  }
+  return getFlavorGentleReminder(getQuestionFlavor(question, focus));
 }
 
 function getFallbackBlessing(focus: QuestionFocus, question = ""): string {
-  switch (focus.primary) {
-    case "finance":
-      if (isInvestmentQuestion(question)) {
-        return `願你的每一筆操作都有紀律，賺的時候不貪，虧的時候不慌。`;
-      }
-      return `願你的每一份收入與支出，都慢慢走向安穩與自由。`;
-    case "career":       return `願你的努力被看見，也願你有勇氣選擇真正適合自己的路。`;
-    case "love":         return `願你喜歡的人，不只讓你心動，也能讓你安心。`;
-    case "relationship": return `願你在面對複雜的關係時，也能記得：你值得被清楚、被溫柔地對待。`;
-    case "health":       return `願你慢慢把照顧自己排進每天的行程裡，哪怕只是一件小事，也算數。`;
-    default:             return `願你在不確定裡，也能一步一步走回自己的節奏。`;
-  }
+  return getFlavorBlessing(getQuestionFlavor(question, focus));
 }
 
 const INVESTMENT_DISCLAIMER = "以上為塔羅牌面參考，不構成投資建議，實際操作仍請自行評估風險。";
@@ -1733,23 +1938,10 @@ function buildSingleCardFallback(
       : `${card.name}逆位出現，代表這個面向目前受到阻礙，先看清楚是什麼讓自己動不了，才能找到出路。`));
 
   // 宇宙偷偷話：直接回應使用者心情，不複述問題
-  const questionFocusText = (() => {
-    if (focus.primary === "love") return isUpright
-      ? "你其實不是不想靠近，只是害怕期待落空，又要自己一個人收拾。"
-      : "你一直在等對方給一個明確的訊號，但同時也在懷疑自己是不是等錯了。";
-    if (focus.primary === "career") return isUpright
-      ? "你知道自己想要什麼，只是不確定現在是不是對的時機。"
-      : "你其實比你以為的更清楚問題在哪裡，只是不想正面承認那個答案。";
-    if (focus.primary === "finance") return isUpright
-      ? "你可能已經很努力了，但真正需要的是把錢的流向看清楚，才能知道哪裡可以動。"
-      : "財務上的焦慮，很可能是有些選擇一直在迴避，把那件事先面對，會比繼續繞開它輕鬆。";
-    if (focus.primary === "relationship") return isUpright
-      ? "你已經感覺到有些話需要說，只是不確定對方願不願意聽。"
-      : "這段關係裡，你一直在衡量值不值得開口——其實那個遲疑本身就是答案。";
-    return question
-      ? "你已經想了夠久了，現在需要的是一個方向，不是更多的思考。"
-      : "你把問題放在心裡，這張牌接住了你此刻最需要被看見的部分。";
-  })();
+  // 宇宙偷偷話：依「問題風味 × 牌面情緒」挑不同人話，避免同焦點問題撞同一句
+  const questionFocusText = question
+    ? getFlavorQuestionFocus(getQuestionFlavor(question, focus), isUpright)
+    : "你把問題放在心裡，這張牌接住了你此刻最需要被看見的部分。";
 
   // cardMessage：只說牌義，不提問題
   const cardMessage = deduplicateSentences(
@@ -2333,8 +2525,12 @@ function buildSingleCardPrompt(
   const restrictedHint = getRestrictedHint(question);
   // 健康／身心題：要求具體生活層面分析，不可只說「累/休息」
   const healthDepthHint = getHealthDepthHint(focus, question);
+  // 生活／居住決策題：禁止股票投資語氣
+  const housingHint = getHousingChoiceHint(question);
   // 牌面強弱 → 結論力度
   const strengthHint = getStrengthHint([card]);
+  // 降低模板感：敘事模式輪替、宇宙偷偷話去模板、逆位多面向、結論給根據
+  const narrativeRules = getNarrativeRules(false, pickNarrativeMode());
 
   // 回答類型：選擇/分析/時間題用對應結論語氣（結果型沿用下方 yesNoHint）
   const answerType    = detectAnswerType(question);
@@ -2448,7 +2644,9 @@ ${topicGuidance}
 ${shortHint}
 ${restrictedHint}
 ${healthDepthHint}
+${housingHint}
 ${strengthHint}
+${narrativeRules}
 ${answerTypeHint}
 ${yesNoHint}
 ${investmentHint}
@@ -2550,8 +2748,12 @@ function buildThreeCardPrompt(
   const restrictedHint = getRestrictedHint(question);
   // 健康／身心題：要求具體生活層面分析，不可只說「累/休息」
   const healthDepthHint = getHealthDepthHint(focus, question);
+  // 生活／居住決策題：禁止股票投資語氣
+  const housingHint = getHousingChoiceHint(question);
   // 牌面強弱 → 結論力度
   const strengthHint = getStrengthHint(cards);
+  // 降低模板感：敘事模式輪替、去模板、逆位多面向、結論給根據、牌與牌互動敘事
+  const narrativeRules = getNarrativeRules(true, pickNarrativeMode());
 
   // 回答類型：選擇/分析/時間題用對應結論語氣（結果型沿用下方 yesNoHint）
   const answerType     = detectAnswerType(question);
@@ -2638,7 +2840,9 @@ ${topicGuidance}
 ${shortHint}
 ${restrictedHint}
 ${healthDepthHint}
+${housingHint}
 ${strengthHint}
+${narrativeRules}
 ${answerTypeHint}
 ${threeCardYesNoHint}
 ${threeCardInvestmentHint}
