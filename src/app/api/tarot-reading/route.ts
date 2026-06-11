@@ -1278,6 +1278,60 @@ function extractJsonString(raw: string): string {
 }
 
 /**
+ * 修復 AI 偶發產生的非標準 JSON（不改動合法 JSON，只在 JSON.parse 失敗時當作備援）。
+ * 處理兩類最常見問題：
+ *  (1) 字串內含未轉義的換行/Tab（造成 "Bad control character"）→ 用狀態機只在字串內轉義。
+ *  (2) 陣列元素或物件成員之間漏逗號（造成 "Expected ',' or ']'"）→ 結構層補逗號。
+ */
+function repairJsonString(input: string): string {
+  // ── Pass 1：只在「字串字面值內」轉義裸控制字元 ────────────────────────────────
+  let out = "";
+  let inStr = false;
+  let esc = false;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i]!;
+    if (esc) { out += ch; esc = false; continue; }
+    if (ch === "\\") { out += ch; esc = true; continue; }
+    if (ch === '"') { inStr = !inStr; out += ch; continue; }
+    if (inStr) {
+      if (ch === "\n") { out += "\\n"; continue; }
+      if (ch === "\r") { out += "\\r"; continue; }
+      if (ch === "\t") { out += "\\t"; continue; }
+    }
+    out += ch;
+  }
+  // ── Pass 2：結構層補逗號 / 去尾逗號（字串內換行已轉義，下列只會命中結構空白）──
+  out = out
+    .replace(/,(\s*[}\]])/g, "$1")       // 去除多餘尾逗號：,] 或 ,}
+    .replace(/}(\s*)\{/g, "},$1{")        // 物件陣列元素之間漏逗號：}{ → },{
+    .replace(/](\s*)\{/g, "],$1{")        // 陣列後緊接物件漏逗號（罕見）
+    .replace(/"(\s*\n\s*)"/g, '",$1"')    // 兩個字串/成員之間（跨行）漏逗號
+    .replace(/}(\s*\n\s*)"/g, '},$1"')    // 物件值後接下一個 key 漏逗號
+    .replace(/](\s*\n\s*)"/g, '],$1"');   // 陣列值後接下一個 key 漏逗號
+  return out;
+}
+
+/**
+ * 安全解析：先用原始字串 JSON.parse；失敗時才套用 repairJsonString 再試一次。
+ * 合法 JSON 永遠走第一條路徑、不被修改；只有壞掉的才嘗試修復。
+ */
+function safeJsonParse(json: string): unknown | null {
+  try {
+    return JSON.parse(json);
+  } catch {
+    try {
+      const repaired = repairJsonString(json);
+      const result = JSON.parse(repaired);
+      console.warn("[tarot-reading] JSON 解析失敗，已用 repairJsonString 修復成功");
+      return result;
+    } catch (err) {
+      console.error("[tarot-reading] JSON 修復後仍解析失敗：", err instanceof Error ? err.message : err);
+      return null;
+    }
+  }
+}
+
+/**
  * forcedCategory：用使用者選擇的分類（愛情/工作/生活）覆蓋 AI 輸出的 category，
  * 防止 AI 返回「生活綜合」等錯誤分類。
  */
@@ -1285,7 +1339,8 @@ function parseSingleCardJson(raw: string, forcedCategory?: string): SingleCardRe
   try {
     const json   = extractJsonString(raw);
     if (!json) return null;
-    const parsed = JSON.parse(json) as Partial<SingleCardReading>;
+    const parsed = safeJsonParse(json) as Partial<SingleCardReading> | null;
+    if (!parsed || typeof parsed !== "object") return null;
     if (parsed.spreadType !== "single") return null;
     if (!parsed.cardMessage || !parsed.oneLineConclusion || !parsed.todayAction) return null;
     if (forcedCategory) parsed.category = forcedCategory;
@@ -1306,7 +1361,11 @@ function parseThreeCardJson(raw: string, forcedCategory?: string): ThreeCardRead
   try {
     const json = extractJsonString(raw);
     if (!json) return null;
-    const p = JSON.parse(json) as Record<string, unknown>;
+    const p = safeJsonParse(json) as Record<string, unknown> | null;
+    if (!p || typeof p !== "object") {
+      console.warn("[tarot-reading] parseThreeCardJson: JSON 解析失敗（含修復），raw snippet:", raw.slice(0, 200));
+      return null;
+    }
 
     // cards 必須有 3 筆（核心結構）
     if (!Array.isArray(p.cards) || p.cards.length < 3) {
