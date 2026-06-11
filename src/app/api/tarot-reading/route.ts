@@ -213,8 +213,7 @@ const HOUSING_LIFE_KEYWORDS = [
   "租屋", "租這間", "租房", "承租", "退租",
   "搬家", "搬到", "搬去", "換房", "換屋", "遷居", "搬遷",
   "外地", "外縣市", "換城市", "去外地", "到外地", "異地",
-  "居住", "住處", "住哪", "定居",
-  "店面", "開店", "展店", "店租", "這個地點", "這地點", "選址", "做生意的地點",
+  "居住", "住處", "住哪", "定居", "住宅", "適合住", "適合居住",
 ];
 
 // 明確問「房產投資/出租投報/會不會漲」時，才回到投資語境
@@ -223,9 +222,22 @@ const HOUSING_INVEST_KEYWORDS = [
   "出租", "買來投資", "投資出租", "房地產投資", "房產投資", "賺",
 ];
 
-/** 判斷是否為生活／居住決策題（買房/租屋/搬家/店面/外地），且非房產投資題 */
+// ── 創業/開店問題關鍵字（獨立於居住類，回答聚焦市場/客群/商圈/營運/資金/開業時機）──
+const STARTUP_KEYWORDS = [
+  "開店", "創業", "加盟", "展店", "商圈", "店面", "營業", "開業",
+  "做生意", "擺攤", "選址", "店租", "開分店", "頂讓", "經營",
+];
+
+/** 判斷是否為創業/開店題（優先於居住與財運判斷）*/
+function isBusinessStartupQuestion(question: string): boolean {
+  if (!question) return false;
+  return STARTUP_KEYWORDS.some((k) => question.includes(k));
+}
+
+/** 判斷是否為生活／居住決策題（買房/租屋/搬家/外地），且非房產投資、非創業開店題 */
 function isHousingLifeQuestion(question: string): boolean {
   if (!question) return false;
+  if (isBusinessStartupQuestion(question)) return false; // 開店/店面歸創業類，不歸居住類
   const isHousing = HOUSING_LIFE_KEYWORDS.some((k) => question.includes(k));
   if (!isHousing) return false;
   const isHousingInvest = HOUSING_INVEST_KEYWORDS.some((k) => question.includes(k));
@@ -235,8 +247,8 @@ function isHousingLifeQuestion(question: string): boolean {
 /** 判斷是否為投資/股市問題（finance 的子類別，需要市場導向解讀） */
 function isInvestmentQuestion(question: string): boolean {
   if (!question) return false;
-  // 買房/租屋/搬家等生活決策不算股票投資（避免「該買」等字誤判成進場題）
-  if (isHousingLifeQuestion(question)) return false;
+  // 買房/租屋/搬家等生活決策、創業開店都不算股票投資（避免「該買/賺」等字誤判成進場題）
+  if (isHousingLifeQuestion(question) || isBusinessStartupQuestion(question)) return false;
   return INVESTMENT_KEYWORDS.some((k) => question.includes(k));
 }
 
@@ -696,15 +708,25 @@ function getStrengthHint(cards: TarotReadingCard[]): string {
 但不要恐嚇或斷言絕對的壞結果，仍保留「調整後仍可能改善」的空間。`;
 }
 
-/** 生活／居住決策題（買房/租屋/搬家/店面/外地）— 禁止股票投資語氣 */
+/** 居住搬遷類（買房/租屋/搬家/換房/住宅/外地）— 禁止股票投資語氣 */
 function getHousingChoiceHint(question: string): string {
   if (!isHousingLifeQuestion(question)) return "";
-  return `\n【生活／居住決策題 — 嚴禁投資語氣（最高優先）】
-使用者問的是「${question}」，這是買房／租屋／搬家／店面／外地這類生活決策，不是股票投資題。
+  return `\n【居住搬遷類問題 — 嚴禁投資語氣（最高優先）】
+使用者問的是「${question}」，這是搬家／搬遷／租屋／買房／換房／住宅這類居住決策，不是股票投資題。
 ✗ 整段解讀絕對禁止出現這些市場用語：進場、加碼、減碼、停損、停利、短線、波段、獲利、賺、投資標的、訊號、等訊號、報酬率、風險報酬、資金丟進去、回本、滿倉、部位、控倉。
-✓ 請改用生活決策語境：居住需求、生活成本、貸款／租金壓力、財務負擔、地點與交通條件、生活機能、環境適應、長期穩定度、家庭需求、合約細節、後續維護成本、是否適合現在決定。
+✓ 回答重點只圍繞：變動時機是否成熟、新環境是否適合、是否值得變動、財務與成本風險（貸款／租金壓力、生活成本、維護成本）、適應期，以及交通與生活機能。
 第一句仍要直接給選擇傾向（可以考慮／需要再觀察／暫時不建議／風險偏高），再說明要先確認哪些實際條件。
 （例外：只有當使用者明確問「房子會不會漲／投報率／買來投資／轉手賺錢」時，才允許投資語境。）`;
+}
+
+/** 創業開店類（開店/創業/加盟/展店/商圈/店面/營業/開業）— 禁止當成財運或股票投資 */
+function getStartupChoiceHint(question: string): string {
+  if (!isBusinessStartupQuestion(question)) return "";
+  return `\n【創業開店類問題 — 嚴禁回答成財運或股票投資（最高優先）】
+使用者問的是「${question}」，這是開店／創業／加盟／展店／選址這類經營決策，不是財運分析，也不是股票投資題。
+✗ 絕對禁止把它當成「財運如何／會不會破財／進場加碼停損獲利報酬率」這種理財或股市語氣。
+✓ 回答重點只圍繞：市場需求、客群匹配、商圈與地點條件、營運風險、資金壓力、開業時機。
+第一句要直接給經營傾向（可以考慮／需要再評估／風險偏高／暫時不建議），再說明商圈、客群、資金與時機要先確認什麼。`;
 }
 
 // ── 敘事模式輪替（每次隨機選一種語氣，避免所有回答長得一樣）──────────────────
@@ -1568,13 +1590,14 @@ function getDirectConclusionSentence(
 
   // ── 選擇型：偏向適合 / 可以考慮 / 暫時不建議 / 風險偏高 ──────────────────────
   if (answerType === "choice") {
-    // 生活／居住決策（買房/租屋/搬家/店面/外地）— 嚴禁投資語氣，先於投資判斷
+    // 創業／開店決策（市場/客群/商圈/營運/資金/開業時機）— 嚴禁股票投資與純財運語氣，最先判斷
+    if (isBusinessStartupQuestion(q)) {
+      return hasReversed
+        ? "這個創業／開店的點子目前偏向再評估，商圈客群和資金壓力還沒站穩，貿然開業風險偏高。"
+        : "這個創業／開店可以考慮，但別只憑一股衝勁，先把市場需求、客群匹配、商圈條件和資金壓力算清楚再決定開業時機。";
+    }
+    // 生活／居住決策（買房/租屋/搬家/外地）— 嚴禁投資語氣，先於投資判斷
     if (isHousingLifeQuestion(q)) {
-      if (/店面|開店|展店|做生意|地點|選址/.test(q)) {
-        return hasReversed
-          ? "這個地點目前偏向需要再評估，先把人流、租金、客群和長期經營成本算清楚，別只憑第一眼的直覺。"
-          : "這個地點可以考慮，但條件要再看細一點：人流、租金、客群和長期經營成本，比一開始的直覺更重要。";
-      }
       if (/外地|外縣市|換城市|異地/.test(q)) {
         return hasReversed
           ? "去外地目前偏向需要再觀察，先把工作機會、收入與生活適應準備好，再決定要不要動。"
@@ -1614,7 +1637,7 @@ function getDirectConclusionSentence(
         ? "這組牌偏向需要再觀察，現在還不是主動的好時機，先看對方有沒有穩定的回應再決定。"
         : "這組牌顯示可以考慮，但先別急著主動，再觀察一陣子對方的態度會更穩。";
     }
-    if (f === "finance" || /創業/.test(q)) {
+    if (f === "finance") {
       return hasReversed
         ? "這組牌偏向暫時不建議現在投入，目前風險偏高、資源準備還不夠。"
         : "這組牌顯示這個想法不是不行，但現階段先別急著全押，準備足夠再行動。";
@@ -1676,11 +1699,13 @@ function getDirectConclusionSentence(
 
   // ── 結果型：依「問題場景 × 牌面強弱」客製第一句，禁止跨場景套句 ─────────────────
   if (answerType === "result") {
-    // 場景判斷（順序：面試 > 考試 > 投資 > 簽約 > 業績 > 感情 > 其他）
+    // 場景判斷（順序：創業開店 > 面試 > 考試 > 投資 > 簽約 > 業績 > 感情 > 其他）
+    const isStartup   = isBusinessStartupQuestion(q);
     const isInterview = /面試/.test(q) || (/錄取|會不會上|有沒有上|上不上得了/.test(q) && !isExam);
     const isDeal      = /簽約|這張單|這筆案子|案子會成|客戶會不會|客戶最後|下單|訂單|成交|談成|報價會過|會不會接這/.test(q);
     const isTarget    = /業績|達標|年度目標|月目標|這個月業績|下半年業績|本季業績|銷售目標|KPI/.test(q);
     const cat =
+      isStartup ? "startup" :
       isInterview ? "interview" :
       isExam ? "exam" :
       (isInvest || /投資|股票|這檔|賺錢|破財|拿得回來|要得回來|討得回來/.test(q)) ? "invest" :
@@ -1691,6 +1716,12 @@ function getDirectConclusionSentence(
       "general";
 
     const TEXT: Record<string, { strong: string; weak: string; posMild: string; negMild: string }> = {
+      startup: {
+        strong:  "這個開店／創業機會其實不錯，市場需求和客群都對得上，把商圈和資金規劃做紮實就能順勢開業。",
+        weak:    "這個開店／創業短期不太樂觀，市場需求或客群匹配還不夠，資金壓力下貿然開業風險偏高。",
+        posMild: "開店不是沒機會，但成敗關鍵在市場需求、客群匹配和商圈條件，先把這幾項和資金壓力算清楚。",
+        negMild: "這個點子還有空間，但客群和商圈條件目前還沒站穩，營運成本和開業時機要先評估過。",
+      },
       target: {
         strong:  "這個月業績很有機會補上來，牌面站在你這邊，把最後幾筆名單推進就能把數字做出來。",
         weak:    "照目前的跟進節奏，業績達標難度偏高，差距得靠更精準的客戶推進，別再平均灑力氣。",
@@ -1738,6 +1769,19 @@ function getDirectConclusionSentence(
     if (signal === "strong") return t.strong;
     if (signal === "weak")   return t.weak;
     return hasReversed ? t.negMild : t.posMild;
+  }
+
+  // ── 創業／開店：即使 answerType 落在 none，也給場景化結論（不回成財運/投資）──────
+  if (isBusinessStartupQuestion(q)) {
+    return hasReversed
+      ? "這個開店／創業目前偏向再評估，市場需求、客群匹配和資金壓力還沒站穩，貿然開業風險偏高。"
+      : "這個開店／創業可以考慮，但成敗在市場需求、客群匹配、商圈條件和資金壓力，先把這幾項和開業時機算清楚。";
+  }
+  // ── 居住搬遷：即使 answerType 落在 none，也給場景化結論（不回成投資）──────────────
+  if (isHousingLifeQuestion(q)) {
+    return hasReversed
+      ? "這個居住變動目前偏向再觀察，時機還不夠成熟，生活成本、環境適應和變動風險要先算清楚。"
+      : "這個居住變動可以考慮，但別太倉促，先確認時機、環境適不適合，以及財務與適應期撐不撐得住。";
   }
 
   return "";
@@ -1837,7 +1881,7 @@ function getFallbackNext3To7Days(focus: QuestionFocus, question = ""): string {
 // 這只是「選不同的人話文字」的內部工具，不改動任何分類/路由/signal 邏輯。
 type QuestionFlavor =
   | "love_feel" | "love_reunite" | "love_action" | "love_single"
-  | "biz_target" | "biz_deal" | "invest" | "housing" | "exam"
+  | "biz_target" | "biz_deal" | "invest" | "housing" | "startup" | "exam"
   | "career_change" | "career_general" | "finance_general"
   | "relationship" | "health" | "general";
 
@@ -1845,6 +1889,7 @@ type QuestionFlavor =
 function getQuestionFlavor(question: string, focus: QuestionFocus): QuestionFlavor {
   const q = question || "";
   const at = detectAnswerType(q);
+  if (isBusinessStartupQuestion(q)) return "startup";
   if (isHousingLifeQuestion(q)) return "housing";
   if (isExamQuestion(q) || /面試|錄取|口試|複試/.test(q)) return "exam";
   // 健康早於投資：避免「壓力（身心）」撞到投資關鍵字「壓力（壓力區）」而誤選文案
@@ -1879,6 +1924,7 @@ function getFlavorQuestionFocus(flavor: QuestionFlavor, isUpright: boolean): str
     biz_deal:      ["這筆你很想成，但又怕太主動會把對方推遠。", "對方遲遲不點頭，你心裡其實已經在猜是不是哪個條件卡住了。"],
     invest:        ["你想知道能不能進，但其實更怕的是買了就套。", "你已經有點被情緒帶著走，越想凹回來，越容易做錯決定。"],
     housing:       ["你對這個地方有感覺，只是那筆長期的負擔讓你不敢太快點頭。", "你怕的不是買貴，而是買了之後生活被綁得太緊。"],
+    startup:       ["你對這個開店的點子有熱情，只是還不確定市場和客群撐不撐得起來。", "你想衝，但心裡也清楚資金和商圈這關還沒真的算過。"],
     exam:          ["你準備了，但心裡那個『會不會還是不夠』的聲音一直在。", "你不是沒讀，而是讀得有點散，抓不到重點讓你更焦慮。"],
     career_change: ["你想走，只是還沒確定外面那條路是不是真的比較好。", "你受夠的不一定是工作本身，而是那種一直耗著的感覺。"],
     career_general:["你其實知道自己要什麼，只是不確定現在是不是動的時機。", "你比你以為的更清楚問題在哪，只是還不想正面承認那個答案。"],
@@ -1902,6 +1948,7 @@ function getFlavorGentleReminder(flavor: QuestionFlavor): string {
     biz_deal:      "對方沒簽，多半是還有一個顧慮沒被解決。與其催，不如直接問他最在意的是哪一點。",
     invest:        "先把能承受的最大虧損想清楚，再決定要不要進。紀律會替你擋掉大部分的衝動。",
     housing:       "別被『現在不買就沒了』的急迫感推著走。把每月實際負擔算到底，安心比划算更重要。",
+    startup:       "開店別只看裝潢和熱情，先把客群、商圈和能撐多久的資金算清楚，活下來比開起來更難。",
     exam:          "與其再讀新的，不如把錯過的、不熟的補起來——穩住基本盤比衝難題更能保分。",
     career_change: "離開或留下都可以，但先確認你是走向想要的，而不是只想逃離現在的。",
     career_general:"先看清楚手上能掌握的資源，再決定往哪走。方向比速度重要。",
@@ -1924,6 +1971,7 @@ function getFlavorBlessing(flavor: QuestionFlavor): string {
     biz_deal:      "願你談的每一筆，都在對的條件下順利落地。",
     invest:        "願你進退都有紀律，賺的時候不貪，虧的時候不慌。",
     housing:       "願你選的那個家，住起來安心，也撐得起往後的日子。",
+    startup:       "願你的店不只開得成，也經營得久，撐得過最辛苦的前幾個月。",
     exam:          "願你讀過的每一頁，都在關鍵的那一刻幫上你。",
     career_change: "願你的去留，都是想清楚之後的選擇，而不是逃。",
     career_general:"願你的能力被看見，也願你走到更適合自己的位置。",
@@ -2586,6 +2634,8 @@ function buildSingleCardPrompt(
   const healthDepthHint = getHealthDepthHint(focus, question);
   // 生活／居住決策題：禁止股票投資語氣
   const housingHint = getHousingChoiceHint(question);
+  // 創業／開店決策題：禁止當成財運或股票投資
+  const startupHint = getStartupChoiceHint(question);
   // 牌面強弱 → 結論力度
   const strengthHint = getStrengthHint([card]);
   // 降低模板感：敘事模式輪替、宇宙偷偷話去模板、逆位多面向、結論給根據
@@ -2704,6 +2754,7 @@ ${shortHint}
 ${restrictedHint}
 ${healthDepthHint}
 ${housingHint}
+${startupHint}
 ${strengthHint}
 ${narrativeRules}
 ${answerTypeHint}
@@ -2809,6 +2860,8 @@ function buildThreeCardPrompt(
   const healthDepthHint = getHealthDepthHint(focus, question);
   // 生活／居住決策題：禁止股票投資語氣
   const housingHint = getHousingChoiceHint(question);
+  // 創業／開店決策題：禁止當成財運或股票投資
+  const startupHint = getStartupChoiceHint(question);
   // 牌面強弱 → 結論力度
   const strengthHint = getStrengthHint(cards);
   // 降低模板感：敘事模式輪替、去模板、逆位多面向、結論給根據、牌與牌互動敘事
@@ -2900,6 +2953,7 @@ ${shortHint}
 ${restrictedHint}
 ${healthDepthHint}
 ${housingHint}
+${startupHint}
 ${strengthHint}
 ${narrativeRules}
 ${answerTypeHint}
