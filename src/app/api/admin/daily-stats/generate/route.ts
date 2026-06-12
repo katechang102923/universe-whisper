@@ -635,6 +635,21 @@ export async function GET(req: NextRequest) {
       paymentSources: paymentRowsFromMap(paymentSourceMap),
       zodiacStats,
     };
+    // ── 規格化每日快照欄位（低成本後台查詢用，欄位名稱固定，免費與付費都計入）────────
+    // createdAt 只在首次建立時寫入；重跑（rebuild）不覆寫，避免假造「首次產生時間」。
+    const docId = `${date}_${period}`;
+    const existingSnap = await db.collection("daily_admin_stats").doc(docId).get().catch(() => null);
+    const existingCreatedAt = existingSnap?.exists ? (existingSnap.data() ?? {}).createdAt : undefined;
+
+    const tarotSingleSuccess = dailySingle;                              // 免費單張（rate_limits feature_usage）
+    const tarotThreeSuccess  = dailyThree;                              // 免費三張
+    const freeSuccessCount   = tarotSingleSuccess + tarotThreeSuccess; // 免費額度／登入免費／分享解鎖
+    const tarotPaidSuccess   = orderStats.todayPaid;                   // 塔羅付費成功（僅付款成功）
+    const tarotDrawSuccess   = freeSuccessCount + tarotPaidSuccess;     // 完成抽牌＝免費＋付費
+    const astroProfilePaidSuccessCount = astroProfileCount;
+    const astroProfileFreeSuccessCount = zodiacStats.tripleZodiacFreeSuccess + zodiacStats.tripleZodiacCodeSuccess;
+    const astroProfileSuccessTotal = astroProfilePaidSuccessCount + astroProfileFreeSuccessCount;
+
     const docData = {
       date,
       period,
@@ -642,6 +657,23 @@ export async function GET(req: NextRequest) {
       rangeStart,
       rangeEnd,
       generatedAt: FieldValue.serverTimestamp(),
+      createdAt: existingCreatedAt ?? FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+      // ── 規格化欄位（後台 /api/admin/stats 優先讀這些）──────────────────────────
+      pageViews: statsPayload.traffic.today.pageViews,
+      tarotDrawSuccess,
+      tarotSingleSuccess,
+      tarotThreeSuccess,
+      freeSuccess: freeSuccessCount,
+      paidSuccess: tarotPaidSuccess,
+      astroProfilePageViews: tripleZodiacPageViews,
+      astroProfileSuccess: astroProfileSuccessTotal,
+      astroProfileFreeSuccess: astroProfileFreeSuccessCount,
+      astroProfilePaidSuccess: astroProfilePaidSuccessCount,
+      astroProfileRevenue,
+      sourceStats: dailyMetrics.visitorSources,
+      popularFeatureStats: dailyMetrics.featureRanking,
+      paymentSourceStats: dailyMetrics.paymentSources,
       dailyMetrics,
       visitors: visitors.size,
       freeDraws,
@@ -672,7 +704,6 @@ export async function GET(req: NextRequest) {
       statsPayload,
     };
 
-    const docId = `${date}_${period}`;
     await db.collection("daily_admin_stats").doc(docId).set(docData, { merge: true });
     await cleanupOldSnapshots(db, addDays(date, -6));
 

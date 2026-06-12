@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "admin:rebuild-stats": "node scripts/rebuild-stats.mjs"
   },
   "dependencies": {
     "@types/qrcode": "^1.5.6",

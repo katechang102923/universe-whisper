@@ -4036,6 +4036,7 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
 
           {/* ?? 1. Single-card story image (always shown for download/share) ?? */}
           {isSingleResult && storyCard ? (
+            readingStatus === "done" && fullReading ? (
             <div className="cosmic-reading-card mx-auto max-w-[460px] rounded-[2rem] border border-[#d8bd70]/24 bg-midnight/58 p-4 text-center shadow-glow sm:p-6">
               <div className="mb-4 rounded-2xl border border-white/10 bg-white/[0.045] px-4 py-3 text-left">
                 <p className="text-[11px] font-medium tracking-[0.18em] text-[#d8bd70]/70">本次宇宙訊息</p>
@@ -4075,6 +4076,48 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
                 ) : null}
               </div>
             </div>
+            ) : readingStatus === "loading" ? (
+            /* 生成中：只顯示牌面圖片、牌名、關鍵字、固定等待文案（不洩漏任何 AI 內容/摘要/限動圖文字）*/
+            <div className="cosmic-reading-card mx-auto max-w-[460px] rounded-[2rem] border border-[#d8bd70]/24 bg-midnight/58 p-6 text-center shadow-glow">
+              <p className="text-[11px] font-medium tracking-[0.18em] text-[#d8bd70]/70">宇宙想對你說...</p>
+              <div className="mt-4 flex justify-center">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={storyCard.image}
+                  alt={storyCard.nameZh ?? storyCard.name}
+                  className="h-auto w-36 rounded-2xl border border-white/12 shadow-glow sm:w-40"
+                />
+              </div>
+              <h3 className="mt-4 text-2xl font-semibold text-moon">{storyCard.nameZh ?? storyCard.name}</h3>
+              <p className="mt-1 text-sm text-moon/55">{storyCard.orientationLabel}</p>
+              {(() => {
+                const previewKeywords = (
+                  (storyCard.orientation === "reversed"
+                    ? (storyCard.reversedKeywords ?? storyCard.keywords)
+                    : (storyCard.uprightKeywords ?? storyCard.keywords)) ?? []
+                ).slice(0, 5);
+                return previewKeywords.length ? (
+                  <div className="mt-4">
+                    <p className="text-xs tracking-[0.18em] text-[#d8bd70]/70">關鍵字</p>
+                    <div className="mt-2 flex flex-wrap justify-center gap-2">
+                      {previewKeywords.map((kw) => (
+                        <span
+                          key={kw}
+                          className="rounded-full border border-[#d8bd70]/30 bg-midnight/60 px-3 py-1 text-xs text-moon/80"
+                        >
+                          {kw}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null;
+              })()}
+              <div className="mt-6 rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-4">
+                <p className="text-sm text-moon/72">🌙 宇宙正在整理你的訊息...</p>
+                <p className="mt-1 text-xs text-moon/45">請稍候幾秒</p>
+              </div>
+            </div>
+            ) : null
           ) : null}
 
           {/* 三張牌限動圖產生按鈕（cards revealed + three-card mode）*/}
