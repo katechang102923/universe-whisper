@@ -2620,6 +2620,7 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
       method: "POST",
       headers,
       body: JSON.stringify(buildReadingPayload(targetCards)),
+      cache: "no-store",
     });
     console.timeEnd("[perf] C3a: fetch /api/tarot-reading (network+AI)");
 
@@ -2830,6 +2831,7 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
           anonymousId: getOrCreateAnonId(),
           paidMode: isPaidDraw,
         }),
+        cache: "no-store",
       });
       console.timeEnd("[perf] A1: draw API (/api/tarot/draw)");
 

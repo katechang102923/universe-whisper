@@ -14,6 +14,22 @@ import {
 } from "@/lib/tarotReadingPromptConfig";
 
 export const runtime = "nodejs";
+// 解牌結果必須隨每次抽牌動態產生，絕不可被 Next.js / Vercel 快取
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+// 所有回應都帶 no-store，避免相同問題拿到被快取的舊結果（不影響免費次數/付費紀錄，那些是 Firestore 寫入）
+const NO_STORE_HEADERS = { "Cache-Control": "no-store, no-cache, must-revalidate" } as const;
+
+/** 包一層讓所有回應都帶 no-store header */
+function jsonNoStore(data: Record<string, unknown>, init?: { status?: number }) {
+  return NextResponse.json(data, { status: init?.status, headers: NO_STORE_HEADERS });
+}
+
+function newRequestId(): string {
+  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  return c?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 const DEFAULT_MODEL = "gpt-5.4-mini";
 
@@ -1455,12 +1471,51 @@ function cleanCardMessageSections(msg: string): string {
 // ═════════════════════════════════════════════════════════════════════════════
 
 function extractJsonString(raw: string): string {
-  // 移除 markdown 代碼塊
-  let s = raw.replace(/^```json\s*/m, "").replace(/^```\s*/m, "").replace(/```\s*$/m, "").trim();
+  // 移除 markdown 代碼塊（``` 或 ```json，前後皆可能出現）
+  const s = raw.replace(/```json/gi, "").replace(/```/g, "").trim();
   const start = s.indexOf("{");
-  const end   = s.lastIndexOf("}");
-  if (start === -1 || end === -1) return "";
-  return s.slice(start, end + 1);
+  if (start === -1) return "";
+  // 字串感知的括號配對：只擷取「第一個完整的頂層 JSON object」，避免被前後多餘文字干擾
+  let inStr = false;
+  let esc = false;
+  let depth = 0;
+  for (let i = start; i < s.length; i++) {
+    const ch = s[i]!;
+    if (esc) { esc = false; continue; }
+    if (ch === "\\") { if (inStr) esc = true; continue; }
+    if (ch === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (ch === "{") depth++;
+    else if (ch === "}") { depth--; if (depth === 0) return s.slice(start, i + 1); }
+  }
+  // 沒有配對到結尾（被 token 上限截斷）→ 回傳從第一個 { 到結尾，交給截斷修復處理
+  return s.slice(start);
+}
+
+/**
+ * 修復被截斷的 JSON（AI 輸出超過 max_output_tokens 時最常見）：
+ * 關閉未結束的字串、去除結尾殘留的逗號、依括號堆疊補上對應的 ] / }。
+ * 只在一般修復仍失敗時當最後手段，讓「至少前幾段內容」可被解析，而非整包丟棄。
+ */
+function closeTruncatedJson(input: string): string {
+  let inStr = false;
+  let esc = false;
+  const stack: string[] = [];
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i]!;
+    if (esc) { esc = false; continue; }
+    if (ch === "\\") { if (inStr) esc = true; continue; }
+    if (ch === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (ch === "{" || ch === "[") stack.push(ch);
+    else if (ch === "}") { if (stack[stack.length - 1] === "{") stack.pop(); }
+    else if (ch === "]") { if (stack[stack.length - 1] === "[") stack.pop(); }
+  }
+  let out = input;
+  if (inStr) out += '"';                 // 關閉未結束字串
+  out = out.replace(/[,\s]+$/, "");      // 去掉截斷尾端殘留的逗號/空白
+  for (let i = stack.length - 1; i >= 0; i--) out += stack[i] === "{" ? "}" : "]";
+  return out;
 }
 
 /**
@@ -1505,14 +1560,21 @@ function safeJsonParse(json: string): unknown | null {
   try {
     return JSON.parse(json);
   } catch {
+    // 第一階段：一般修復（轉義控制字元、補/去結構逗號）
     try {
-      const repaired = repairJsonString(json);
-      const result = JSON.parse(repaired);
+      const result = JSON.parse(repairJsonString(json));
       console.warn("[tarot-reading] JSON 解析失敗，已用 repairJsonString 修復成功");
       return result;
-    } catch (err) {
-      console.error("[tarot-reading] JSON 修復後仍解析失敗：", err instanceof Error ? err.message : err);
-      return null;
+    } catch {
+      // 第二階段：截斷修復（關閉未結束字串/括號）後再修一次
+      try {
+        const result = JSON.parse(repairJsonString(closeTruncatedJson(json)));
+        console.warn("[tarot-reading] JSON 被截斷，已用 closeTruncatedJson 修復成功");
+        return result;
+      } catch (err) {
+        console.error("[tarot-reading] JSON 修復後仍解析失敗：", err instanceof Error ? err.message : err);
+        return null;
+      }
     }
   }
 }
@@ -1521,15 +1583,25 @@ function safeJsonParse(json: string): unknown | null {
  * forcedCategory：用使用者選擇的分類（愛情/工作/生活）覆蓋 AI 輸出的 category，
  * 防止 AI 返回「生活綜合」等錯誤分類。
  */
-function parseSingleCardJson(raw: string, forcedCategory?: string): SingleCardReading | null {
+function parseSingleCardJson(
+  raw: string,
+  forcedCategory?: string,
+  drawnCard?: TarotReadingCard,
+): SingleCardReading | null {
   try {
     const json   = extractJsonString(raw);
     if (!json) return null;
     const parsed = safeJsonParse(json) as Partial<SingleCardReading> | null;
     if (!parsed || typeof parsed !== "object") return null;
-    if (parsed.spreadType !== "single") return null;
+    // 內容門檻：缺少核心文字才視為失敗（spreadType 容錯補上，避免截斷掉欄位就整包丟棄）
     if (!parsed.cardMessage || !parsed.oneLineConclusion || !parsed.todayAction) return null;
+    parsed.spreadType = "single";
     if (forcedCategory) parsed.category = forcedCategory;
+    // 牌名/正逆位一律以真實抽到的牌為準（AI 僅提供敘述內容）
+    if (drawnCard) {
+      parsed.cardName = drawnCard.name;
+      parsed.orientation = drawnCard.position === "upright" ? "正位" : "逆位";
+    }
     // 對 cardMessage / questionAnswer 做句子去重
     if (parsed.cardMessage)    parsed.cardMessage    = deduplicateSentences(parsed.cardMessage);
     if (parsed.questionAnswer) parsed.questionAnswer = deduplicateSentences(parsed.questionAnswer);
@@ -1542,8 +1614,14 @@ function parseSingleCardJson(raw: string, forcedCategory?: string): SingleCardRe
 /**
  * 解析三張牌 JSON，容許部分欄位缺失並補上預設值。
  * forcedCategory：用使用者選擇的分類覆蓋 AI 輸出的 category。
+ * drawnCards：本次「真實抽到」的牌；牌名/正逆位/牌位一律以此為準（不採信 AI 回傳的牌名），
+ *             確保即使 AI JSON 部分損壞，使用者看到的仍是本次真實抽到的牌，而非固定範例牌。
  */
-function parseThreeCardJson(raw: string, forcedCategory?: string): ThreeCardReading | null {
+function parseThreeCardJson(
+  raw: string,
+  forcedCategory?: string,
+  drawnCards?: TarotReadingCard[],
+): ThreeCardReading | null {
   try {
     const json = extractJsonString(raw);
     if (!json) return null;
@@ -1553,28 +1631,40 @@ function parseThreeCardJson(raw: string, forcedCategory?: string): ThreeCardRead
       return null;
     }
 
-    // cards 必須有 3 筆（核心結構）
-    if (!Array.isArray(p.cards) || p.cards.length < 3) {
-      console.warn("[tarot-reading] parseThreeCardJson: cards length <3, raw snippet:", raw.slice(0, 200));
+    const aiCards = Array.isArray(p.cards) ? (p.cards as unknown[]) : [];
+    const hasDrawn = Array.isArray(drawnCards) && drawnCards.length > 0;
+    // 沒有真實牌可依據、AI 牌也不足 3 → 無法可靠組裝，交給呼叫端走場景化 fallback（仍用真實牌）
+    if (!hasDrawn && aiCards.length < 3) {
+      console.warn("[tarot-reading] parseThreeCardJson: cards length <3 且無 drawnCards, raw snippet:", raw.slice(0, 200));
       return null;
     }
 
+    const spreadLabels = getSpreadLabels();
     const defaultPositions = ["目前狀態", "阻礙或盲點", "接下來的建議"];
-    const cards = (p.cards as unknown[]).slice(0, 3).map((c, i): ThreeCardEntry => {
-      const entry = (c && typeof c === "object" ? c : {}) as Record<string, unknown>;
-      // keywords 支援 string[] 或逗號分隔字串
+    const cards = Array.from({ length: 3 }, (_, i): ThreeCardEntry => {
+      const entry = (aiCards[i] && typeof aiCards[i] === "object" ? aiCards[i] : {}) as Record<string, unknown>;
+      const real = drawnCards?.[i];
+      // keywords：真實牌優先，其次 AI；支援 string[] 或逗號分隔字串
       let keywords: string[] | undefined;
-      if (Array.isArray(entry.keywords)) {
-        keywords = (entry.keywords as unknown[])
-          .filter((k): k is string => typeof k === "string")
-          .slice(0, 3);
+      if (real?.keywords?.length) {
+        keywords = real.keywords.slice(0, 3);
+      } else if (Array.isArray(entry.keywords)) {
+        keywords = (entry.keywords as unknown[]).filter((k): k is string => typeof k === "string").slice(0, 3);
       } else if (typeof entry.keywords === "string") {
         keywords = entry.keywords.split(/[,，、]/).map((k) => k.trim()).filter(Boolean).slice(0, 3);
       }
+      // 牌名/正逆位/牌位：一律以真實抽到的牌為準（AI 僅提供敘述內容）
+      const cardName = real?.name ?? (typeof entry.cardName === "string" ? entry.cardName : `第${i + 1}張牌`);
+      const orientation = real
+        ? (real.position === "upright" ? "正位" : "逆位")
+        : (typeof entry.orientation === "string" ? entry.orientation : "正位");
+      const position = real?.spreadPosition
+        ? spreadLabels[real.spreadPosition]
+        : (typeof entry.position === "string" ? entry.position : defaultPositions[i]!);
       return {
-        position:     typeof entry.position    === "string" ? entry.position    : defaultPositions[i]!,
-        cardName:     typeof entry.cardName    === "string" ? entry.cardName    : `第${i + 1}張牌`,
-        orientation:  typeof entry.orientation === "string" ? entry.orientation : "正位",
+        position,
+        cardName,
+        orientation,
         keywords,
         shortSummary: typeof entry.shortSummary === "string" ? entry.shortSummary : undefined,
         // 對每張牌的 message 套用清理+去重：移除冗餘標題行、跨欄位去重
@@ -3565,8 +3655,8 @@ async function callSingleCard(
       });
       const raw = res.output_text?.trim();
       if (!raw) return null;
-      // 強制使用使用者選擇的分類（topic），不讓 AI 覆蓋
-      const parsed = parseSingleCardJson(raw, getTopicLabel(topic));
+      // 強制使用使用者選擇的分類（topic）；牌名/正逆位以真實抽到的牌為準，不讓 AI 覆蓋
+      const parsed = parseSingleCardJson(raw, getTopicLabel(topic), card);
       if (!parsed) return null;
       // 四區塊去重：一句話／宇宙偷偷話／解讀總結／心靈收束 不得相同或高度相似
       const focus = mergeFocusWithTopic(detectQuestionFocus(question), topic);
@@ -3652,10 +3742,10 @@ async function callThreeCard(
       console.log("[tarot-reading] AI raw response first 300 chars:", raw.slice(0, 300));
 
       if (!raw) return null;
-      // 強制使用使用者選擇的分類（topic），不讓 AI 覆蓋
-      const parsed = parseThreeCardJson(raw, getTopicLabel(topic));
+      // 強制使用使用者選擇的分類（topic）；牌名/正逆位/牌位以真實抽到的牌為準，不讓 AI 覆蓋
+      const parsed = parseThreeCardJson(raw, getTopicLabel(topic), cards);
       const parseSuccess = parsed !== null;
-      console.log("[tarot-reading] parse success:", parseSuccess);
+      console.log("[tarot-reading] three-card parseStatus:", parseSuccess ? "success/repaired" : "parse-failed");
       if (!parsed) return null;
       // 去重：偵測「這張牌提醒你」重複並替換
       const focus = mergeFocusWithTopic(detectQuestionFocus(question), topic);
@@ -3723,10 +3813,11 @@ export async function POST(request: Request) {
 
   // ── 全域 try/catch：任何未預期錯誤都走 fallback，不 throw 502 ───────────────
   try {
+    const requestId = newRequestId();
     const body = await request.json().catch(() => null);
 
     if (!body || typeof body !== "object") {
-      return NextResponse.json({ error: "請提供有效的解讀資料。" }, { status: 400 });
+      return jsonNoStore({ error: "請提供有效的解讀資料。" }, { status: 400 });
     }
 
     const source = body as {
@@ -3749,21 +3840,25 @@ export async function POST(request: Request) {
     const isAdmin = await verifyAdminIdToken(idToken);
 
     if (!cards) {
-      return NextResponse.json({ error: "請提供 1 到 3 張有效牌卡。" }, { status: 400 });
+      return jsonNoStore({ error: "請提供 1 到 3 張有效牌卡。" }, { status: 400 });
     }
     if (!topic) {
-      return NextResponse.json({ error: "請提供有效的解讀主題。" }, { status: 400 });
+      return jsonNoStore({ error: "請提供有效的解讀主題。" }, { status: 400 });
     }
 
     const isSingle   = cards.length === 1;
     const spreadType = isSingle ? "single" : "three";
 
-    // ── debug log ──────────────────────────────────────────────────────────────
-    console.log("[tarot-reading] spreadType:", spreadType);
-    console.log("[tarot-reading] cards length:", cards.length);
-    console.log("[tarot-reading] normalized cards:", cards.map((c) => c.name));
-    console.log("[tarot-reading] readingMode:", readingMode);
-    console.log("[tarot-reading] question:", question.slice(0, 80));
+    // ── server log（診斷用，不回傳前台）──────────────────────────────────────────
+    const drawnCards = cards.map((c) => `${c.name}（${c.position === "upright" ? "正位" : "逆位"}）`);
+    console.log("[tarot-reading] request", {
+      requestId,
+      spreadType,
+      readingMode,
+      category: topic,
+      question: question.slice(0, 80),
+      drawnCards,
+    });
 
     // ── 免費版（靜態，Firestore 限流）────────────────────────────────────────────
     if (readingMode === "free" || readingMode === "premium") {
@@ -3776,7 +3871,7 @@ export async function POST(request: Request) {
             ip, anonymousId, lineUserId: null, feature,
           });
           if (!limitResult.allowed) {
-            return NextResponse.json({ error: limitResult.message }, { status: 429 });
+            return jsonNoStore({ error: limitResult.message }, { status: 429 });
           }
         } catch (err) {
           console.error("[rate-limit] checkAndIncrementLimit failed:", err);
@@ -3784,7 +3879,7 @@ export async function POST(request: Request) {
       }
 
       if (readingMode === "free") {
-        return NextResponse.json({
+        return jsonNoStore({
           readingMode,
           reading: buildFreeReading(cards, topic, question),
           success: true,
@@ -3799,8 +3894,8 @@ export async function POST(request: Request) {
     // ── 廣告解鎖版（standard 深度）──────────────────────────────────────────────
     if (readingMode === "ad") {
       if (!apiKey) {
-        console.log("[tarot-reading] fallback: no API key (ad)");
-        return NextResponse.json({
+        console.log("[tarot-reading]", { requestId, parseStatus: "fallback", fallbackReason: "no-api-key-ad" });
+        return jsonNoStore({
           readingMode,
           reading: isSingle
             ? buildSingleCardFallback(cards[0], topic, question)
@@ -3812,16 +3907,20 @@ export async function POST(request: Request) {
 
       const client = new OpenAI({ apiKey });
 
-      // ad 版 token（standard 深度，縮短以提升速度）
+      // ad 版 token（單張 standard 較短；三張提高以避免 JSON 被截斷）
       const reading = isSingle
         ? await callSingleCard(client, model, cards[0], topic, question, "standard", 1300)
-        : await callThreeCard (client, model, cards,    topic, question, "standard", 1300);
+        : await callThreeCard (client, model, cards,    topic, question, "standard", 1900);
 
       const usedFallback = !reading;
-      console.log("[tarot-reading] fallback:", usedFallback);
-      console.log("[tarot-reading] total ms:", Date.now() - start);
+      console.log("[tarot-reading]", {
+        requestId,
+        parseStatus: usedFallback ? "fallback" : "success",
+        fallbackReason: usedFallback ? "ai-null-or-parse-failed" : undefined,
+        ms: Date.now() - start,
+      });
 
-      return NextResponse.json({
+      return jsonNoStore({
         readingMode,
         reading: reading ?? (
           isSingle
@@ -3835,8 +3934,8 @@ export async function POST(request: Request) {
 
     // ── Premium 版（deep 深度）────────────────────────────────────────────────
     if (!apiKey) {
-      console.log("[tarot-reading] fallback: no API key (premium)");
-      return NextResponse.json({
+      console.log("[tarot-reading]", { requestId, parseStatus: "fallback", fallbackReason: "no-api-key-premium" });
+      return jsonNoStore({
         readingMode,
         reading: isSingle
           ? buildSingleCardFallback(cards[0], topic, question)
@@ -3848,17 +3947,21 @@ export async function POST(request: Request) {
 
     const client = new OpenAI({ apiKey });
 
-    // premium 版 token（deep 深度，縮短以提升速度）
+    // premium 版 token（單張 deep；三張提高以避免 JSON 被截斷導致 parse 失敗→fallback）
     const reading = isSingle
       ? await callSingleCard(client, model, cards[0], topic, question, "deep", 1600)
-      : await callThreeCard (client, model, cards,    topic, question, "deep", 1400);
+      : await callThreeCard (client, model, cards,    topic, question, "deep", 2200);
 
     const usedFallback = !reading;
-    console.log("[tarot-reading] fallback:", usedFallback);
-    console.log("[tarot-reading] total ms:", Date.now() - start);
+    console.log("[tarot-reading]", {
+      requestId,
+      parseStatus: usedFallback ? "fallback" : "success",
+      fallbackReason: usedFallback ? "ai-null-or-parse-failed" : undefined,
+      ms: Date.now() - start,
+    });
 
-    // ── 永遠回傳 200，永遠有 reading，不再回傳 502 ────────────────────────────
-    return NextResponse.json({
+    // ── 永遠回傳 200，永遠有 reading（fallback 也用本次真實抽到的牌）────────────
+    return jsonNoStore({
       readingMode,
       reading: reading ?? (
         isSingle
@@ -3873,9 +3976,8 @@ export async function POST(request: Request) {
     // 最後一道防線：任何未預期錯誤，記錄並回傳 200 + error 訊息
     const errMsg = unexpectedErr instanceof Error ? unexpectedErr.message : String(unexpectedErr);
     console.error("[tarot-reading] UNEXPECTED ERROR:", errMsg);
-    console.log("[tarot-reading] total ms:", Date.now() - start);
 
-    return NextResponse.json({
+    return jsonNoStore({
       readingMode: "premium",
       reading: "宇宙訊息暫時無法傳遞，請重新抽牌試試。這不是你的問題，是宇宙在整理訊號中 🌙",
       success: false,

@@ -3,6 +3,12 @@ import { drawCards, type TarotTopic } from "@/lib/tarot";
 import { checkAndIncrementLimit, getTaipeiDate } from "@/lib/rateLimit";
 import { verifyAdminIdToken } from "@/lib/verifyAdmin";
 
+// 抽牌必須每次重新隨機，絕不可被快取
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+const NO_STORE = { "Cache-Control": "no-store, no-cache, must-revalidate" } as const;
+
 const modeToCardCount = {
   single_tarot: 1,
   three_card: 3,
@@ -91,15 +97,18 @@ export async function POST(request: Request) {
 
   const cards = drawCards(modeToCardCount[mode], topic);
 
-  return NextResponse.json({
-    mode,
-    topic,
-    question: body.question ?? "",
-    cards,
-    aiRequired: false,
-    storage: {
-      collection: "tarot_logs",
-      ready: true,
+  return NextResponse.json(
+    {
+      mode,
+      topic,
+      question: body.question ?? "",
+      cards,
+      aiRequired: false,
+      storage: {
+        collection: "tarot_logs",
+        ready: true,
+      },
     },
-  });
+    { headers: NO_STORE },
+  );
 }
