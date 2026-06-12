@@ -157,6 +157,38 @@ function inRange(value: unknown, start: Date, end: Date) {
   return Boolean(d && d >= start && d < end);
 }
 
+// ── 訂單彙整工具（與 /api/admin/revenue 判定一致，避免快照與收入明細不一致）──────────
+// 成功狀態：paid / success / completed / succeeded（大小寫不拘）。pending / failed / refunded 不算收入。
+const PAID_STATUSES = new Set(["paid", "success", "completed", "succeeded"]);
+function isPaidStatus(status: unknown): boolean {
+  return typeof status === "string" && PAID_STATUSES.has(status.toLowerCase());
+}
+function isTestOrder(order: Record<string, unknown>): boolean {
+  return Boolean(order.isTest) || Boolean(order.isTestPayment);
+}
+// 金額容錯：paidAmount → amount → tradeAmt（與收入明細相同）
+function resolveAmount(order: Record<string, unknown>): number {
+  const v = order.paidAmount ?? order.amount ?? order.tradeAmt;
+  const n = typeof v === "number" ? v : typeof v === "string" ? parseFloat(v) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+function taipeiDayKey(d: Date | null): string | null {
+  if (!d) return null;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Taipei",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+// 付款成功用「付款日」歸屬，其餘用「建立日」；皆以 Asia/Taipei 判定，避免 UTC 錯位
+function orderAttributionDayKey(order: Record<string, unknown>, paid: boolean): string | null {
+  if (paid) {
+    return taipeiDayKey(resolveTs(order.paidAt) ?? resolveTs(order.paymentDate) ?? resolveTs(order.createdAt));
+  }
+  return taipeiDayKey(resolveTs(order.createdAt));
+}
+
 function visitorKey(event: Pick<AnalyticsEvent, "lineUserId" | "anonymousId" | "ipHash">) {
   if (event.lineUserId) return `line:${event.lineUserId}`;
   if (event.anonymousId) return `anon:${event.anonymousId}`;
@@ -426,12 +458,17 @@ export async function GET(req: NextRequest) {
   const adminLineIds = new Set(getAdminUserIds());
   const adminEmails = new Set(getAdminEmailList());
 
+  // 訂單以 createdAt 寬鬆視窗查詢（±36h），避免：(1) 訂單沒有 paidAt 欄位被漏掉、
+  // (2) 跨午夜「建立日 ≠ 付款日」漏算。實際歸屬再用 Asia/Taipei 付款日精準過濾。
+  const orderWindowStart = new Date(rangeStart.getTime() - 36 * 3600 * 1000);
+  const orderWindowEnd = new Date(rangeEnd.getTime() + 36 * 3600 * 1000);
+
   try {
     const [analyticsSnap, downloadSnap, orderSnap, astroSnap, rateLimitSnap, fortuneSnap, redeemSnap, zodiacEventSnap, zodiacCodeSnap] = await Promise.all([
       db.collection("analytics_events").where("createdAt", ">=", rangeStart).where("createdAt", "<", rangeEnd).limit(5000).get().catch(() => null),
       db.collection("share_image_downloads").where("createdAt", ">=", rangeStart).where("createdAt", "<", rangeEnd).limit(2000).get().catch(() => null),
-      db.collection(PAYMENT_ORDERS_COLLECTION).where("paidAt", ">=", rangeStart).where("paidAt", "<", rangeEnd).limit(1000).get().catch(() => null),
-      db.collection("astroProfileOrders").where("paidAt", ">=", rangeStart).where("paidAt", "<", rangeEnd).limit(500).get().catch(() => null),
+      db.collection(PAYMENT_ORDERS_COLLECTION).where("createdAt", ">=", orderWindowStart).where("createdAt", "<", orderWindowEnd).limit(1000).get().catch(() => null),
+      db.collection("astroProfileOrders").where("createdAt", ">=", orderWindowStart).where("createdAt", "<", orderWindowEnd).limit(500).get().catch(() => null),
       db.collection("rate_limits").doc(date).get().catch(() => null),
       db.collection("fortune_stats").doc(date).get().catch(() => null),
       db.collection(REDEEM_CODES_COLLECTION).where("createdAt", ">=", rangeStart).where("createdAt", "<", rangeEnd).limit(1000).get().catch(() => null),
@@ -510,24 +547,31 @@ export async function GET(req: NextRequest) {
     const orderStats = { total: 0, paid: 0, failed: 0, pending: 0, todayRevenue: 0, todayPaid: 0, todayTest: 0, noCode: 0, emailUnsent: 0 };
     if (orderSnap) {
       for (const doc of orderSnap.docs) {
-        const order = doc.data() as { status?: string; amount?: number; isTest?: boolean; redeemCode?: string; emailSent?: boolean; buyerEmail?: string } & Record<string, unknown>;
-        if (order.isTest) {
-          if (order.status === "paid") orderStats.todayTest += 1;
+        const order = doc.data() as { status?: string; redeemCode?: string; emailSent?: boolean; buyerEmail?: string } & Record<string, unknown>;
+        const status = typeof order.status === "string" ? order.status : "pending";
+        const paid = isPaidStatus(status);
+        // 只計入「歸屬於本日（Asia/Taipei）」的訂單：付款成功用付款日，其餘用建立日
+        if (orderAttributionDayKey(order, paid) !== date) continue;
+        if (isTestOrder(order)) {
+          if (paid) orderStats.todayTest += 1; // 測試付款只進測試計數，不進正式收入
           continue;
         }
-        if (order.buyerEmail && adminEmails.has(order.buyerEmail.toLowerCase())) continue;
+        if (order.buyerEmail && adminEmails.has(String(order.buyerEmail).toLowerCase())) continue;
         orderStats.total += 1;
-        if (order.status === "paid") {
+        if (paid) {
+          const amount = resolveAmount(order);
           orderStats.paid += 1;
           orderStats.todayPaid += 1;
-          orderStats.todayRevenue += order.amount ?? 0;
-          revenue += order.amount ?? 0;
-          addPaymentSource(paymentSourceFromOrder(order, "塔羅抽牌"), order.amount ?? 0);
+          orderStats.todayRevenue += amount;
+          revenue += amount;
+          addPaymentSource(paymentSourceFromOrder(order, "塔羅抽牌"), amount);
           if (!order.redeemCode) orderStats.noCode += 1;
           if (!order.emailSent) orderStats.emailUnsent += 1;
+        } else if (status === "failed") {
+          orderStats.failed += 1;
+        } else if (status === "pending") {
+          orderStats.pending += 1;
         }
-        if (order.status === "failed") orderStats.failed += 1;
-        if (order.status === "pending") orderStats.pending += 1;
       }
     }
     paidUnlocks = Math.max(
@@ -553,12 +597,18 @@ export async function GET(req: NextRequest) {
     let astroProfileRevenue = 0;
     if (astroSnap) {
       for (const doc of astroSnap.docs) {
-        const order = doc.data() as { isTest?: boolean; buyerEmail?: string; status?: string; amount?: number } & Record<string, unknown>;
-        if (order.isTest || order.status === "failed") continue;
-        if (order.buyerEmail && adminEmails.has(order.buyerEmail.toLowerCase())) continue;
+        const order = doc.data() as { buyerEmail?: string; status?: string } & Record<string, unknown>;
+        const status = typeof order.status === "string" ? order.status : "pending";
+        const paid = isPaidStatus(status);
+        // 只計入付款成功且歸屬於本日（Asia/Taipei 付款日）的三重星座訂單；pending/failed/測試不算
+        if (orderAttributionDayKey(order, paid) !== date) continue;
+        if (isTestOrder(order)) continue;
+        if (order.buyerEmail && adminEmails.has(String(order.buyerEmail).toLowerCase())) continue;
+        if (!paid) continue;
+        const amount = resolveAmount(order);
         astroProfileCount += 1;
-        astroProfileRevenue += order.amount ?? 0;
-        addPaymentSource(paymentSourceFromOrder(order, "三重星座"), order.amount ?? 0);
+        astroProfileRevenue += amount;
+        addPaymentSource(paymentSourceFromOrder(order, "三重星座"), amount);
       }
     }
     revenue += astroProfileRevenue;
@@ -665,7 +715,9 @@ export async function GET(req: NextRequest) {
       tarotSingleSuccess,
       tarotThreeSuccess,
       freeSuccess: freeSuccessCount,
-      paidSuccess: tarotPaidSuccess,
+      // 付費成功＝塔羅付費 + 三重星座付費（與 revenue 同口徑，確保 revenue>0 時 paidSuccess>0）
+      paidSuccess,
+      tarotPaidSuccess,
       astroProfilePageViews: tripleZodiacPageViews,
       astroProfileSuccess: astroProfileSuccessTotal,
       astroProfileFreeSuccess: astroProfileFreeSuccessCount,

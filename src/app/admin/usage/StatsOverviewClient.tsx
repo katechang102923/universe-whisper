@@ -418,6 +418,11 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
               <span>抽牌→付費：{data.totals.conversionRates.drawToPaid}</span>
               <span>訪客→付費：{data.totals.conversionRates.visitorToPaid}</span>
             </div>
+            {data.totals.visitors === 0 && (data.totals.paidSuccess > 0 || data.totals.revenue > 0) ? (
+              <p className="mt-3 rounded-2xl border border-white/10 bg-midnight/50 px-4 py-3 text-xs leading-6 text-moon/55">
+                此日期舊版可能未記錄訪客事件，因此訪客可能無法回補；付款與收入已依訂單回補。
+              </p>
+            ) : null}
           </Panel>
 
           <Panel title="2. 三重星座（查詢區間）" subtitle="頁面瀏覽｜成功產出｜免費成功｜付費成功｜收入">
