@@ -14,10 +14,21 @@ export function FortuneManagementClient({
   generatedSigns,
   totalSigns,
 }: FortuneManagementClientProps) {
+  type FillApiResult = {
+    ok: boolean;
+    generated: number;
+    failed: number;
+    failedZodiacs: string[];
+    readyCount?: number;
+    total?: number;
+    missing?: string[];
+    status?: "complete" | "partial" | "failed";
+  };
+
   const [fillState, setFillState] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [regenState, setRegenState] = useState<"idle" | "loading" | "done" | "error">("idle");
-  const [fillResult, setFillResult] = useState<{ generated: number; failed: number; failedZodiacs: string[] } | null>(null);
-  const [regenResult, setRegenResult] = useState<{ generated: number; failed: number } | null>(null);
+  const [fillResult, setFillResult] = useState<FillApiResult | null>(null);
+  const [regenResult, setRegenResult] = useState<FillApiResult | null>(null);
   const [regenConfirm, setRegenConfirm] = useState(false);
 
   async function fillMissing() {
@@ -29,9 +40,9 @@ export function FortuneManagementClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ regenerate: false }),
       });
-      const data = await readJsonResponse<{ ok: boolean; generated: number; failed: number; failedZodiacs: string[] }>(res, { ok: false, generated: 0, failed: 0, failedZodiacs: [] });
+      const data = await readJsonResponse<FillApiResult>(res, { ok: false, generated: 0, failed: 0, failedZodiacs: [] });
       if (!data.ok) throw new Error("補齊失敗");
-      setFillResult({ generated: data.generated, failed: data.failed, failedZodiacs: data.failedZodiacs ?? [] });
+      setFillResult(data);
       setFillState("done");
     } catch {
       setFillState("error");
@@ -48,9 +59,9 @@ export function FortuneManagementClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ regenerate: true }),
       });
-      const data = await readJsonResponse<{ ok: boolean; generated: number; failed: number }>(res, { ok: false, generated: 0, failed: 0 });
+      const data = await readJsonResponse<FillApiResult>(res, { ok: false, generated: 0, failed: 0, failedZodiacs: [] });
       if (!data.ok) throw new Error("重新生成失敗");
-      setRegenResult({ generated: data.generated, failed: data.failed });
+      setRegenResult(data);
       setRegenState("done");
     } catch {
       setRegenState("error");
@@ -103,10 +114,20 @@ export function FortuneManagementClient({
               {fillState === "loading" ? "補齊中…" : `✦ 補齊缺少星座（${missingSigns.length} 個）`}
             </button>
             {fillState === "done" && fillResult && (
-              <p className="mt-1.5 text-xs text-aurora">
-                成功生成 {fillResult.generated} 個
-                {fillResult.failed > 0 && `，失敗 ${fillResult.failed} 個（${fillResult.failedZodiacs.join("、")}）`}
-              </p>
+              <div className="mt-1.5 text-xs">
+                <p className="text-aurora">
+                  成功生成 {fillResult.generated} 個
+                  {fillResult.failed > 0 && `，失敗 ${fillResult.failed} 個（${fillResult.failedZodiacs.join("、")}）`}
+                  {typeof fillResult.readyCount === "number" && `，目前 ${fillResult.readyCount}/${fillResult.total ?? 12}`}
+                </p>
+                {fillResult.missing && fillResult.missing.length > 0 ? (
+                  <p className="mt-0.5 text-amber-300">
+                    仍缺少：{fillResult.missing.join("、")}（可再按一次補齊；按「↻ 重新整理」更新狀態）
+                  </p>
+                ) : (
+                  <p className="mt-0.5 text-aurora">已達 12/12，請按「↻ 重新整理」更新狀態</p>
+                )}
+              </div>
             )}
             {fillState === "error" && (
               <p className="mt-1.5 text-xs text-red-300">補齊失敗，請稍後再試</p>
@@ -145,10 +166,20 @@ export function FortuneManagementClient({
             </div>
           )}
           {regenState === "done" && regenResult && (
-            <p className="mt-1.5 text-xs text-aurora">
-              重新生成完成：成功 {regenResult.generated} 個
-              {regenResult.failed > 0 && `，失敗 ${regenResult.failed} 個`}
-            </p>
+            <div className="mt-1.5 text-xs">
+              <p className="text-aurora">
+                重新生成完成（覆蓋全部）：成功 {regenResult.generated} 個
+                {regenResult.failed > 0 && `，失敗 ${regenResult.failed} 個`}
+                {typeof regenResult.readyCount === "number" && `，目前 ${regenResult.readyCount}/${regenResult.total ?? 12}`}
+              </p>
+              {regenResult.missing && regenResult.missing.length > 0 ? (
+                <p className="mt-0.5 text-amber-300">
+                  仍缺少：{regenResult.missing.join("、")}（可用「補齊缺少星座」再試；按「↻ 重新整理」更新狀態）
+                </p>
+              ) : (
+                <p className="mt-0.5 text-aurora">已達 12/12，請按「↻ 重新整理」更新狀態</p>
+              )}
+            </div>
           )}
           {regenState === "error" && (
             <p className="mt-1.5 text-xs text-red-300">重新生成失敗，請稍後再試</p>

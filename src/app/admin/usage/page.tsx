@@ -10,7 +10,7 @@ import {
   UNAUTH_DAILY_LIMIT,
   type DailyUsageDoc,
 } from "@/lib/rateLimit";
-import { ZODIAC_SIGNS, type FortuneStatsDoc } from "@/lib/dailyFortune";
+import { ZODIAC_SIGNS, getReadyZodiacSet, type FortuneStatsDoc } from "@/lib/dailyFortune";
 import {
   SESSION_COOKIE_NAME,
   verifyAdminSessionCookie,
@@ -399,6 +399,7 @@ export default async function AdminUsagePage({
   // ── 資料抓取 ─────────────────────────────────────────────────────────────────
   let usageData:   Partial<DailyUsageDoc>   = {};
   let fortuneStats: Partial<FortuneStatsDoc> = {};
+  let fortuneReadySigns: string[] | null = null;
   let codes:       RedeemCodeData[]          = [];
   let orders:      SerializableOrder[]        = [];
   let redeemStats  = { total: 0, active: 0, usedUp: 0, test: 0 };
@@ -452,6 +453,12 @@ export default async function AdminUsagePage({
     if (currentTab === "fortune") {
       const snap = await db.collection("fortune_stats").doc(today).get();
       fortuneStats = (snap.data() as Partial<FortuneStatsDoc>) ?? {};
+      // 以實際 dailyFortunes 快取為準計算 X/12（讀當天 12 筆），避免 fortune_stats 漂移
+      try {
+        fortuneReadySigns = [...(await getReadyZodiacSet(today))];
+      } catch (e) {
+        console.error("[Admin Fortune] getReadyZodiacSet failed:", e);
+      }
     }
 
   } catch (err) {
@@ -484,7 +491,7 @@ export default async function AdminUsagePage({
     .slice(0, 20)
     .map(({ key, count }) => ({ display: key, count }));
 
-  const generatedSigns = fortuneStats.generated_zodiacs ?? [];
+  const generatedSigns = fortuneReadySigns ?? fortuneStats.generated_zodiacs ?? [];
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (

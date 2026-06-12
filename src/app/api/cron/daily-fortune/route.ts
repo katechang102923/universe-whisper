@@ -20,17 +20,13 @@ export async function GET(request: Request) {
   }
 
   try {
-    const results = await prefillAllZodiacs();
-    const generated = results.filter((r) => r.success && !r.fromCache).length;
-    const fromCache = results.filter((r) => r.fromCache).length;
-    const failed = results.filter((r) => !r.success).length;
+    const summary = await prefillAllZodiacs();
 
-    console.log(`[cron/daily-fortune] generated=${generated} fromCache=${fromCache} failed=${failed}`);
+    console.log(
+      `[cron/daily-fortune] date=${summary.date} status=${summary.status} ready=${summary.readyCount}/${summary.total} generated=${summary.generated.length} fromCache=${summary.fromCache.length} failed=${summary.failed.length} missing=[${summary.missing.join("、") || "無"}]`
+    );
 
-    return NextResponse.json({
-      ok: true,
-      summary: { generated, fromCache, failed, total: results.length },
-    });
+    return NextResponse.json({ ok: true, summary });
   } catch (err) {
     console.error("[cron/daily-fortune] failed:", err);
     return NextResponse.json({ error: "Cron job failed." }, { status: 500 });

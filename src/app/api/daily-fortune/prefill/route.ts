@@ -20,16 +20,8 @@ export async function POST() {
   }
 
   try {
-    const results = await prefillAllZodiacs();
-    const generated = results.filter((r) => r.success && !r.fromCache).length;
-    const fromCache = results.filter((r) => r.fromCache).length;
-    const failed = results.filter((r) => !r.success).length;
-
-    return NextResponse.json({
-      success: true,
-      summary: { generated, fromCache, failed, total: results.length },
-      results,
-    });
+    const summary = await prefillAllZodiacs();
+    return NextResponse.json({ success: true, summary });
   } catch (err) {
     console.error("[prefill] failed:", err);
     return NextResponse.json({ error: "預生成失敗，請稍後再試。" }, { status: 500 });

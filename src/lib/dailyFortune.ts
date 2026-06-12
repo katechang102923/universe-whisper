@@ -14,6 +14,8 @@ const STATS_COLLECTION = "fortune_stats";
 const DEFAULT_MODEL = "gpt-5.4-mini";
 const LOCK_TTL_MS = 15_000;
 const LOCK_WAIT_MS = 17_000;
+// 單一星座 AI 生成失敗時的重試間隔（最多 3 次重試：1 秒、3 秒、5 秒）
+const RETRY_DELAYS_MS = [1_000, 3_000, 5_000] as const;
 
 export const ZODIAC_SIGNS = [
   "牡羊座",
@@ -65,12 +67,17 @@ export interface DailyFortuneCacheDoc extends DailyFortuneData {
   updatedAt?: unknown;
 }
 
+export type FortuneGenerationStatus = "complete" | "partial" | "failed";
+
 export interface FortuneStatsDoc {
   ai_generations: number;
   fallback_generations: number;
   cache_hits: number;
   total_generated: number;
   generated_zodiacs: string[];
+  missing_zodiacs?: string[];
+  generation_status?: FortuneGenerationStatus;
+  generation_checked_at?: unknown;
 }
 
 function normalizeZodiac(input: string): { label: ZodiacSign; slug: string } | null {
@@ -392,9 +399,36 @@ export async function getDailyFortune(zodiacInput: string): Promise<DailyFortune
       throw new Error("Daily fortune is still generating. Please retry shortly.");
     }
 
-    const aiFortune = await generateWithAI(label, date);
+    // ── 生成重試：最多 1 + 3 次（間隔 1s/3s/5s），單一星座失敗不影響整批 ───────────
+    let aiFortune: DailyFortuneData | null = null;
+    const totalAttempts = RETRY_DELAYS_MS.length + 1;
+    for (let attempt = 1; attempt <= totalAttempts; attempt++) {
+      if (attempt > 1) {
+        await wait(RETRY_DELAYS_MS[attempt - 2]);
+        // 續鎖：重試期間延長鎖效期，避免被其他呼叫搶走而重複生成
+        await ref
+          .set({ lockExpiresAt: Date.now() + LOCK_TTL_MS, updatedAt: FieldValue.serverTimestamp() }, { merge: true })
+          .catch(() => {});
+      }
+      console.log(`[dailyFortune] date=${date} zodiac=${label} attempt=${attempt}/${totalAttempts} generating...`);
+      aiFortune = await generateWithAI(label, date);
+      if (aiFortune) {
+        console.log(`[dailyFortune] date=${date} zodiac=${label} attempt=${attempt} result=success`);
+        break;
+      }
+      console.warn(`[dailyFortune] date=${date} zodiac=${label} attempt=${attempt} result=failed`);
+    }
+
     if (!aiFortune) {
-      throw new Error("Daily fortune AI generation failed.");
+      // 釋放鎖（status 退回 pending、清掉鎖），讓之後的補缺流程可以乾淨重試
+      await ref
+        .set(
+          { status: "pending", lockOwner: FieldValue.delete(), lockExpiresAt: FieldValue.delete(), updatedAt: FieldValue.serverTimestamp() },
+          { merge: true }
+        )
+        .catch(() => {});
+      console.error(`[dailyFortune] date=${date} zodiac=${label} result=failed-after-retries`);
+      throw new Error("Daily fortune AI generation failed after retries.");
     }
 
     const storedFortune = await writeReadyFortune(ref, {
@@ -414,39 +448,129 @@ export async function getDailyFortune(zodiacInput: string): Promise<DailyFortune
   }
 }
 
-export async function prefillAllZodiacs(): Promise<
-  Array<{ zodiac: ZodiacSign; success: boolean; fromCache: boolean }>
-> {
+/**
+ * 讀取指定日期實際「已就緒(ready)」的星座集合。
+ * 直接讀當天 12 筆 dailyFortunes 文件（getAll，共 12 次讀取），
+ * 以實際快取為準，不依賴可能漂移的 fortune_stats.generated_zodiacs。
+ */
+export async function getReadyZodiacSet(date = getTaipeiDate()): Promise<Set<ZodiacSign>> {
+  const db = getAdminDb();
+  const refs = ZODIAC_SIGNS.map((z) => db.collection(CACHE_COLLECTION).doc(buildDocId(date, ZODIAC_SLUGS[z])));
+  const snaps = await db.getAll(...refs);
+  const ready = new Set<ZodiacSign>();
+  snaps.forEach((snap, i) => {
+    const data = snap.data() as Partial<DailyFortuneCacheDoc> | undefined;
+    if (data?.status === "ready" && toClientFortune(data)) ready.add(ZODIAC_SIGNS[i]);
+  });
+  return ready;
+}
+
+export interface PrefillSummary {
+  date: string;
+  status: FortuneGenerationStatus;
+  total: number;
+  readyCount: number;
+  generated: ZodiacSign[];
+  fromCache: ZodiacSign[];
+  failed: ZodiacSign[];
+  missing: ZodiacSign[];
+}
+
+/** 將當天生成狀態寫回 fortune_stats（單筆寫入），供後台顯示準確的 X/12 與缺漏 */
+async function writeFortuneStatus(
+  db: FirebaseFirestore.Firestore,
+  date: string,
+  ready: ZodiacSign[],
+  missing: ZodiacSign[],
+  status: FortuneGenerationStatus
+) {
+  try {
+    await db.collection(STATS_COLLECTION).doc(date).set(
+      {
+        generated_zodiacs: ready,
+        missing_zodiacs: missing,
+        generation_status: status,
+        generation_checked_at: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.error("[dailyFortune] writeFortuneStatus failed:", err);
+  }
+}
+
+/**
+ * 預生成當日 12 星座運勢（排程／管理員手動共用）。
+ *  - 以實際 dailyFortunes 為完整清單檢查，只補缺、不重生已完成。
+ *  - 每個星座獨立 try/catch，單一失敗不中斷整批（getDailyFortune 內含 3 次重試）。
+ *  - 批次結束後再次讀取當天資料確認，並回報最終缺漏與狀態。
+ */
+export async function prefillAllZodiacs(): Promise<PrefillSummary> {
   const date = getTaipeiDate();
-  const results: Array<{ zodiac: ZodiacSign; success: boolean; fromCache: boolean }> = [];
   let db: FirebaseFirestore.Firestore;
 
   try {
     db = getAdminDb();
   } catch (err) {
-    console.error("[dailyFortune] prefill cannot initialize Firebase Admin:", err);
-    return ZODIAC_SIGNS.map((zodiac) => ({ zodiac, success: false, fromCache: false }));
+    console.error("[dailyFortune][prefill] cannot initialize Firebase Admin:", err);
+    return {
+      date,
+      status: "failed",
+      total: ZODIAC_SIGNS.length,
+      readyCount: 0,
+      generated: [],
+      fromCache: [],
+      failed: [...ZODIAC_SIGNS],
+      missing: [...ZODIAC_SIGNS],
+    };
   }
 
-  for (const zodiac of ZODIAC_SIGNS) {
-    const slug = ZODIAC_SLUGS[zodiac];
+  // 1) 先讀當天實際已完成的星座（12 次讀取），只補缺
+  const before = await getReadyZodiacSet(date);
+  const fromCache = ZODIAC_SIGNS.filter((z) => before.has(z));
+  const toGenerate = ZODIAC_SIGNS.filter((z) => !before.has(z));
+  console.log(
+    `[dailyFortune][prefill] date=${date} existing=${fromCache.length}/12 toGenerate=[${toGenerate.join("、") || "無"}]`
+  );
 
+  // 2) 逐一補缺（每個星座獨立 try/catch，失敗不影響其他）
+  const generated: ZodiacSign[] = [];
+  const failedFirstPass: ZodiacSign[] = [];
+  for (const zodiac of toGenerate) {
     try {
-      const snap = await db.collection(CACHE_COLLECTION).doc(buildDocId(date, slug)).get();
-      const data = snap.data() as Partial<DailyFortuneCacheDoc> | undefined;
-
-      if (data?.status === "ready" && toClientFortune(data)) {
-        results.push({ zodiac, success: true, fromCache: true });
-        continue;
-      }
-
-      await getDailyFortune(zodiac);
-      results.push({ zodiac, success: true, fromCache: false });
+      await getDailyFortune(zodiac); // 內含 1 + 3 次重試
+      generated.push(zodiac);
+      console.log(`[dailyFortune][prefill] date=${date} zodiac=${zodiac} result=success`);
     } catch (err) {
-      console.error(`[dailyFortune] prefill failed for ${zodiac}:`, err);
-      results.push({ zodiac, success: false, fromCache: false });
+      failedFirstPass.push(zodiac);
+      console.error(
+        `[dailyFortune][prefill] date=${date} zodiac=${zodiac} result=failed reason=`,
+        err instanceof Error ? err.message : err
+      );
     }
   }
 
-  return results;
+  // 3) 批次結束後再次確認（讀當天 12 筆），以實際 ready 為準
+  const after = await getReadyZodiacSet(date);
+  const missing = ZODIAC_SIGNS.filter((z) => !after.has(z));
+  const failed = failedFirstPass.filter((z) => missing.includes(z));
+  const status: FortuneGenerationStatus =
+    after.size >= ZODIAC_SIGNS.length ? "complete" : after.size > 0 ? "partial" : "failed";
+
+  console.log(
+    `[dailyFortune][prefill] date=${date} done status=${status} ready=${after.size}/12 missing=[${missing.join("、") || "無"}]`
+  );
+
+  await writeFortuneStatus(db, date, [...after], missing, status);
+
+  return {
+    date,
+    status,
+    total: ZODIAC_SIGNS.length,
+    readyCount: after.size,
+    generated,
+    fromCache,
+    failed,
+    missing,
+  };
 }
