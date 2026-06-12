@@ -414,9 +414,9 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
               ]}
             />
             <div className="mt-3 grid gap-2 text-xs text-moon/55 sm:grid-cols-3">
-              <span>訪客→抽牌：{data.totals.conversionRates.visitorToDraw}</span>
-              <span>抽牌→付費：{data.totals.conversionRates.drawToPaid}</span>
-              <span>訪客→付費：{data.totals.conversionRates.visitorToPaid}</span>
+              <span>訪客→抽牌：{data.totals.conversionRates?.visitorToDraw ?? "0%"}</span>
+              <span>抽牌→付費：{data.totals.conversionRates?.drawToPaid ?? "0%"}</span>
+              <span>訪客→付費：{data.totals.conversionRates?.visitorToPaid ?? "0%"}</span>
             </div>
             {data.totals.visitors === 0 && (data.totals.paidSuccess > 0 || data.totals.revenue > 0) ? (
               <p className="mt-3 rounded-2xl border border-white/10 bg-midnight/50 px-4 py-3 text-xs leading-6 text-moon/55">

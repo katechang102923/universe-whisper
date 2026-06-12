@@ -1,6 +1,5 @@
 import { cookies } from "next/headers";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import {
@@ -13,7 +12,7 @@ import {
 import { ZODIAC_SIGNS, getReadyZodiacSet, type FortuneStatsDoc } from "@/lib/dailyFortune";
 import {
   SESSION_COOKIE_NAME,
-  verifyAdminSessionCookie,
+  checkAdminSession,
   getAdminEmailList,
 } from "@/lib/verifyAdmin";
 import {
@@ -29,6 +28,8 @@ import { OrdersTabClient, type SerializableOrder } from "./OrdersTabClient";
 import { RevenueTabClient } from "./RevenueTabClient";
 import { StatsOverviewClient } from "./StatsOverviewClient";
 import { AstroProfileReissueClient } from "./AstroProfileReissueClient";
+import { AdminErrorBoundary } from "./AdminErrorBoundary";
+import { AdminGate } from "./AdminGate";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -381,10 +382,33 @@ export default async function AdminUsagePage({
   // ── 驗證管理員 ──────────────────────────────────────────────────────────────
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-  const isGoogleAdmin = await verifyAdminSessionCookie(sessionCookie);
+  const sessionCheck = await checkAdminSession(sessionCookie);
   const lineUserId = cookieStore.get("line_user_id")?.value ?? null;
   const isLineAdmin = Boolean(lineUserId && getAdminUserIds().includes(lineUserId));
-  if (!isGoogleAdmin && !isLineAdmin) redirect("/");
+  const isAdminUser = sessionCheck.ok || isLineAdmin;
+
+  // ── 診斷 log（僅伺服器 console，不顯示在前台）──────────────────────────────────
+  console.log("[admin/usage] auth", {
+    hasSession: sessionCheck.hasSession,
+    sessionEmail: sessionCheck.email,
+    isGoogleAdmin: sessionCheck.ok,
+    hasLineCookie: Boolean(lineUserId),
+    isLineAdmin,
+    isAdminUser,
+    adminEmails: getAdminEmailList(),
+    decision: isAdminUser ? "render-admin" : "show-gate",
+  });
+
+  // 未通過：顯示清楚的登入閘門（不再靜默 redirect 回首頁，也不會卡在 loading）
+  if (!isAdminUser) {
+    return (
+      <AppShell adminMode>
+        <section className="mx-auto w-full max-w-6xl py-10">
+          <AdminGate hasSession={sessionCheck.hasSession} email={sessionCheck.email} />
+        </section>
+      </AppShell>
+    );
+  }
 
   // ── Tab 解析 ────────────────────────────────────────────────────────────────
   const params     = await searchParams;
@@ -540,8 +564,9 @@ export default async function AdminUsagePage({
           </div>
         </div>
 
-        {/* Tab 內容 */}
+        {/* Tab 內容（以錯誤邊界隔離：單一區塊壞掉不影響整個後台導覽） */}
         <div className="mt-8">
+          <AdminErrorBoundary label={`${currentTab} 區塊`}>
           {currentTab === "overview" && (
             <OverviewTab
               today={today}
@@ -580,6 +605,7 @@ export default async function AdminUsagePage({
           )}
 
           {currentTab === "cleanup" && <CleanupClient />}
+          </AdminErrorBoundary>
         </div>
 
         <p className="mt-10 text-center text-xs text-moon/28">

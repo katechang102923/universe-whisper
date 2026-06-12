@@ -66,13 +66,35 @@ export async function verifyAdminIdToken(
 export async function verifyAdminSessionCookie(
   sessionCookie: string | null | undefined,
 ): Promise<boolean> {
-  if (!sessionCookie) return false;
+  return (await checkAdminSession(sessionCookie)).ok;
+}
+
+export type AdminSessionCheck = {
+  /** true 表示有效 session 且 email 在管理員白名單內 */
+  ok: boolean;
+  /** session 解出的 email（即使非管理員也會回傳，供顯示「此帳號沒有權限」）*/
+  email: string | null;
+  /** 是否存在可驗證的 Google session cookie（區分「未登入」與「已登入但非管理員」）*/
+  hasSession: boolean;
+};
+
+/**
+ * 驗證 admin session cookie，回傳細節以便：
+ *  - 區分「未登入 / 已登入但非管理員」並顯示對應訊息
+ *  - server console 診斷
+ * 註：checkRevoked=false，只驗簽章與效期（admin 面板可接受；避免撤銷檢查在 production 偶發失敗造成被踢出）。
+ */
+export async function checkAdminSession(
+  sessionCookie: string | null | undefined,
+): Promise<AdminSessionCheck> {
+  if (!sessionCookie) return { ok: false, email: null, hasSession: false };
   try {
     getAdminDb();
-    // checkRevoked=true: rejects cookies whose underlying token was revoked
-    const decoded = await getAuth().verifySessionCookie(sessionCookie, true);
-    return getAdminEmailList().includes(decoded.email?.toLowerCase() ?? "");
-  } catch {
-    return false;
+    const decoded = await getAuth().verifySessionCookie(sessionCookie, false);
+    const email = decoded.email?.toLowerCase() ?? null;
+    return { ok: getAdminEmailList().includes(email ?? ""), email, hasSession: true };
+  } catch (err) {
+    console.error("[verifyAdmin] session cookie verify failed:", err instanceof Error ? err.message : err);
+    return { ok: false, email: null, hasSession: false };
   }
 }
