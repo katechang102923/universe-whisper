@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import type { DocumentSnapshot } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebaseAdmin";
@@ -8,80 +8,46 @@ import { jsonServerError } from "@/lib/apiErrors";
 
 export const runtime = "nodejs";
 
-type SnapshotPeriod = "full" | "am";
+// ── 低 Firebase 讀取成本版本 ────────────────────────────────────────────────────
+// 只讀 daily_admin_stats 快照（每天 1 筆 `${date}_full`），不掃 collection、不讀 raw events。
+// 由管理者手動指定 start/end（皆為 Asia/Taipei 日期）才查詢；單日 = start 省略 end。
+// 區間上限 90 天。今日尚無完整快照，回 missingSnapshot 並標記 isToday，前端顯示提示。
+
+const MAX_RANGE_DAYS = 90;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 type BreakdownRow = { label: string; count: number; ratio: string };
 type PaymentBreakdownRow = { label: string; count: number; ratio: string; revenue: number };
-type ConversionRates = {
-  visitorToDraw: string;
-  drawToPaid: string;
-  visitorToPaid: string;
-};
-type ZodiacConversionRates = {
-  pageToGenerated: string;
-  generatedToPaid: string;
-  pageToPaid: string;
-};
-type ZodiacStats = {
-  tripleZodiacPageViews: number;
-  tripleZodiacStarted: number;
-  tripleZodiacGenerated: number;
-  tripleZodiacFreeSuccess: number;
-  tripleZodiacPaidSuccess: number;
-  tripleZodiacCodeSuccess: number;
-  tripleZodiacLineSent: number;
-  tripleZodiacEmailSent: number;
-  tripleZodiacStoryDownloaded: number;
-  tripleZodiacRevenue: number;
-  conversionRates: ZodiacConversionRates;
-};
-type DailyMetrics = {
+type ConversionRates = { visitorToDraw: string; drawToPaid: string; visitorToPaid: string };
+type ZodiacConversionRates = { pageToGenerated: string; generatedToPaid: string; pageToPaid: string };
+
+type DayMetrics = {
   date: string;
-  period: SnapshotPeriod;
-  label: string;
   visitors: number;
   pageViews: number;
-  tarotDraws: number;
-  freeDraws: number;
+  tarotDrawSuccess: number;
+  tarotSingleSuccess: number;
+  tarotThreeSuccess: number;
+  freeSuccess: number;
   paidSuccess: number;
   revenue: number;
+  astroProfilePageViews: number;
+  astroProfileSuccess: number;
+  astroProfileFreeSuccess: number;
+  astroProfilePaidSuccess: number;
+  astroProfileRevenue: number;
   conversionRates: ConversionRates;
-  visitorSources: BreakdownRow[];
-  featureRanking: BreakdownRow[];
-  paymentSources: PaymentBreakdownRow[];
-  zodiacStats: ZodiacStats;
+  zodiacConversionRates: ZodiacConversionRates;
+  sourceStats: BreakdownRow[];
+  popularFeatureStats: BreakdownRow[];
+  paymentSourceStats: PaymentBreakdownRow[];
 };
 
-const EMPTY_ZODIAC_STATS: ZodiacStats = {
-  tripleZodiacPageViews: 0,
-  tripleZodiacStarted: 0,
-  tripleZodiacGenerated: 0,
-  tripleZodiacFreeSuccess: 0,
-  tripleZodiacPaidSuccess: 0,
-  tripleZodiacCodeSuccess: 0,
-  tripleZodiacLineSent: 0,
-  tripleZodiacEmailSent: 0,
-  tripleZodiacStoryDownloaded: 0,
-  tripleZodiacRevenue: 0,
-  conversionRates: { pageToGenerated: "0%", generatedToPaid: "0%", pageToPaid: "0%" },
-};
-
-type SnapshotDoc = {
-  date?: string;
-  period?: SnapshotPeriod;
-  generatedAt?: unknown;
-  dailyMetrics?: Partial<DailyMetrics>;
-  visitors?: number;
-  tarotDraws?: number;
-  freeDraws?: number;
-  paidUnlocks?: number;
-  revenue?: number;
-  zodiacStats?: unknown;
-  orderStats?: { paid?: number; todayPaid?: number; todayRevenue?: number };
-  statsPayload?: {
-    traffic?: { today?: { pageViews?: number; visitors?: number } };
-    funnel?: Array<{ label?: string; users?: number }>;
-  };
+type DayResult = {
+  date: string;
+  isToday: boolean;
+  missingSnapshot: boolean;
+  metrics: DayMetrics | null;
 };
 
 async function verifyAdmin() {
@@ -92,9 +58,21 @@ async function verifyAdmin() {
   return isGoogleAdmin || Boolean(lineUserId && getAdminUserIds().includes(lineUserId));
 }
 
-function addDays(dateKey: string, days: number) {
+function num(value: unknown): number {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/** 轉換率：分母為 0 顯示 0%，永不出現 NaN / Infinity */
+function calcRatio(numerator: number, denominator: number): string {
+  if (!denominator || denominator <= 0) return "0%";
+  return `${Math.round((numerator / denominator) * 1000) / 10}%`;
+}
+
+function addDays(dateKey: string, days: number): string {
   const [year, month, day] = dateKey.split("-").map(Number);
-  const d = new Date(Date.UTC(year, month - 1, day + days, 16));
+  // 以 Asia/Taipei 中午對齊，避免 UTC 切日錯位
+  const d = new Date(Date.UTC(year, month - 1, day + days, 4));
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Taipei",
     year: "numeric",
@@ -103,156 +81,203 @@ function addDays(dateKey: string, days: number) {
   }).format(d);
 }
 
-function taipeiMinutes() {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Taipei",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(new Date());
-  const hour = Number(parts.find((part) => part.type === "hour")?.value ?? "0");
-  const minute = Number(parts.find((part) => part.type === "minute")?.value ?? "0");
-  return hour * 60 + minute;
-}
-
-function numberValue(value: unknown) {
-  const n = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(n) && n > 0 ? n : 0;
-}
-
-function calcRatio(num: number, den: number) {
-  if (!den) return "0%";
-  return `${Math.round((num / den) * 1000) / 10}%`;
+/** 列出 [start, end] 之間（含端點）所有 Taipei 日期；超出上限回 null */
+function listDates(start: string, end: string): string[] | null {
+  if (start > end) return null;
+  const dates: string[] = [];
+  let cursor = start;
+  for (let i = 0; i < MAX_RANGE_DAYS; i++) {
+    dates.push(cursor);
+    if (cursor === end) return dates;
+    cursor = addDays(cursor, 1);
+  }
+  // 超過 MAX_RANGE_DAYS 仍未到 end → 超出上限
+  return null;
 }
 
 function safeBreakdownRows(value: unknown): BreakdownRow[] {
   if (!Array.isArray(value)) return [];
-  return value.map((row) => ({
-    label: String((row as Partial<BreakdownRow>).label ?? ""),
-    count: numberValue((row as Partial<BreakdownRow>).count),
-    ratio: String((row as Partial<BreakdownRow>).ratio ?? "0%"),
-  })).filter((row) => row.label);
+  return value
+    .map((row) => ({
+      label: String((row as Partial<BreakdownRow>).label ?? ""),
+      count: num((row as Partial<BreakdownRow>).count),
+      ratio: String((row as Partial<BreakdownRow>).ratio ?? "0%"),
+    }))
+    .filter((row) => row.label);
 }
 
 function safePaymentRows(value: unknown): PaymentBreakdownRow[] {
   if (!Array.isArray(value)) return [];
-  return value.map((row) => ({
-    label: String((row as Partial<PaymentBreakdownRow>).label ?? ""),
-    count: numberValue((row as Partial<PaymentBreakdownRow>).count),
-    ratio: String((row as Partial<PaymentBreakdownRow>).ratio ?? "0%"),
-    revenue: numberValue((row as Partial<PaymentBreakdownRow>).revenue),
-  })).filter((row) => row.label);
+  return value
+    .map((row) => ({
+      label: String((row as Partial<PaymentBreakdownRow>).label ?? ""),
+      count: num((row as Partial<PaymentBreakdownRow>).count),
+      ratio: String((row as Partial<PaymentBreakdownRow>).ratio ?? "0%"),
+      revenue: num((row as Partial<PaymentBreakdownRow>).revenue),
+    }))
+    .filter((row) => row.label);
 }
 
-function safeZodiacStats(value: unknown): ZodiacStats {
-  if (!value || typeof value !== "object") return EMPTY_ZODIAC_STATS;
-  const v = value as Partial<ZodiacStats> & { conversionRates?: Partial<ZodiacConversionRates> };
-  const pageViews = numberValue(v.tripleZodiacPageViews);
-  const generated = numberValue(v.tripleZodiacGenerated);
-  const paid = numberValue(v.tripleZodiacPaidSuccess);
-  const rates: Partial<ZodiacConversionRates> = v.conversionRates ?? {};
-  return {
-    tripleZodiacPageViews: pageViews,
-    tripleZodiacStarted: numberValue(v.tripleZodiacStarted),
-    tripleZodiacGenerated: generated,
-    tripleZodiacFreeSuccess: numberValue(v.tripleZodiacFreeSuccess),
-    tripleZodiacPaidSuccess: paid,
-    tripleZodiacCodeSuccess: numberValue(v.tripleZodiacCodeSuccess),
-    tripleZodiacLineSent: numberValue(v.tripleZodiacLineSent),
-    tripleZodiacEmailSent: numberValue(v.tripleZodiacEmailSent),
-    tripleZodiacStoryDownloaded: numberValue(v.tripleZodiacStoryDownloaded),
-    tripleZodiacRevenue: numberValue(v.tripleZodiacRevenue),
-    conversionRates: {
-      pageToGenerated: String(rates.pageToGenerated ?? calcRatio(generated, pageViews)),
-      generatedToPaid: String(rates.generatedToPaid ?? calcRatio(paid, generated)),
-      pageToPaid: String(rates.pageToPaid ?? calcRatio(paid, pageViews)),
-    },
-  };
-}
+type SnapshotDoc = Record<string, unknown> & {
+  dailyMetrics?: Record<string, unknown>;
+  zodiacStats?: Record<string, unknown>;
+};
 
-function funnelUsers(snapshot: SnapshotDoc, label: string) {
-  return snapshot.statsPayload?.funnel?.find((row) => row.label === label)?.users ?? 0;
-}
+/** 將快照 doc 映射成規格化 metrics；優先讀新欄位，缺少時回退舊欄位（向下相容，不假造） */
+function metricsFromDoc(doc: DocumentSnapshot, date: string): DayMetrics {
+  const data = (doc.data() ?? {}) as SnapshotDoc;
+  const dm = (data.dailyMetrics ?? {}) as Record<string, unknown>;
+  const zodiac = (data.zodiacStats ?? (dm.zodiacStats as Record<string, unknown>) ?? {}) as Record<string, unknown>;
 
-function metricsFromDoc(doc: DocumentSnapshot, fallbackDate: string, fallbackPeriod: SnapshotPeriod): DailyMetrics | null {
-  if (!doc.exists) return null;
-  const data = doc.data() as SnapshotDoc;
-  const date = data.date ?? fallbackDate;
-  const period = data.period ?? fallbackPeriod;
-  const dailyMetrics = data.dailyMetrics ?? {};
-  const completedDraws =
-    numberValue(dailyMetrics.tarotDraws) ||
-    numberValue(data.tarotDraws) ||
-    numberValue(funnelUsers(data, "完成抽牌人數"));
+  const visitors = num(data.visitors) || num(dm.visitors);
+  const pageViews = num(data.pageViews) || num(dm.pageViews);
 
-  const visitors = numberValue(dailyMetrics.visitors) || numberValue(data.visitors) || numberValue(data.statsPayload?.traffic?.today?.visitors);
-  const pageViews = numberValue(dailyMetrics.pageViews) || numberValue(data.statsPayload?.traffic?.today?.pageViews);
-  const freeDraws = numberValue(dailyMetrics.freeDraws) || numberValue(data.freeDraws);
-  const paidSuccess =
-    numberValue(dailyMetrics.paidSuccess) ||
-    numberValue(data.orderStats?.todayPaid) ||
-    numberValue(data.orderStats?.paid) ||
-    numberValue(data.paidUnlocks);
-  const revenue = numberValue(dailyMetrics.revenue) || numberValue(data.revenue) || numberValue(data.orderStats?.todayRevenue);
-  const conversionRates = dailyMetrics.conversionRates ?? {
-    visitorToDraw: calcRatio(completedDraws, visitors),
-    drawToPaid: calcRatio(paidSuccess, completedDraws),
-    visitorToPaid: calcRatio(paidSuccess, visitors),
-  };
+  const tarotSingleSuccess = num(data.tarotSingleSuccess);
+  const tarotThreeSuccess = num(data.tarotThreeSuccess);
+  const freeSuccess = num(data.freeSuccess) || num(dm.freeDraws) || num(data.freeDraws);
+  const paidSuccess = num(data.paidSuccess) || num(dm.paidSuccess) || num(data.paidUnlocks);
+  const tarotDrawSuccess =
+    num(data.tarotDrawSuccess) || num(dm.tarotDraws) || freeSuccess + paidSuccess;
+  const revenue = num(data.revenue) || num(dm.revenue);
+
+  const astroProfilePageViews = num(data.astroProfilePageViews) || num(zodiac.tripleZodiacPageViews);
+  const astroProfilePaidSuccess = num(data.astroProfilePaidSuccess) || num(zodiac.tripleZodiacPaidSuccess);
+  const astroProfileFreeSuccess =
+    num(data.astroProfileFreeSuccess) ||
+    num(zodiac.tripleZodiacFreeSuccess) + num(zodiac.tripleZodiacCodeSuccess);
+  const astroProfileSuccess =
+    num(data.astroProfileSuccess) ||
+    num(zodiac.tripleZodiacGenerated) ||
+    astroProfilePaidSuccess + astroProfileFreeSuccess;
+  const astroProfileRevenue = num(data.astroProfileRevenue) || num(zodiac.tripleZodiacRevenue);
 
   return {
     date,
-    period,
-    label: dailyMetrics.label ?? (period === "am" ? "今日 00:00-12:00" : "昨日 00:00-23:59"),
     visitors,
     pageViews,
-    tarotDraws: completedDraws,
-    freeDraws,
+    tarotDrawSuccess,
+    tarotSingleSuccess,
+    tarotThreeSuccess,
+    freeSuccess,
     paidSuccess,
     revenue,
+    astroProfilePageViews,
+    astroProfileSuccess,
+    astroProfileFreeSuccess,
+    astroProfilePaidSuccess,
+    astroProfileRevenue,
     conversionRates: {
-      visitorToDraw: conversionRates.visitorToDraw ?? "0%",
-      drawToPaid: conversionRates.drawToPaid ?? "0%",
-      visitorToPaid: conversionRates.visitorToPaid ?? "0%",
+      visitorToDraw: calcRatio(tarotDrawSuccess, visitors),
+      drawToPaid: calcRatio(paidSuccess, tarotDrawSuccess),
+      visitorToPaid: calcRatio(paidSuccess, visitors),
     },
-    visitorSources: safeBreakdownRows(dailyMetrics.visitorSources),
-    featureRanking: safeBreakdownRows(dailyMetrics.featureRanking),
-    paymentSources: safePaymentRows(dailyMetrics.paymentSources),
-    zodiacStats: safeZodiacStats(dailyMetrics.zodiacStats ?? data.zodiacStats),
+    zodiacConversionRates: {
+      pageToGenerated: calcRatio(astroProfileSuccess, astroProfilePageViews),
+      generatedToPaid: calcRatio(astroProfilePaidSuccess, astroProfileSuccess),
+      pageToPaid: calcRatio(astroProfilePaidSuccess, astroProfilePageViews),
+    },
+    sourceStats: safeBreakdownRows(data.sourceStats ?? dm.visitorSources),
+    popularFeatureStats: safeBreakdownRows(data.popularFeatureStats ?? dm.featureRanking),
+    paymentSourceStats: safePaymentRows(data.paymentSourceStats ?? dm.paymentSources),
   };
 }
 
-export async function GET() {
+function emptyTotals() {
+  return {
+    visitors: 0,
+    pageViews: 0,
+    tarotDrawSuccess: 0,
+    tarotSingleSuccess: 0,
+    tarotThreeSuccess: 0,
+    freeSuccess: 0,
+    paidSuccess: 0,
+    revenue: 0,
+    astroProfilePageViews: 0,
+    astroProfileSuccess: 0,
+    astroProfileFreeSuccess: 0,
+    astroProfilePaidSuccess: 0,
+    astroProfileRevenue: 0,
+  };
+}
+
+export async function GET(req: NextRequest) {
   if (!(await verifyAdmin())) {
     return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
   }
 
   const today = getTaipeiDate();
-  const yesterday = addDays(today, -1);
+  const params = new URL(req.url).searchParams;
+  const startParam = params.get("start")?.trim() ?? "";
+  const endParam = params.get("end")?.trim() ?? startParam;
+
+  // 初始載入：未指定日期 → 不查詢、不讀 Firestore，回提示讓前端顯示「請選擇日期」
+  if (!startParam) {
+    return NextResponse.json({ ok: true, needsSelection: true, today, days: [], totals: emptyTotals(), snapshotsRead: 0 });
+  }
+
+  if (!DATE_RE.test(startParam) || !DATE_RE.test(endParam)) {
+    return NextResponse.json({ ok: false, error: "INVALID_DATE" }, { status: 400 });
+  }
+
+  const start = startParam <= endParam ? startParam : endParam;
+  const end = startParam <= endParam ? endParam : startParam;
+  const dates = listDates(start, end);
+  if (!dates) {
+    return NextResponse.json({ ok: false, error: `查詢區間最多 ${MAX_RANGE_DAYS} 天` }, { status: 400 });
+  }
+
   const db = getAdminDb();
-  const todayAmAvailable = taipeiMinutes() >= 12 * 60 + 5;
-  const trendDates = Array.from({ length: 7 }, (_, index) => addDays(yesterday, -index));
 
   try {
-    const [todayAmSnap, ...trendSnaps] = await Promise.all([
-      db.collection("daily_admin_stats").doc(`${today}_am`).get(),
-      ...trendDates.map((date) => db.collection("daily_admin_stats").doc(`${date}_full`).get()),
-    ]);
+    // 只讀 daily_admin_stats，每天 1 筆；用 getAll 批次取回（讀取數＝天數）
+    const refs = dates.map((date) => db.collection("daily_admin_stats").doc(`${date}_full`));
+    const snaps = refs.length ? await db.getAll(...refs) : [];
 
-    const trends = trendSnaps
-      .map((doc, index) => metricsFromDoc(doc, trendDates[index], "full"))
-      .filter((row): row is DailyMetrics => Boolean(row));
-    const yesterdayMetrics = trends.find((row) => row.date === yesterday) ?? null;
-    const todayAmMetrics = todayAmAvailable ? metricsFromDoc(todayAmSnap, today, "am") : null;
+    const totals = emptyTotals();
+    const days: DayResult[] = snaps.map((snap, index) => {
+      const date = dates[index];
+      const isToday = date === today;
+      // 今日：完整快照尚未產生（明日 00:05 才出），不讀 raw events，直接回 missingSnapshot
+      if (!snap.exists) {
+        return { date, isToday, missingSnapshot: true, metrics: null };
+      }
+      const metrics = metricsFromDoc(snap, date);
+      totals.visitors += metrics.visitors;
+      totals.pageViews += metrics.pageViews;
+      totals.tarotDrawSuccess += metrics.tarotDrawSuccess;
+      totals.tarotSingleSuccess += metrics.tarotSingleSuccess;
+      totals.tarotThreeSuccess += metrics.tarotThreeSuccess;
+      totals.freeSuccess += metrics.freeSuccess;
+      totals.paidSuccess += metrics.paidSuccess;
+      totals.revenue += metrics.revenue;
+      totals.astroProfilePageViews += metrics.astroProfilePageViews;
+      totals.astroProfileSuccess += metrics.astroProfileSuccess;
+      totals.astroProfileFreeSuccess += metrics.astroProfileFreeSuccess;
+      totals.astroProfilePaidSuccess += metrics.astroProfilePaidSuccess;
+      totals.astroProfileRevenue += metrics.astroProfileRevenue;
+      return { date, isToday, missingSnapshot: false, metrics };
+    });
 
     return NextResponse.json({
       ok: true,
       today,
-      yesterday: yesterdayMetrics,
-      todayAm: todayAmMetrics,
-      todayAmAvailable: Boolean(todayAmAvailable && todayAmMetrics),
-      todayAmMessage: todayAmAvailable ? "今日前半天快照尚未產生" : "今日前半天統計將於 12:05 更新",
-      trends,
+      start,
+      end,
+      days,
+      totals: {
+        ...totals,
+        conversionRates: {
+          visitorToDraw: calcRatio(totals.tarotDrawSuccess, totals.visitors),
+          drawToPaid: calcRatio(totals.paidSuccess, totals.tarotDrawSuccess),
+          visitorToPaid: calcRatio(totals.paidSuccess, totals.visitors),
+        },
+        astroConversionRates: {
+          pageToGenerated: calcRatio(totals.astroProfileSuccess, totals.astroProfilePageViews),
+          generatedToPaid: calcRatio(totals.astroProfilePaidSuccess, totals.astroProfileSuccess),
+          pageToPaid: calcRatio(totals.astroProfilePaidSuccess, totals.astroProfilePageViews),
+        },
+      },
+      snapshotsRead: dates.length,
     });
   } catch (error) {
     console.error("[admin/stats] snapshot read failed:", error);

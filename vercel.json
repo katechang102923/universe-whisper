@@ -7,10 +7,6 @@
     {
       "path": "/api/admin/daily-stats/generate?period=full",
       "schedule": "5 16 * * *"
-    },
-    {
-      "path": "/api/admin/daily-stats/generate?period=am",
-      "schedule": "5 4 * * *"
     }
   ]
 }
