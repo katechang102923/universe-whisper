@@ -1695,11 +1695,57 @@ function fieldsTooSimilar(a: string, b: string): boolean {
   );
 }
 
+// ── 核心詞歸位（投資題語意去重）─────────────────────────────────────────────────
+// 投資題最常見的重複，是「追高／資金／觀望」這些核心詞散落在每個區塊。
+// 規則：操作詞只屬於「今天可以怎麼做」，市場/操作詞一律不可進入情緒區塊。
+
+/** 情緒區塊（宇宙偷偷話／溫柔提醒）絕對不可出現的市場/操作核心詞 */
+const INVEST_EMOTION_FORBIDDEN = [
+  "追高", "資金", "部位", "倉位", "盤勢", "支撐", "壓力", "進場", "出場", "觀望",
+  "停損", "停利", "滿倉", "加碼", "減碼", "分批", "控倉", "重壓", "量能",
+  "買進", "賣出", "套牢", "買", "賣", "風險", "保守",
+];
+
+/** 「針對你的問題」可給方向，但具體操作步驟詞只屬於「今天可以怎麼做」 */
+const OPERATION_STEP_WORDS = [
+  "追高", "資金", "部位", "倉位", "滿倉", "加碼", "減碼", "分批",
+  "停損", "停利", "控倉", "重壓", "進場", "出場",
+];
+
+/** 移除含指定核心詞的整句，回傳剩餘乾淨句子（用於把操作詞趕出情緒/答案區塊）*/
+function stripSentencesWithWords(text: string, words: string[]): string {
+  if (!text) return text;
+  return text
+    .split(/(?<=[。！？\n])/)
+    .map((s) => s.trim())
+    .filter((s) => s && !words.some((w) => s.includes(w)))
+    .join("")
+    .trim();
+}
+
+/** 投資題的乾淨替補文字：情緒安撫(focus)／節奏提醒(reminder)／方向答案(answer)，皆不含操作詞 */
+function getCleanInvestText(kind: "focus" | "reminder" | "answer", isUpright: boolean): string {
+  if (kind === "focus") {
+    return isUpright
+      ? "你心裡其實已經隱約聽見某個答案，只是還想等宇宙再給你一點確認。先別急著替不確定找出口，讓心慢一點，訊號會更清楚。"
+      : "你心裡那個答案其實一直都在，只是還沒準備好相信它。先別急著要個結果，給宇宙一點時間，也給自己一點時間，輪廓會慢慢浮現。";
+  }
+  if (kind === "reminder") {
+    return isUpright
+      ? "今天不必急著證明自己的判斷。把節奏放慢一點，你會更容易看見真正適合自己的方向。"
+      : "今天先不急著要一個確定的答案。把心放軟、把腳步放慢，等你準備好了，方向自然會在你面前亮起來。";
+  }
+  return isUpright
+    ? "以這張牌來看，今天的方向偏中性偏謹慎，不是完全不能碰，但也談不上順風，適合保守看待。"
+    : "以這張牌來看，今天的方向偏弱、還沒站在你這邊，在訊號明朗前，保守一點會比較安心。";
+}
+
 /**
- * 單張牌四區塊去重改寫：
- * 一句話(oneLineConclusion)／宇宙偷偷話(questionFocus)／解讀總結(questionAnswer)／心靈收束(gentleReminder)
- * 若兩塊完全相同或相似度 ≥ 0.7，改寫「後者」成獨立的情緒安撫／焦點答案／溫柔提醒文字。
- * 這是最後一道保證（AI prompt 已先要求不重複），確保使用者看不到重複內容。
+ * 單張牌區塊重新分工與去重：
+ * (1) 投資題：把市場/操作核心詞趕出情緒區塊（宇宙偷偷話／溫柔提醒），把操作步驟詞趕出「針對你的問題」。
+ * (2) 四區塊相似度去重：一句話／宇宙偷偷話／解讀總結／心靈收束 兩兩相同或 ≥0.7 相似 → 改寫後者。
+ * 替補文字依場景挑乾淨來源（投資題用 getCleanInvestText，其餘用既有 flavor 文字）。
+ * 這是最後一道保證（AI prompt 已先要求各司其職），確保使用者看不到重複或跑錯區塊的內容。
  */
 function dedupeSingleCardFields(
   r: SingleCardReading,
@@ -1709,28 +1755,48 @@ function dedupeSingleCardFields(
 ): SingleCardReading {
   const isUpright = card.position === "upright";
   const flavor = getQuestionFlavor(question, focus);
+  const invest = focus.primary === "finance" && isInvestmentQuestion(question);
+
+  // 乾淨替補來源：投資題情緒區塊不得含操作/市場詞
+  const freshFocus    = (): string => invest ? getCleanInvestText("focus", isUpright)    : getFlavorQuestionFocus(flavor, isUpright);
+  const freshReminder = (): string => invest ? getCleanInvestText("reminder", isUpright) : getFlavorGentleReminder(flavor);
+  const freshAnswer   = (): string => invest ? getCleanInvestText("answer", isUpright)   : getFallbackFocusMessage(focus, isUpright);
+
+  // ① 投資題核心詞歸位：情緒區塊剝除市場/操作詞；針對你的問題剝除操作步驟詞
+  if (invest) {
+    if (r.questionFocus) {
+      r.questionFocus = stripSentencesWithWords(r.questionFocus, INVEST_EMOTION_FORBIDDEN) || freshFocus();
+    }
+    if (r.gentleReminder) {
+      r.gentleReminder = stripSentencesWithWords(r.gentleReminder, INVEST_EMOTION_FORBIDDEN) || freshReminder();
+    }
+    if (r.questionAnswer) {
+      r.questionAnswer = stripSentencesWithWords(r.questionAnswer, OPERATION_STEP_WORDS) || freshAnswer();
+    }
+  }
+
   const concl = r.oneLineConclusion ?? "";
 
-  // 宇宙偷偷話 不得與 一句話 重複 → 改寫成純情緒安撫
+  // ② 宇宙偷偷話 不得與 一句話 重複 → 改寫成純情緒安撫
   if (r.questionFocus && fieldsTooSimilar(concl, r.questionFocus)) {
-    r.questionFocus = getFlavorQuestionFocus(flavor, isUpright);
+    r.questionFocus = freshFocus();
   }
 
-  // 解讀總結 不得與 一句話 重複 → 改寫成焦點導向的具體答案
+  // ③ 解讀總結 不得與 一句話 重複 → 改寫成焦點導向的具體答案
   if (r.questionAnswer && fieldsTooSimilar(concl, r.questionAnswer)) {
-    r.questionAnswer = getFallbackFocusMessage(focus, isUpright);
+    r.questionAnswer = freshAnswer();
   }
 
-  // 心靈收束 不得與 解讀總結 或 一句話 重複 → 改寫成溫柔提醒
+  // ④ 心靈收束 不得與 解讀總結 或 一句話 重複 → 改寫成溫柔提醒
   if (r.gentleReminder) {
     const dupQA = !!r.questionAnswer && fieldsTooSimilar(r.questionAnswer, r.gentleReminder);
     const dupConcl = fieldsTooSimilar(concl, r.gentleReminder);
-    if (dupQA || dupConcl) r.gentleReminder = getFlavorGentleReminder(flavor);
+    if (dupQA || dupConcl) r.gentleReminder = freshReminder();
   }
 
-  // 宇宙偷偷話 與 心靈收束 也不得重複（兩者都偏提醒語氣，最易撞）
+  // ⑤ 宇宙偷偷話 與 心靈收束 也不得重複（兩者都偏提醒語氣，最易撞）
   if (r.questionFocus && r.gentleReminder && fieldsTooSimilar(r.questionFocus, r.gentleReminder)) {
-    r.gentleReminder = getFlavorGentleReminder(flavor);
+    r.gentleReminder = freshReminder();
   }
 
   return r;
@@ -3048,20 +3114,22 @@ function buildSingleCardPrompt(
     ? `\n【股票/投資強制規則 — 與是非題規則並列最高優先】
 使用者問的是「${question}」，這是股票/市場問題，不是業績問題。
 
-必須遵守：
-1. oneLineConclusion 第一句必須使用以下詞彙之一：
+必須遵守（區塊分工，操作只寫在 todayAction）：
+1. oneLineConclusion（一句話，只給方向）必須用以下方向詞之一，後接一句原因，不寫操作細節：
    「牌面偏漲」「牌面偏弱」「牌面偏觀望」「續漲力道不足」「短線容易震盪」
-   「目前不適合追高」「這張牌不支持盲目進場」「不是沒機會，但風險正在升高」
-   ✗ 不能說「停下來看清方向」「多觀察即可」「保持耐心」（這是空話）
+   ✗ 不能說「停下來看清方向」「多觀察即可」「保持耐心」（空話）；也不要在這裡寫停損/分批/資金。
 
-2. questionAnswer 第一句也必須是牌面傾向判斷（「牌面偏漲/偏弱/偏觀望」），
-   再說市場含義，再給操作參考（控倉/設停損/分批觀察）。
+2. questionAnswer（解讀總結）第一句也先給牌面傾向（偏漲/偏弱/偏觀望），再說市場含義（可提支撐/壓力/量能），
+   但【不要】在這裡寫操作步驟（控倉/設停損/分批留給 todayAction）。
 
-3. 操作建議聚焦風險控管，絕對禁止業績語氣：
+3. todayAction（今天可以怎麼做）才寫操作建議，聚焦風險控管，絕對禁止業績語氣：
    ✗ 主動追單 / 聯絡客戶 / 提高行動力 / 積極開發 / 努力衝刺
    ✓ 控制倉位 / 分批觀察 / 設停損 / 等量能確認 / 避免追高
 
-4. safetyNote 必須填入：「以上為塔羅牌面參考，不構成投資建議，實際操作仍請自行評估風險。」`
+4. questionFocus（宇宙偷偷話）與 gentleReminder（溫柔提醒）只寫情緒（怕錯過、想確認、患得患失）與節奏安撫，
+   絕對不可出現追高/資金/部位/支撐/壓力/進場/觀望/買/賣 等任何市場或操作字眼。
+
+5. safetyNote 必須填入：「以上為塔羅牌面參考，不構成投資建議，實際操作仍請自行評估風險。」`
     : "";
 
   const isUpright = card.position === "upright";
@@ -3093,17 +3161,17 @@ function buildSingleCardPrompt(
 
   // 每個欄位的字數與職責規格
   const depthSpec = depth === "deep" ? {
-    questionFocus:   "40～60字，純情緒安撫／溫柔提醒，2句。不可重複一句話結論、不可複述問題、不可寫成「你現在最想確認的，其實不是…」這種心理剖析。像在拍拍肩膀：先接住情緒，再給一點放鬆的提醒",
-    cardMessage:     "60～90字，2～3句，說明這張牌（${card.name}，${ori}）的能量，以及它和你目前處境的關聯（現況連結），牌名最多出現 1 次。只描述能量與關聯，不下結論、不重複一句話",
-    questionAnswer:  "80～120字，這是「解讀總結」：給本次占卜的實際答案，要比一句話更具體。明確包含 (1) 偏向 yes／no／觀望 (2) 風險點 (3) 適合怎麼做${directionHint}，不可與一句話結論相同",
-    todayAction:     "80～140字，提供 2 個具體可執行的行動，每個說清楚怎麼做，不給「整理自己」這類抽象建議",
-    gentleReminder:  "60～90字，2～3句，這是「心靈收束」：收尾並給下一步行動提醒，不可與解讀總結重複，不可用通用療癒語",
+    questionFocus:   "40～60字，只寫使用者的內心狀態或情緒，語氣要溫柔、神秘、帶一點陪伴感，像宇宙在你耳邊輕聲低語，不要像理財顧問或白話心理分析。【絕對禁止】出現追高、資金、部位、盤勢、支撐、壓力、買、賣、進場、觀望等任何市場或操作字眼，也不可重複一句話結論或複述問題",
+    cardMessage:     "60～90字，2～3句，只解釋這張牌（${card.name}，${ori}）本身：它的能量、正逆位特質、帶出的狀態。不要回答『今天適不適合買』這類問題，牌名最多出現 1 次",
+    questionAnswer:  "80～120字，這裡才把牌義套回使用者問題，給偏向（yes／no／保守／可嘗試／偏漲／偏跌／觀望）和原因${directionHint}。可提市場含義，但不要寫具體操作步驟（停損、分批、資金配置那些留給今天可以怎麼做）",
+    todayAction:     "80～140字，唯一能寫具體操作的區塊：例如先查支撐、分批、設停損、不要滿倉、控制資金，給 2 個具體行動",
+    gentleReminder:  "60～90字，2～3句，像一段收束的祝福：溫柔、不直白，把節奏放慢、陪伴使用者收尾。【絕對禁止】再出現任何操作建議或市場字眼（不要追高、資金不要放太大、先看盤勢、支撐、停損 都不准），和宇宙偷偷話也不可重複",
   } : {
-    questionFocus:   "30～45字，純情緒安撫／溫柔提醒，不可重複一句話結論、不可複述問題、不可寫「你現在最想確認的，其實不是…」",
-    cardMessage:     "50～80字，2～3句，說明這張牌（${card.name}，${ori}）的能量與你目前處境的關聯，牌名最多出現 1 次，不下結論、不重複一句話",
-    questionAnswer:  "60～100字，「解讀總結」：實際答案，含偏向 yes／no／觀望＋風險點＋適合怎麼做${directionHint}，不可與一句話相同",
-    todayAction:     "60～100字，提供 1～2 個具體行動",
-    gentleReminder:  "50～80字，2～3句「心靈收束」：收尾＋下一步提醒，不可與解讀總結重複",
+    questionFocus:   "30～45字，只寫內心狀態或情緒，語氣溫柔、神秘、帶陪伴感，像宇宙輕聲低語，不要像理財顧問或心理分析。【禁止】追高、資金、部位、盤勢、支撐、壓力、買、賣、進場、觀望等市場/操作字眼，不可重複一句話、不可複述問題",
+    cardMessage:     "50～80字，2～3句，只解釋這張牌（${card.name}，${ori}）的能量與正逆位特質，不直接回答『適不適合買』，牌名最多出現 1 次",
+    questionAnswer:  "60～100字，把牌義套回問題，給偏向 yes／no／保守／可嘗試${directionHint}，可提市場含義，但不要寫具體操作步驟",
+    todayAction:     "60～100字，唯一能寫具體操作的區塊（查支撐／分批／設停損／控制資金），給 1～2 個具體行動",
+    gentleReminder:  "50～80字，2～3句，像收束的祝福：溫柔、不直白，把節奏放慢，和宇宙偷偷話不可重複，不得再寫操作建議或市場字眼",
   };
 
   return `請根據以下資料，以 JSON 格式解讀塔羅牌。只回傳純 JSON，不加說明文字。
@@ -3142,24 +3210,26 @@ ${antiSimilarityHint}
 【各欄位職責 — 嚴格遵守，不能越界】
 每個欄位只能負責自己的功能，同一意思在不同欄位只能說一次，不得重複。
 
-• oneLineConclusion（一句話）：30～45字，只當最精簡結論，直接回答使用者問題。
-  ✗ 禁止：寫心理狀態、用「你現在的狀態」開頭、寫「你現在最想確認的是…」。
-  ✓ 應該像：「今天偏短線有機會，但不適合追高，先看支撐是否站穩。」
+• oneLineConclusion（一句話）：30～45字，只回答最終方向。格式：偏漲／偏跌／觀望／可小試／不建議行動 ＋ 一句原因。
+  ✗ 禁止：寫操作細節（分批、停損、資金多寡）、寫心理狀態、用「你現在的狀態」開頭、「你現在最想確認的是…」。
+  ✓ 應該像：「今天偏觀望，牌面顯示追價動能不足，方向還沒明朗。」
 
 • questionFocus（宇宙偷偷話）：${depthSpec.questionFocus}
-  ✗ 禁止：「你問的是 XXX，而這張牌就是宇宙給你的回應」、複述問題、重複一句話結論、「你現在最想確認的，其實不是…」
-  ✓ 應該像：「你可以有期待，但今天不需要急著證明什麼。先讓局勢多走一步，答案會比現在更清楚。」
+  ✗ 禁止：任何市場/操作字眼、複述問題、重複一句話結論、「你現在最想確認的，其實不是…」、「你一直想找個人給你準話」這種顧問口吻
+  ✓ 應該像：「你心裡其實已經隱約聽見某個答案，只是還想等宇宙再給你一點確認。先別急著替不確定找出口，讓心慢一點，訊號會更清楚。」
 
 • cardMessage（這張牌正在說什麼）：${depthSpec.cardMessage}
-  ✗ 禁止：重複一句話結論、重複牌義後又講一樣的意思、說「這張牌出現在你這個問題裡」
-  ✓ 應該像：「${card.name}${ori}的能量偏向……，對應到你現在的處境，正好說明……」
+  ✗ 禁止：直接回答「今天適不適合買」、重複一句話結論、說「這張牌出現在你這個問題裡」
+  ✓ 應該像：「${card.name}${ori}的能量偏向……，這張牌的正逆位特質帶出一種……的狀態。」
 
 • questionAnswer（解讀總結）：${depthSpec.questionAnswer}
-  ✓ 這裡整理本次占卜的實際答案：偏向 yes／no／觀望、風險點、適合怎麼做，可比一句話更具體，但不得與一句話相同。
+  ✓ 這裡才把牌義套回問題：給偏向（yes／no／保守／可嘗試／偏漲／偏跌）＋原因＋市場含義，可比一句話具體，但不得與一句話相同，也不要寫操作步驟。
 
-• todayAction：${depthSpec.todayAction}
+• todayAction（今天可以怎麼做）：${depthSpec.todayAction}
 
 • gentleReminder（心靈收束）：${depthSpec.gentleReminder}
+  ✗ 禁止：操作建議、市場字眼、太直白的指令口吻
+  ✓ 應該像：「今天不必急著證明自己的判斷。把節奏放慢一點，你會更容易看見真正適合自己的方向。」
 
 • blessing：20～40字，依本次分類（${getTopicLabel(topic)}）動態生成，不可每次都一樣。
   愛情：「願你喜歡的人，不只讓你心動，也能讓你安心。」（範例，請自行生成不同版本）
@@ -3180,6 +3250,16 @@ oneLineConclusion（一句話）、questionFocus（宇宙偷偷話）、question
 ・解讀總結＝實際答案（yes／no／觀望＋風險＋做法，比一句話具體）。
 ・心靈收束＝收尾＋下一步行動提醒。
 任兩塊不得字面相同，也不得換句話說同一件事（語意重疊超過七成視為違規）。尤其「一句話」與「宇宙偷偷話」絕對不可以一樣或高度相似。
+
+【核心詞歸位 — 最高優先（投資/財運題尤其嚴格，凌駕前面任何操作擺放指示）】
+同一組核心詞不可以散落在多個區塊重複出現，請各歸其位：
+・方向詞（偏漲／偏跌／觀望／保守／可小試／不建議）→ 只放 oneLineConclusion 與 questionAnswer。
+・操作詞（追高、資金、部位、分批、停損、停利、滿倉、加碼、進場、出場、控倉、滿倉）→ 只放 todayAction。
+・市場狀態詞（支撐、壓力、盤勢、量能）→ 只放 questionAnswer 或 todayAction。
+・情緒詞（焦慮、怕錯過、想確認、猶豫、患得患失）→ 只放 questionFocus 與 gentleReminder。
+questionFocus 與 gentleReminder 一律不得出現任何操作詞或市場狀態詞。
+若你發現同一個核心詞（例如「追高」「資金」「觀望」）已經在某區塊講過，其他區塊就不要再講同一件事，換成那個區塊該負責的角度。
+（即使前面投資規則要求把操作參考寫進 questionAnswer，這裡以本規則為準：具體操作只寫在 todayAction。）
 
 【解讀品質規範】
 1. 只根據這一張牌（${card.name} ${ori}）解讀，不引入其他牌的概念。
