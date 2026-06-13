@@ -31,7 +31,7 @@ type DayMetrics = {
   paymentSourceStats: PaymentBreakdownRow[];
 };
 
-type DayResult = { date: string; isToday: boolean; missingSnapshot: boolean; metrics: DayMetrics | null };
+type DayResult = { date: string; isToday: boolean; missingSnapshot: boolean; fallback?: boolean; metrics: DayMetrics | null };
 
 type Totals = {
   visitors: number;
@@ -206,7 +206,11 @@ function DayTable({ days }: { days: DayResult[] }) {
                   <td className="whitespace-nowrap px-4 py-3 text-moon/75">{m ? formatMoney(m.revenue) : "—"}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-xs">
                     {m ? (
-                      <span className="text-aurora/80">有快照</span>
+                      day.fallback ? (
+                        <span className="text-lavender/80">即時回補</span>
+                      ) : (
+                        <span className="text-aurora/80">有快照</span>
+                      )
                     ) : day.isToday ? (
                       <span className="text-amber-300">今日未產出</span>
                     ) : (

@@ -5,6 +5,7 @@ import { getAdminDb } from "@/lib/firebaseAdmin";
 import { verifyAdminSessionCookie, SESSION_COOKIE_NAME } from "@/lib/verifyAdmin";
 import { getAdminUserIds, getTaipeiDate } from "@/lib/rateLimit";
 import { jsonServerError } from "@/lib/apiErrors";
+import { computeRawDayMetrics, type RawDayMetrics } from "@/lib/adminStatsFallback";
 
 export const runtime = "nodejs";
 
@@ -47,6 +48,8 @@ type DayResult = {
   date: string;
   isToday: boolean;
   missingSnapshot: boolean;
+  /** true = 此日無每日快照，metrics 由原始事件即時補算（read-only） */
+  fallback: boolean;
   metrics: DayMetrics | null;
 };
 
@@ -182,6 +185,39 @@ function metricsFromDoc(doc: DocumentSnapshot, date: string): DayMetrics {
   };
 }
 
+/** 將原始事件補算結果（RawDayMetrics）映射成後台 DayMetrics（含轉換率）*/
+function metricsFromRaw(raw: RawDayMetrics, date: string): DayMetrics {
+  return {
+    date,
+    visitors: raw.visitors,
+    pageViews: raw.pageViews,
+    tarotDrawSuccess: raw.tarotDrawSuccess,
+    tarotSingleSuccess: raw.tarotSingleSuccess,
+    tarotThreeSuccess: raw.tarotThreeSuccess,
+    freeSuccess: raw.freeSuccess,
+    paidSuccess: raw.paidSuccess,
+    revenue: raw.revenue,
+    astroProfilePageViews: raw.astroProfilePageViews,
+    astroProfileSuccess: raw.astroProfileSuccess,
+    astroProfileFreeSuccess: raw.astroProfileFreeSuccess,
+    astroProfilePaidSuccess: raw.astroProfilePaidSuccess,
+    astroProfileRevenue: raw.astroProfileRevenue,
+    conversionRates: {
+      visitorToDraw: calcRatio(raw.tarotDrawSuccess, raw.visitors),
+      drawToPaid: calcRatio(raw.paidSuccess, raw.tarotDrawSuccess),
+      visitorToPaid: calcRatio(raw.paidSuccess, raw.visitors),
+    },
+    zodiacConversionRates: {
+      pageToGenerated: calcRatio(raw.astroProfileSuccess, raw.astroProfilePageViews),
+      generatedToPaid: calcRatio(raw.astroProfilePaidSuccess, raw.astroProfileSuccess),
+      pageToPaid: calcRatio(raw.astroProfilePaidSuccess, raw.astroProfilePageViews),
+    },
+    sourceStats: raw.sourceStats,
+    popularFeatureStats: raw.popularFeatureStats,
+    paymentSourceStats: raw.paymentSourceStats,
+  };
+}
+
 function emptyTotals() {
   return {
     visitors: 0,
@@ -237,11 +273,36 @@ export async function GET(req: NextRequest) {
     const days: DayResult[] = snaps.map((snap, index) => {
       const date = dates[index];
       const isToday = date === today;
-      // 今日：完整快照尚未產生（明日 00:05 才出），不讀 raw events，直接回 missingSnapshot
       if (!snap.exists) {
-        return { date, isToday, missingSnapshot: true, metrics: null };
+        return { date, isToday, missingSnapshot: true, fallback: false, metrics: null };
       }
-      const metrics = metricsFromDoc(snap, date);
+      return { date, isToday, missingSnapshot: false, fallback: false, metrics: metricsFromDoc(snap, date) };
+    });
+
+    // ── 補算：對「非今日且無快照」的日期，直接從原始事件即時彙整，避免顯示 0 ──────────
+    // （需求 #8 / #9：dailyStats 缺資料時從原始 payment / event 補算）
+    // 今日維持原本「明日 00:05 才產出」行為不變，不在這裡補算。
+    const missingDates = days.filter((d) => d.missingSnapshot && !d.isToday).map((d) => d.date);
+    if (missingDates.length) {
+      try {
+        const rawMap = await computeRawDayMetrics(db, missingDates);
+        for (const day of days) {
+          if (!day.missingSnapshot || day.isToday) continue;
+          const raw = rawMap.get(day.date);
+          if (!raw) continue;
+          day.metrics = metricsFromRaw(raw, day.date);
+          day.missingSnapshot = false;
+          day.fallback = true;
+        }
+      } catch (fallbackErr) {
+        console.error("[admin/stats] raw fallback failed:", fallbackErr);
+      }
+    }
+
+    // ── 加總（快照 + 補算的日期都計入）────────────────────────────────────────────
+    for (const day of days) {
+      const metrics = day.metrics;
+      if (!metrics) continue;
       totals.visitors += metrics.visitors;
       totals.pageViews += metrics.pageViews;
       totals.tarotDrawSuccess += metrics.tarotDrawSuccess;
@@ -255,8 +316,7 @@ export async function GET(req: NextRequest) {
       totals.astroProfileFreeSuccess += metrics.astroProfileFreeSuccess;
       totals.astroProfilePaidSuccess += metrics.astroProfilePaidSuccess;
       totals.astroProfileRevenue += metrics.astroProfileRevenue;
-      return { date, isToday, missingSnapshot: false, metrics };
-    });
+    }
 
     return NextResponse.json({
       ok: true,
