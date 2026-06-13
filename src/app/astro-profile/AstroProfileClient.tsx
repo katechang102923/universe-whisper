@@ -12,7 +12,8 @@ import {
 import type { ZodiacSign, AstroProfileText } from "@/lib/astroProfileTexts";
 import { BIRTH_CITIES } from "@/lib/birthCities";
 import type { BirthCity } from "@/lib/birthCities";
-import { calcVenusSign, calcRisingSign, calcMoonSign } from "@/lib/astroCalc";
+import { calcVenusSign, calcRisingSign, calcMoonSign, calcFullChart } from "@/lib/astroCalc";
+import type { PlanetPosition } from "@/lib/astroCalc";
 import { useAuth } from "@/contexts/AuthContext";
 import { generateAstroStoryImage } from "@/lib/astroProfileStoryImage";
 import {
@@ -36,6 +37,8 @@ interface CalcResult {
   risingSign: ZodiacSign | null;
   venusSign: ZodiacSign | null;
   risingCalcNote: string | null;
+  /** 完整星盤資料（僅自動模式、有出生時間與城市時才有）；舊資料可能沒有此欄 */
+  planets?: PlanetPosition[];
 }
 
 const LS_PREFIX = "astroProfile_";
@@ -271,6 +274,7 @@ export function AstroProfileClient() {
     let risingSign: ZodiacSign | null = null;
     let venusSign: ZodiacSign | null = null;
     let risingCalcNote: string | null = null;
+    let planets: PlanetPosition[] | undefined;
 
     if (showManual) {
       // 條件 B：手動星座模式——月亮 / 上升 / 金星 必須全部選滿，缺一不可。
@@ -292,6 +296,8 @@ export function AstroProfileClient() {
         risingSign = calcRisingSign(birthDate, birthTime, birthCity!.latitude, birthCity!.longitude);
         venusSign = calcVenusSign(birthDate, birthTime);
         risingCalcNote = "上升星座依出生時間與城市估算，若出生時間不確定，結果可能有誤差。";
+        // 完整星盤資料（付費版顯示）：十大行星 + 上升的星座 / 度數 / Whole Sign 宮位
+        planets = calcFullChart(birthDate, birthTime, birthCity!.latitude, birthCity!.longitude);
       } catch {
         setError("星座計算發生問題，請確認出生日期、時間與城市後再試一次。");
         return;
@@ -307,7 +313,7 @@ export function AstroProfileClient() {
     // 儀表化：使用者實際送出表單（行為事件，不含出生資料）。best-effort，不阻擋流程。
     trackTripleZodiac("triple_zodiac_started");
 
-    const result: CalcResult = { sunSign, moonSign, risingSign, venusSign, risingCalcNote };
+    const result: CalcResult = { sunSign, moonSign, risingSign, venusSign, risingCalcNote, ...(planets ? { planets } : {}) };
     setCalcResult(result);
     setUnlockState("locked");
     setSessionId(null);
@@ -639,35 +645,44 @@ function ResultView({
 
       <div className="space-y-4">
 
-        {/* ── 1. 你的星盤摘要（免費） ── */}
+        {/* ── 1. 你的星盤摘要（兩種狀態都先顯示）── */}
         <StarChartSummary result={result} />
 
-        {/* ── 2. 星體分頁 + 整合分析 ── */}
-        <ResultTabs result={result} isUnlocked={isUnlocked} />
+        {isUnlocked ? (
+          <>
+            {/* 已解鎖：完整星盤資料表（若有 planets）＋ 完整分頁 ＋ 解鎖後動作，不再顯示付費 CTA */}
+            {result.planets && result.planets.length > 0 && (
+              <FullChartTable planets={result.planets} />
+            )}
+            <ResultTabs result={result} isUnlocked />
+            <PostUnlockActions
+              result={result}
+              sunTexts={sunTexts}
+              lineLoginNotice={lineLoginNotice}
+              onLineLoginNoticeDismiss={onLineLoginNoticeDismiss}
+            />
+          </>
+        ) : (
+          <>
+            {/* 免費版（有完整感的短版）：一句話總結 → 四星體短解讀 → 三重星座輪廓 → 免費提醒 */}
+            <FreeResultSections result={result} />
 
-        {/* ── 3. 解鎖區（集中放在免費摘要之後，不每段重複） ── */}
-        {!isUnlocked && (
-          <UnlockGate
-            result={result}
-            unlockState={unlockState}
-            sessionId={sessionId}
-            isAdmin={isAdmin}
-            onUnlocked={onUnlocked}
-            onPendingOrder={onPendingOrder}
-            onStoreResult={onStoreResult}
-            onAdminTestUnlock={onAdminTestUnlock}
-            onDirectUnlock={onDirectUnlock}
-          />
-        )}
+            {/* 完整版預覽（只露一句預告）*/}
+            <UnlockPreviewCards />
 
-        {/* ── 4. 解鎖後動作（沿用既有流程） ── */}
-        {isUnlocked && (
-          <PostUnlockActions
-            result={result}
-            sunTexts={sunTexts}
-            lineLoginNotice={lineLoginNotice}
-            onLineLoginNoticeDismiss={onLineLoginNoticeDismiss}
-          />
+            {/* 付費解鎖區：放在所有免費內容之後 */}
+            <UnlockGate
+              result={result}
+              unlockState={unlockState}
+              sessionId={sessionId}
+              isAdmin={isAdmin}
+              onUnlocked={onUnlocked}
+              onPendingOrder={onPendingOrder}
+              onStoreResult={onStoreResult}
+              onAdminTestUnlock={onAdminTestUnlock}
+              onDirectUnlock={onDirectUnlock}
+            />
+          </>
         )}
 
       </div>
@@ -946,6 +961,163 @@ function IntegrationTab({ result, isUnlocked }: { result: CalcResult; isUnlocked
   );
 }
 
+// ── 完整星盤資料表（付費版）─────────────────────────────────────────────────────
+
+const PLANET_GLYPH: Record<string, string> = {
+  sun: "☀", moon: "🌙", mercury: "☿", venus: "♀", mars: "♂",
+  jupiter: "♃", saturn: "♄", uranus: "♅", neptune: "♆", pluto: "♇", rising: "↑",
+};
+
+/** 已解鎖才顯示：十大行星 + 上升的星座度數與 Whole Sign 宮位 */
+function FullChartTable({ planets }: { planets: PlanetPosition[] }) {
+  if (!planets || planets.length === 0) return null;
+  return (
+    <div className="overflow-hidden rounded-[1.5rem] border border-[#d8bd70]/25 bg-midnight/50 shadow-glow backdrop-blur-sm">
+      <div className="h-1 bg-gradient-to-r from-[#d8bd70]/55 via-lavender/45 to-aurora/40" />
+      <div className="p-5 sm:p-6">
+        <p className="mb-1 text-xs uppercase tracking-[0.24em] text-[#d8bd70]/70">完整星盤資料表</p>
+        <p className="mb-4 text-sm text-moon/50">十大行星與上升的星座、度數與宮位（Whole Sign 宮位制）</p>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[18rem] text-sm">
+            <thead>
+              <tr className="border-b border-white/10 text-left text-xs uppercase tracking-wider text-moon/45">
+                <th className="py-2 pr-3 font-medium">星體</th>
+                <th className="py-2 pr-3 font-medium">星座・度數</th>
+                <th className="py-2 font-medium">落入宮位</th>
+              </tr>
+            </thead>
+            <tbody>
+              {planets.map((p) => (
+                <tr key={p.key} className="border-b border-white/6 last:border-b-0">
+                  <td className="whitespace-nowrap py-2.5 pr-3 font-medium text-moon">
+                    <span aria-hidden="true">{PLANET_GLYPH[p.key] ?? "✦"}</span> {p.label}
+                  </td>
+                  <td className="whitespace-nowrap py-2.5 pr-3 text-moon/80">{p.degreeText}</td>
+                  <td className="whitespace-nowrap py-2.5 text-moon/70">{p.houseText ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-3 text-xs leading-5 text-moon/35">✦ 宮位以 Whole Sign 制計算（上升星座為第一宮）；本資料供自我探索與娛樂參考。</p>
+      </div>
+    </div>
+  );
+}
+
+// ── 免費版（未解鎖）短版解析 ─────────────────────────────────────────────────────
+// 目標：免費版有「被說中」的完整感，但不給完整深度解讀；深度與延伸分析仍在解鎖區。
+
+/** 取整句、限制字數：在 max 字內取到最後一個句末標點，否則截斷加 … */
+function clampSentences(text: string, max: number): string {
+  const clean = (text ?? "").trim();
+  if (!clean) return "";
+  if (clean.length <= max) return clean;
+  const slice = clean.slice(0, max);
+  const lastPunct = Math.max(slice.lastIndexOf("。"), slice.lastIndexOf("！"), slice.lastIndexOf("？"));
+  return lastPunct >= Math.floor(max * 0.5) ? slice.slice(0, lastPunct + 1) : `${slice}…`;
+}
+
+/** 三重星座輪廓（免費，120～180 字）：交叉太陽/月亮/上升/金星，給「整體輪廓」而非完整深度 */
+function buildFreeOutline(result: CalcResult): string {
+  const { sunSign, moonSign, risingSign, venusSign } = result;
+  const rise = risingSign ?? sunSign;
+  const seg1 = `你外在給人的感覺偏向${rise}——容易顯得${ZODIAC_TRAITS[rise].strengths.slice(0, 2).join("、")}，但這未必等於你內心真正的需要。`;
+  const seg2 = moonSign
+    ? `在真正重視的關係或環境裡，你其實是${moonSign}式的，會特別在意安全感、對方是否穩定，也容易把情緒先收在心裡。`
+    : `在真正重視的關係裡，你會比表面看起來更在意安全感與被對待的方式。`;
+  const seg3 = `你的核心仍是${sunSign}，渴望活出${ZODIAC_TRAITS[sunSign].strengths[0]}的自己；`
+    + (venusSign
+      ? `而在感情裡，你容易被${ZODIAC_TRAITS[venusSign].strengths.slice(0, 2).join("、")}的人吸引，也需要對方願意照著你的節奏靠近。`
+      : `在感情裡，你需要對方願意照著你的節奏靠近。`);
+  return seg1 + seg2 + seg3;
+}
+
+/** 免費提醒（60～100 字）：具體、實用、有陪伴感，不玄 */
+function buildFreeReminder(result: CalcResult): string {
+  const focus = result.moonSign ?? result.venusSign ?? result.sunSign;
+  return `近期可以先觀察自己在哪些關係裡最容易委屈，那通常不是你太敏感，而是${focus}的你已經忍了一段時間。先看見自己的需求，比急著配合別人更重要——把你真正在意的事說出口，關係才會慢慢回到對的節奏。`;
+}
+
+/** 免費版主要內容：一句話總結 + 四星體短解讀 + 三重星座輪廓 + 免費提醒 */
+function FreeResultSections({ result }: { result: CalcResult }) {
+  const { sunSign, moonSign, risingSign, venusSign } = result;
+  const oneLiner = clampSentences(ASTRO_PROFILE_TEXTS[sunSign].overallSummary, 70);
+  // 完整資料才會進到此畫面（isCompleteResult 守衛），四顆星座皆非空
+  const bodies: { icon: string; label: string; sign: ZodiacSign; accent: string; deep: string }[] = [
+    { icon: "☀", label: "太陽", sign: sunSign, accent: "text-[#d8bd70]", deep: ASTRO_PROFILE_TEXTS[sunSign].sunCoreText },
+    { icon: "🌙", label: "月亮", sign: moonSign as ZodiacSign, accent: "text-lavender", deep: ASTRO_PROFILE_TEXTS[(moonSign ?? sunSign)].moonInnerText },
+    { icon: "↑", label: "上升", sign: risingSign as ZodiacSign, accent: "text-aurora", deep: ASTRO_PROFILE_TEXTS[(risingSign ?? sunSign)].risingOuterText },
+    { icon: "♀", label: "金星", sign: venusSign as ZodiacSign, accent: "text-[#c9a0dc]", deep: ASTRO_PROFILE_TEXTS[(venusSign ?? sunSign)].venusLoveText },
+  ];
+
+  return (
+    <>
+      {/* 一句話人格總結 */}
+      <div className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-midnight/50 shadow-glow backdrop-blur-sm">
+        <div className="h-1 bg-gradient-to-r from-[#d8bd70]/50 to-lavender/40" />
+        <div className="p-5 sm:p-6">
+          <p className="mb-2 text-xs uppercase tracking-[0.24em] text-[#d8bd70]/70">你的星盤一句話</p>
+          <p className="text-base font-medium leading-8 text-moon/90">{oneLiner}</p>
+        </div>
+      </div>
+
+      {/* 四個星體免費短解讀 */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {bodies.map((b) => (
+          <div key={b.label} className="rounded-2xl border border-white/10 bg-midnight/45 p-4 sm:p-5">
+            <p className={`text-sm font-semibold ${b.accent}`}>{b.icon} {b.label}在{b.sign}</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {ZODIAC_TRAITS[b.sign].strengths.slice(0, 3).map((k) => (
+                <span key={k} className="rounded-full border border-white/12 bg-white/5 px-2 py-0.5 text-[11px] text-moon/70">{k}</span>
+              ))}
+            </div>
+            <p className="mt-3 text-sm leading-7 text-moon/80">{clampSentences(b.deep, 90)}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* 三重星座輪廓 */}
+      <div className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-midnight/50 shadow-glow backdrop-blur-sm">
+        <div className="h-1 bg-gradient-to-r from-lavender/45 via-aurora/35 to-[#c9a0dc]/35" />
+        <div className="p-5 sm:p-6">
+          <p className="mb-3 text-xs uppercase tracking-[0.24em] text-lavender/65">你的三重星座輪廓</p>
+          <p className="text-sm leading-8 text-moon/85">{buildFreeOutline(result)}</p>
+        </div>
+      </div>
+
+      {/* 給你的免費提醒 */}
+      <div className="rounded-[1.5rem] border border-aurora/20 bg-aurora/[0.06] p-5 sm:p-6">
+        <p className="mb-2 flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-aurora/80">
+          <span aria-hidden="true">🌿</span>給你的免費提醒
+        </p>
+        <p className="text-sm leading-8 text-moon/82">{buildFreeReminder(result)}</p>
+      </div>
+    </>
+  );
+}
+
+/** 完整版預覽卡（2～3 張，只露一句預告，不放整段模糊）*/
+function UnlockPreviewCards() {
+  const previews = [
+    { icon: "❤️", title: "你的感情模式", teaser: "解鎖後會看見：你在關係中真正需要的安全感，以及為什麼有些互動會讓你特別在意。" },
+    { icon: "🌗", title: "你的內在拉扯", teaser: "解鎖後會看見：你想表現的樣子和真正需要的之間，差距在哪、壓力大時會怎麼變。" },
+    { icon: "🧩", title: "你的人際盲點", teaser: "解鎖後會看見：你在關係裡容易卡住的地方，以及如何不再反覆委屈自己。" },
+  ];
+  return (
+    <div className="grid gap-3 sm:grid-cols-3">
+      {previews.map((p) => (
+        <div key={p.title} className="rounded-2xl border border-[#d8bd70]/20 bg-midnight/40 p-4">
+          <p className="flex items-center gap-2 text-sm font-semibold text-moon/85">
+            <span aria-hidden="true">{p.icon}</span>{p.title}
+          </p>
+          <p className="mt-2 text-xs leading-6 text-moon/55">{p.teaser}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Unlock Gate ────────────────────────────────────────────────────────────────
 
 function UnlockGate({
@@ -1101,26 +1273,22 @@ function UnlockGate({
       <div className="overflow-hidden rounded-[1.5rem] border border-[#d8bd70]/30 bg-midnight/60 backdrop-blur-sm">
         <div className="h-1 bg-gradient-to-r from-[#d8bd70]/60 via-lavender/50 to-aurora/40" />
         <div className="p-5 sm:p-6">
-          <p className="mb-1 text-xs uppercase tracking-[0.24em] text-[#d8bd70]/70">解鎖你的專屬人格命盤</p>
+          <p className="mb-1 text-xs uppercase tracking-[0.24em] text-[#d8bd70]/70">完整版 NT$149</p>
+          <h3 className="mt-1 text-xl font-semibold text-moon">解鎖完整星盤深度解析</h3>
           <p className="mt-3 text-sm leading-7 text-moon/62">
-            不是一般星座運勢，而是依照你的太陽、月亮、上升星座，生成專屬人格、感情、人際與人生傾向解析。
+            免費版先看太陽、月亮、上升與金星的人格輪廓；完整版會補上水星、火星、木星、土星到外行星的星盤資料，並整理你的感情模式、內在拉扯、人際盲點與行動建議。
           </p>
-          <p className="mt-2 text-2xl font-bold text-moon">NT$149</p>
-          <p className="mt-4 text-sm font-semibold text-moon/74">解鎖後可查看：</p>
+          <p className="mt-3 text-2xl font-bold text-moon">NT$149</p>
+          <p className="mt-4 text-sm font-semibold text-moon/74">完整版包含：</p>
           <div className="mt-4 space-y-2">
             {[
-              "太陽星座人格核心",
-              "月亮星座情感模式",
-              "上升星座外在人設",
-              "三種能量如何互相影響",
-              "愛情中的真實需求",
-              "最容易吸引的人",
-              "工作與金錢模式",
-              "人際關係盲點",
-              "專屬宇宙提醒",
-              "下載限動分享圖",
-              "傳送到 LINE 官方帳號",
-              "寄送 Email 保存",
+              "完整星盤資料表",
+              "太陽、月亮、上升、金星深度解讀",
+              "水星到冥王星的星座與宮位",
+              "感情模式與吸引力分析",
+              "內在拉扯與情緒盲點",
+              "人際關係與職涯天賦",
+              "行動建議與 LINE 保存",
             ].map((item) => (
               <div key={item} className="flex items-center gap-2 text-sm text-moon/70">
                 <span className="shrink-0 text-[#d8bd70]">✓</span>
@@ -1173,7 +1341,7 @@ function UnlockGate({
               className="mt-5 w-full rounded-full py-3.5 text-base font-semibold text-midnight transition hover:brightness-105 active:scale-[0.98] disabled:opacity-60"
               style={{ background: "linear-gradient(135deg, #d8bd70 0%, #b89adf 60%, #d8bd70 100%)" }}
             >
-              {loading ? "處理中…" : "解鎖你的專屬人格命盤 NT$149"}
+              {loading ? "處理中…" : "解鎖完整星盤解析 NT$149"}
             </button>
           )}
 
