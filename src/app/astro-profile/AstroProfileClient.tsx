@@ -1138,38 +1138,48 @@ function buildIntegrationHeroParagraphs(
   moonHouse: string | null,
 ): string[] {
   const { sunSign, moonSign, risingSign, venusSign } = result;
-  const s = (sign: ZodiacSign) => ZODIAC_TRAITS[sign].strengths[0];
   const paras: string[] = [];
 
-  let p1 = `你的核心是太陽${sunSign}，骨子裡想活出${s(sunSign)}的自己。`;
+  // 第一段：太陽 + 月亮 + 上升（核心人格、情緒需求、外在人設）
+  let p1 = `你的核心是太陽${sunSign}，骨子裡想活出${planetTrait("sun", sunSign)}的自己。`;
   if (moonSign) {
-    p1 += `但真正讓你安定的，是月亮${moonSign}式的安全感——你需要${s(moonSign)}、需要被穩定對待，壓力一大就會悄悄退回這個狀態。`;
+    p1 += `情緒底層則是月亮${moonSign}，真正讓你安定的，是${planetTrait("moon", moonSign)}；壓力一大，你會從外在的樣子，悄悄退回這個狀態。`;
+  }
+  if (risingSign) {
+    p1 += `而別人第一眼接收到的，是上升${risingSign}那種${planetTrait("rising", risingSign)}的氣場——那是你面對世界的方式，未必等於你私下真正的需要。`;
   }
   paras.push(p1);
 
-  if (risingSign || venusSign) {
+  // 第二段：金星 + 水星 + 火星（感情模式、溝通方式、行動反應）
+  if (venusSign || mercury || mars) {
     let p2 = "";
-    if (risingSign) p2 += `別人第一眼接收到的，是上升${risingSign}那種${s(risingSign)}的氣場，那是你面對世界的方式，未必等於你私下的需要。`;
-    if (venusSign) p2 += `在關係裡，金星${venusSign}讓你被${s(venusSign)}的人吸引，也用自己的步調表達在乎。`;
+    if (venusSign) p2 += `在感情裡，金星${venusSign}讓你容易被${planetTrait("venus", venusSign)}的人吸引，也用自己的步調靠近一個人。`;
+    if (mercury) p2 += `思考和說話時，水星${mercury}讓你習慣${planetTrait("mercury", mercury)}。`;
+    if (mars) {
+      // 防呆：即使水星與火星同星座，職能描述本就不同；仍保留保險，避免兩星輸出同一句。
+      let marsTrait = planetTrait("mars", mars);
+      if (mercury && planetTrait("mercury", mercury) === marsTrait) {
+        marsTrait = `${marsTrait}（這是行動面，和上面的思考方式不同）`;
+      }
+      p2 += `真正要行動、面對衝突或壓力時，火星${mars}則讓你${marsTrait}。`;
+    }
     paras.push(p2);
   }
 
-  if (mercury || mars) {
-    let p3 = "";
-    if (mercury) p3 += `思考和說話時，水星${mercury}讓你習慣${s(mercury)}；`;
-    if (mars) p3 += `真正要行動、要面對衝突時，火星${mars}則讓你${s(mars)}。`;
-    paras.push(p3);
-  }
-
+  // 第三段：宮位（依實際 houseDomain 數量調整單／複數語氣）
   const domains: string[] = [];
   const sunDomain = sunHouse ? HOUSE_DOMAIN[sunHouse] : undefined;
   const moonDomain = moonHouse ? HOUSE_DOMAIN[moonHouse] : undefined;
-  if (sunDomain) domains.push(`「${sunDomain}」`);
-  if (moonDomain && moonHouse !== sunHouse) domains.push(`「${moonDomain}」`);
-  let p4 = "這些面向不是互相矛盾的缺點，而是不同的你在同時運作。";
-  if (domains.length) p4 += `它們最常在${domains.join("和")}這些人生領域裡被你一起活出來。`;
-  p4 += "看懂它們各自要什麼，你就能少一點內耗，把自己過得更完整。";
-  paras.push(p4);
+  if (sunDomain) domains.push(sunDomain);
+  if (moonDomain && moonHouse !== sunHouse) domains.push(moonDomain);
+  if (domains.length === 1) {
+    paras.push(`這種模式最容易在「${domains[0]}」這個領域裡被你看見。`);
+  } else if (domains.length >= 2) {
+    paras.push(`這些模式會分別在${domains.map((d) => `「${d}」`).join("、")}等領域中被你看見。`);
+  }
+
+  // 第四段：溫柔收束（不命定、不鐵口直斷）
+  paras.push("這些面向不是互相矛盾的缺點，而是不同的你在同時運作。看懂它們各自想要什麼，你就能少一點內耗，把自己過得更完整一點。");
 
   return paras;
 }
@@ -1233,27 +1243,83 @@ function buildOuterPlanetText(
   return parts.join("");
 }
 
-/** 完整星盤整合分析（180～260 字）：把太陽 / 月亮 / 上升 / 金星 / 水星 / 火星 串成一個人 */
+// ── 星體職能化描述（同一星座在不同星體上用不同說法，避免整合分析重複用詞）──────────
+// 每顆星依「職能」改寫，語句已對齊各自的句型插槽：
+//   sun    →「想活出 ___ 的自己」     moon →「真正讓你安定的是 ___」
+//   rising →「那種 ___ 的氣場/形象」   venus→「被 ___ 的人/特質吸引」
+//   mercury→「讓你習慣 ___」（思考、理解、表達）
+//   mars   →「則讓你 ___」（行動、衝突、壓力反應）
+
+type PlanetFn = "sun" | "moon" | "rising" | "venus" | "mercury" | "mars";
+
+const PLANET_TRAITS: Record<PlanetFn, Record<ZodiacSign, string>> = {
+  sun: {
+    牡羊座: "果敢直接、敢開第一槍", 金牛座: "踏實穩定、把生活過得安穩", 雙子座: "靈活多元、什麼都想嘗試",
+    巨蟹座: "溫暖顧家、有人情味", 獅子座: "自信發光、被看見", 處女座: "細心務實、把事情做到位",
+    天秤座: "優雅得體、追求和諧與公平", 天蠍座: "深刻專注、有掌控力", 射手座: "自由開闊、不斷探索",
+    摩羯座: "自律有目標、腳踏實地往上走", 水瓶座: "獨立創新、做自己", 雙魚座: "溫柔有想像力、富同理心",
+  },
+  moon: {
+    牡羊座: "被尊重、能直接做自己", 金牛座: "熟悉的節奏與踏實的安全感", 雙子座: "新鮮的刺激與能說話的對象",
+    巨蟹座: "被在乎、有歸屬的安全感", 獅子座: "被肯定、被放在心上", 處女座: "把事情打理好後的安心感",
+    天秤座: "和諧、不被逼著起衝突的關係", 天蠍座: "深度的信任與不被背叛的確定感", 射手座: "自由的空間與不被綁住的感覺",
+    摩羯座: "被需要、能被依靠的踏實感", 水瓶座: "不被干涉、保有自我的空間", 雙魚座: "被理解、被溫柔接住的感覺",
+  },
+  rising: {
+    牡羊座: "俐落有衝勁", 金牛座: "穩重好相處", 雙子座: "機靈健談", 巨蟹座: "親切溫和",
+    獅子座: "大方有存在感", 處女座: "細緻有條理", 天秤座: "優雅有禮", 天蠍座: "神秘有距離感",
+    射手座: "開朗自在", 摩羯座: "沉穩可靠", 水瓶座: "獨特又帶點疏離", 雙魚座: "柔和有夢幻感",
+  },
+  venus: {
+    牡羊座: "直接、熱烈、不拖泥帶水", 金牛座: "穩定、可靠、願意實際照顧你", 雙子座: "聰明、有趣、聊得來",
+    巨蟹座: "有歸屬感、願意照顧也讓你照顧", 獅子座: "大方、欣賞你也讓你欣賞", 處女座: "可靠、有生活感、能把日子過好",
+    天秤座: "優雅、有美感、懂得互相尊重", 天蠍座: "深刻、忠誠、有強烈情感連結", 射手座: "自由、開朗、能一起成長",
+    摩羯座: "成熟、穩定、能一起承擔現實", 水瓶座: "保有空間、像朋友也像夥伴", 雙魚座: "溫柔、能理解你、讓你被接住",
+  },
+  mercury: {
+    牡羊座: "想得快、說得直，反應比別人快半拍", 金牛座: "想得慢但扎實，要看到實際證據才下判斷",
+    雙子座: "反應靈活，擅長連結資訊、快速切換角度", 巨蟹座: "先感受對方語氣與情緒，再決定怎麼說",
+    獅子座: "表達帶舞台感，希望想法被聽見、被看見", 處女座: "先拆解細節、找出問題，再條理分明地說",
+    天秤座: "說話前先衡量雙方立場，講究平衡與分寸", 天蠍座: "觀察入微、不輕易說破，卻看得見深層動機",
+    射手座: "想大方向、談理念，喜歡開闊的觀點", 摩羯座: "說話謹慎，重視結構、結果與可行性",
+    水瓶座: "想法跳脫常規，能從不同角度拆解問題", 雙魚座: "先用直覺、畫面與情緒共鳴理解，再慢慢說出意思",
+  },
+  mars: {
+    牡羊座: "想到就衝，壓力一來傾向正面迎戰", 金牛座: "行動保守但耐力強，決定了就穩穩推進",
+    雙子座: "同時開很多線，靠好奇心和變化啟動", 巨蟹座: "壓力來時先防衛，保護自己也保護在乎的人",
+    獅子座: "帶著自尊與表現欲行動，越被肯定越有力", 處女座: "做事謹慎，壓力下容易想把細節修到完美",
+    天秤座: "不愛硬碰硬，傾向先協調、找折衷再出手", 天蠍座: "行動有忍耐力，悶著累積、關鍵時刻才爆發",
+    射手座: "靠熱情行動，討厭被限制，需要目標感", 摩羯座: "行動有計畫、能扛壓，靠長期累積取勝",
+    水瓶座: "不照常規出手，越有自主空間越有動力", 雙魚座: "不喜歡正面硬碰硬，先退一步、跟著感覺與氛圍行動",
+  },
+};
+
+/** 取某星體在某星座的職能化描述（保證水星 / 火星等不同星體用不同說法） */
+function planetTrait(planet: PlanetFn, sign: ZodiacSign): string {
+  return PLANET_TRAITS[planet][sign];
+}
+
+/** 完整星盤整合分析（Email 用單段字串）：把太陽 / 月亮 / 上升 / 金星 / 水星 / 火星 串成一個人，
+ *  每顆星依職能改寫，不重複用詞。 */
 function buildFullChartIntegration(
   result: CalcResult,
   mercury: ZodiacSign | null,
   mars: ZodiacSign | null,
 ): string {
   const { sunSign, moonSign, risingSign, venusSign } = result;
-  const s = (sign: ZodiacSign) => ZODIAC_TRAITS[sign].strengths[0];
   const parts: string[] = [];
-  parts.push(`把整張星盤放在一起看，你的核心是太陽${sunSign}，渴望活出${s(sunSign)}的自己；`);
+  parts.push(`把整張星盤放在一起看，你的核心是太陽${sunSign}，渴望活出${planetTrait("sun", sunSign)}的自己；`);
   if (moonSign) {
-    parts.push(`但情緒底層是月亮${moonSign}，真正讓你安定的是${s(moonSign)}與被穩定對待，壓力一大時，你會從${sunSign}的姿態慢慢退回${moonSign}的反應。`);
+    parts.push(`但情緒底層是月亮${moonSign}，真正讓你安定的是${planetTrait("moon", moonSign)}，壓力一大時，你會從${sunSign}的姿態慢慢退回${moonSign}的反應。`);
   }
   if (risingSign) {
-    parts.push(`別人第一眼看到的，是上升${risingSign}那種${s(risingSign)}的形象，這未必等於你內在真正的需要。`);
+    parts.push(`別人第一眼看到的，是上升${risingSign}那種${planetTrait("rising", risingSign)}的形象，這未必等於你內在真正的需要。`);
   }
   if (venusSign) {
-    parts.push(`在關係裡，金星${venusSign}讓你被${s(venusSign)}的特質吸引，也用自己的方式表達在乎。`);
+    parts.push(`在關係裡，金星${venusSign}讓你被${planetTrait("venus", venusSign)}的特質吸引，也用自己的方式表達在乎。`);
   }
-  if (mercury) parts.push(`思考與溝通上，水星${mercury}讓你偏向${s(mercury)}；`);
-  if (mars) parts.push(`真正要行動或面對衝突時，火星${mars}則讓你${s(mars)}。`);
+  if (mercury) parts.push(`思考與溝通上，水星${mercury}讓你習慣${planetTrait("mercury", mercury)}；`);
+  if (mars) parts.push(`真正要行動或面對衝突時，火星${mars}則讓你${planetTrait("mars", mars)}。`);
   parts.push("這些面向不是互相矛盾的缺點，而是不同需求在同時運作——看懂它們各自想要什麼，你就能更少內耗地把自己活得完整。");
   return parts.join("");
 }
@@ -2140,9 +2206,12 @@ function PostUnlockActions({
           outerPlanetText: (uranusSign || neptuneSign || plutoSign)
             ? buildOuterPlanetText(uranusSign, neptuneSign, plutoSign)
             : null,
-          fullChartIntegrationText: hasPlanets
-            ? buildFullChartIntegration(result, mercurySign, marsSign)
-            : null,
+          // 主打整合分析（手動模式無水星/火星時仍可用核心四星體生成）
+          fullChartIntegrationText: buildFullChartIntegration(result, mercurySign, marsSign),
+          // 付費限定生活化精華卡（與網頁付費版同步）
+          essenceCards: buildEssenceCards(result, planets ?? undefined).map((c) => ({ icon: c.icon, title: c.title, body: c.body })),
+          // 人生面向延伸：內在拉扯（網頁 LifeAreasSection 同款）
+          innerTensionText: buildInnerTension(result),
           siteUrl,
         }),
       });
