@@ -264,21 +264,21 @@ interface StoryHighlights {
   soul: string;
 }
 
-// 來源缺漏時的安全模板（皆 ≤42 字、完整句、不含「…」）
+// 來源缺漏時的安全模板（皆約 28～40 字、完整句、不含「…」）
 const HIGHLIGHT_FALLBACK: StoryHighlights = {
-  career: "適合穩定累積，把目標拆小後執行，比冒險衝刺更有利。",
-  relationship: "你需要踏實陪伴，也容易被穩定、可靠、有回應的人吸引。",
+  career: "適合把目標拆小後穩定執行，長期累積會比短線衝刺更有利。",
+  relationship: "你需要踏實陪伴與穩定回應，也容易被可靠、有耐心的人吸引。",
   fortune: "近期適合整理計畫，把正在做的事慢慢推進，不急著大改方向。",
-  soul: "先允許自己開始，不必等到完全準備好，行動會帶來答案。",
+  soul: "先允許自己開始，不必等到完全準備好，行動會慢慢帶來答案。",
 };
 
 /**
  * 限動圖「本次解析重點」四張卡專用短摘要。
- * 有對應解析文字時抓第一段壓成 28～42 字短句；沒有就用安全模板，避免截斷與假資料。
+ * 有對應解析文字時抓第一段壓成 30～44 字完整短句；沒有就用安全模板，避免截斷與假資料。
  */
 function buildStoryHighlightSummary(params: StoryImageParams): StoryHighlights {
-  const MIN = 26;
-  const MAX = 42;
+  const MIN = 30;
+  const MAX = 44;
   const line = (src: string | null | undefined, fb: string): string => {
     const short = buildShortSummary(src, MIN, MAX);
     return short || fb;
@@ -567,38 +567,49 @@ function drawHeader(ctx: CanvasRenderingContext2D): number {
   return divY + 12;
 }
 
-/** 星座資訊卡，回傳底部 Y */
+/**
+ * 星盤快速摘要卡（純資料，不放解讀）。視覺權重刻意降低，像「資料卡」而非主內容卡，
+ * 避免與下方四張短解析卡重複。回傳底部 Y。
+ */
 function drawSignCard(
   ctx: CanvasRenderingContext2D,
   startY: number,
   params: StoryImageParams,
 ): number {
-  const ROW_H  = 52;   // 縮小約 10%（原 58）
-  const CARD_H = ROW_H * 4 + 18;
+  const TITLE_H = 40;
+  const ROW_H   = 42;
+  const CARD_H  = TITLE_H + ROW_H * 4 + 12;
 
+  // 背景：較淡、邊框較細，弱化為資料卡
   ctx.save();
-  roundRectPath(ctx, MARGIN_X, startY, INNER_W, CARD_H, 28);
-  ctx.fillStyle   = "rgba(7,11,30,0.72)";
+  roundRectPath(ctx, MARGIN_X, startY, INNER_W, CARD_H, 26);
+  ctx.fillStyle   = "rgba(7,11,30,0.55)";
   ctx.fill();
-  ctx.strokeStyle = "rgba(247,217,135,0.32)";
-  ctx.lineWidth   = 1.5;
+  ctx.strokeStyle = "rgba(247,217,135,0.18)";
+  ctx.lineWidth   = 1;
   ctx.stroke();
   ctx.restore();
 
+  // 區塊標題（小、低調）
+  ctx.textAlign = "left";
+  ctx.font      = "600 22px sans-serif";
+  ctx.fillStyle = "rgba(247,217,135,0.62)";
+  ctx.fillText("你的星盤快速摘要", MARGIN_X + 40, startY + 30);
+
   const rows: Array<{ sym: string; label: string; sign: string | null | undefined; color: string }> = [
-    { sym: "☉",  label: "太陽", sign: params.sunSign,    color: "#f7d987" },
-    { sym: "☽",  label: "月亮", sign: params.moonSign,   color: "#b8a0f0" },
-    { sym: "↑",  label: "上升", sign: params.risingSign, color: "#88d8b0" },
-    { sym: "♀",  label: "金星", sign: params.venusSign,  color: "#c9a0dc" },
+    { sym: "☀", label: "太陽", sign: params.sunSign,    color: "#f7d987" },
+    { sym: "🌙", label: "月亮", sign: params.moonSign,   color: "#b8a0f0" },
+    { sym: "⬆", label: "上升", sign: params.risingSign, color: "#88d8b0" },
+    { sym: "♀", label: "金星", sign: params.venusSign,  color: "#c9a0dc" },
   ];
 
   rows.forEach((row, i) => {
-    const rowTop = startY + 9 + i * ROW_H;
-    const baseY  = rowTop + ROW_H / 2 + 10;
+    const rowTop = startY + TITLE_H + i * ROW_H;
+    const baseY  = rowTop + ROW_H / 2 + 8;
 
     if (i > 0) {
       ctx.save();
-      ctx.strokeStyle = "rgba(255,255,255,0.07)";
+      ctx.strokeStyle = "rgba(255,255,255,0.06)";
       ctx.lineWidth   = 1;
       ctx.beginPath();
       ctx.moveTo(MARGIN_X + 28, rowTop);
@@ -608,12 +619,10 @@ function drawSignCard(
     }
 
     ctx.textAlign = "left";
-    ctx.font      = row.sign ? "bold 28px sans-serif" : "400 25px sans-serif";
-    ctx.fillStyle = row.sign ? row.color : "rgba(255,247,230,0.22)";
-    const signLabel = row.sign
-      ? `${row.sym}  ${row.label}  ${row.sign}`
-      : `${row.sym}  ${row.label}  尚未提供`;
-    ctx.fillText(signLabel, MARGIN_X + 44, baseY);
+    ctx.font      = "500 24px sans-serif";
+    ctx.fillStyle = row.sign ? row.color : "rgba(255,247,230,0.28)";
+    const signLabel = `${row.sym}  ${row.label}｜${row.sign ?? "尚未提供"}`;
+    ctx.fillText(signLabel, MARGIN_X + 40, baseY);
   });
 
   return startY + CARD_H;
@@ -834,7 +843,7 @@ function drawOverallSummaryCard(
 ): number {
   if (!paragraphs.length) return startY;
 
-  const cardH = 240;   // 縮小（原 274）
+  const cardH = 220;   // 再縮小，把垂直空間讓給下方四張短解析卡
   const padX = 44;
   const titleY = startY + 48;
   const textY  = startY + 96;
@@ -889,7 +898,7 @@ function drawAspectSummaryGrid(
   const rowGap = 20;
   const cardW = (INNER_W - colGap) / 2;
   const rows = Math.ceil(visible.length / 2);
-  const cardH = Math.min(200, Math.floor((bottomY - startY - rowGap * (rows - 1)) / rows));
+  const cardH = Math.min(215, Math.floor((bottomY - startY - rowGap * (rows - 1)) / rows));
   const padX = 24;
 
   visible.forEach((aspect, index) => {
@@ -916,13 +925,13 @@ function drawAspectSummaryGrid(
       ctx,
       aspect.lines,
       x + padX,
-      y + 91,
+      y + 86,
       cardW - padX * 2,
-      cardH - 112,
-      28,
-      20,
-      1.34,
-      "rgba(255,247,230,0.90)",
+      cardH - 104,
+      26,
+      19,
+      1.36,
+      "rgba(255,247,230,0.92)",
       false,   // 不補「…」
     );
   });
@@ -941,7 +950,7 @@ function drawUnlockTeaserCard(
   items?: Array<{ icon: string; title: string; desc: string }>,
 ): number {
   const isUnlocked = items && items.length > 0;
-  const CARD_H = 344;   // 略增高，讓四張短摘要卡有 2 行的穩定空間
+  const CARD_H = 318;   // 短摘要卡 2 行的穩定空間（同時把垂直空間讓給上方解析卡）
   const padX = 38;
 
   // 卡片背景
@@ -987,7 +996,7 @@ function drawUnlockTeaserCard(
   const rowGap = 14;
   const contentW = INNER_W - padX * 2;
   const itemW = (contentW - colGap) / 2;
-  const itemH = 120;   // 略增高：短摘要可穩定放 2 行、行距不擠
+  const itemH = 108;   // 短摘要 28～40 字、2 行可穩定容納
   const gridTop = startY + 78;
 
   DISPLAY_ITEMS.forEach((item, idx) => {
@@ -1063,26 +1072,16 @@ function render(
   // 整體解析改用限動圖專用短版（90～120 字、完整句、不補「…」）
   const storyOverall = buildStoryOverallSummary(params);
   const overallParagraphs = storyOverall ? [storyOverall] : [];
-  const sunLines = summarizeSentences(
-    [params.sunCoreText, params.sunText, params.coreText, params.overallSummary],
-    2,
-    76,
-  );
-  const moonLines = summarizeSentences(
-    [params.moonEmotionText, params.moonText, params.emotionText, params.overallSummary],
-    2,
-    76,
-  );
-  const risingLines = summarizeSentences(
-    [params.risingOuterText, params.risingText, params.outerText, params.overallSummary],
-    2,
-    76,
-  );
-  const venusLines = summarizeSentences(
-    [params.venusLoveText, params.venusText, params.loveText, params.overallSummary],
-    2,
-    66,
-  );
+  // 四張卡的短解析（45～58 字、自然完整、不補「…」），與上方資料摘要區分工：
+  // 上方只列星座配置，這裡才是針對每個星體的個人化短解讀。
+  const aspectLine = (cands: Array<string | null | undefined>): string[] => {
+    const s = buildShortSummary(pick(cands), 44, 58);
+    return s ? [s] : [];
+  };
+  const sunLines    = aspectLine([params.sunCoreText, params.sunText, params.coreText]);
+  const moonLines   = aspectLine([params.moonEmotionText, params.moonText, params.emotionText]);
+  const risingLines = aspectLine([params.risingOuterText, params.risingText, params.outerText]);
+  const venusLines  = aspectLine([params.venusLoveText, params.venusText, params.loveText]);
 
   const aspects: AspectSummary[] = [
     {
@@ -1109,7 +1108,7 @@ function render(
   // ── 版面安全區常數 ────────────────────────────────────────────────────────────
   const FOOTER_RESERVED  = 220;   // footer div + 網址 + 底部留白（原 148）
   const FOOTER_GAP       = 80;    // teaser 底部到 footer 分隔線的最小間距
-  const SUMMARY_CARD_H   = 344;   // 底部摘要卡固定高度（與 drawUnlockTeaserCard CARD_H 一致）
+  const SUMMARY_CARD_H   = 318;   // 底部摘要卡固定高度（與 drawUnlockTeaserCard CARD_H 一致）
   const GAP              = 18;    // 各區塊間距（原 24）
 
   const footerDivY       = H - FOOTER_RESERVED + 20;          // 分隔線 Y

@@ -94,19 +94,21 @@ function nl2br(text: string): string {
 
 // ── Shared style constants ────────────────────────────────────────────────────
 
-// 白底、乾淨、像正式報告的配色（取代舊版深色星空，避免列印灰字偏淡與空白頁）。
+// 正式報告版配色：白卡 + 極淺底，文字夠深、對比清楚，適合 Gmail 預覽與列印。
+// 重點：內文一律深色實心字，不放灰紫低對比字、不靠 opacity。
 const S = {
-  bg:          "#ffffff",
-  text:        "#2a2438",   // 內文：夠深，列印清楚
-  textDim:     "#4d4663",
-  textFaint:   "#7b7392",
-  gold:        "#9c7d28",   // 白底上仍清楚的金棕色
-  purple:      "#5f51a6",
-  purpleBg:    "#f5f2fc",
-  purpleBorder:"#ddd3f0",
-  cardBg:      "#faf9fd",
-  cardBorder:  "#e7e2f1",
-  divider:     "#e7e2f1",
+  bg:          "#f6f5fb",   // 頁面底：極淺灰紫，襯出白色卡片
+  text:        "#1f2433",   // 主要內文：深色高對比
+  textDim:     "#5f6275",   // 次要文字（仍清楚可讀）
+  textFaint:   "#6e6982",   // 日期 / 註腳（避免太淡，不用 #aaa）
+  gold:        "#8a6a20",   // section 小標（金棕，白底上清楚）
+  purple:      "#5b47b0",   // 按鈕底 / 紫色小標
+  title:       "#2d2557",   // 標題（深紫）
+  purpleBg:    "#f1eefb",   // accent 卡片底（淡紫，但文字仍用深色）
+  purpleBorder:"#d8cef0",
+  cardBg:      "#ffffff",   // 一般卡片：純白
+  cardBorder:  "#e3e0ef",
+  divider:     "#e3e0ef",
   font:        "'Helvetica Neue',Arial,sans-serif",
 };
 
@@ -279,7 +281,7 @@ function buildAstroEmailHtml(payload: AstroEmailPayload, dateStr: string, siteUr
     <p style="font-size:11px;letter-spacing:0.28em;color:${S.gold};text-transform:uppercase;margin:0 0 12px;font-weight:600;">
       宇宙偷偷話 · Universe Whisper
     </p>
-    <h1 style="font-size:23px;font-weight:700;color:${S.text};margin:0 0 6px;">
+    <h1 style="font-size:23px;font-weight:700;color:${S.title};margin:0 0 6px;">
       你的完整星盤深度解析
     </h1>
     <p style="font-size:13px;line-height:1.7;color:${S.textDim};margin:0 0 4px;">
@@ -289,14 +291,23 @@ function buildAstroEmailHtml(payload: AstroEmailPayload, dateStr: string, siteUr
 
     ${sections}
 
-    <div style="text-align:center;margin-top:20px;padding-top:18px;border-top:1px solid ${S.divider};">
+    <div class="card" style="margin-top:18px;padding:15px 18px;background:${S.cardBg};border:1px solid ${S.cardBorder};border-radius:12px;break-inside:avoid;page-break-inside:avoid;">
+      <p style="font-size:13.5px;line-height:1.85;color:${S.text};margin:0;">
+        這封信就是你的完整星盤深度解析保存版，建議妥善保存。
+      </p>
+      <p style="font-size:13px;line-height:1.85;color:${S.textDim};margin:8px 0 0;">
+        若想再次使用 Universe Whisper，可回到官網重新測算。
+      </p>
+    </div>
+
+    <div style="text-align:center;margin-top:16px;">
       <a href="${esc(siteUrl)}/astro-profile"
          style="display:inline-block;background:${S.purple};color:#fff;text-decoration:none;padding:12px 30px;border-radius:100px;font-size:14px;font-weight:600;letter-spacing:0.04em;">
-        重新查看解析
+        前往 Universe Whisper 官網
       </a>
     </div>
 
-    <p style="margin-top:20px;font-size:12px;color:${S.textFaint};text-align:center;line-height:1.8;">
+    <p style="margin-top:18px;font-size:12px;color:${S.textFaint};text-align:center;line-height:1.8;">
       宇宙偷偷話 · Universe Whisper<br/>
       此封信件由系統自動發送，請勿直接回覆。
     </p>
@@ -386,7 +397,15 @@ function buildAstroEmailText(payload: AstroEmailPayload, dateStr: string, siteUr
     }
   }
 
-  lines.push("", D, "", `重新查看解析：${siteUrl}/astro-profile`, "", "宇宙偷偷話 Universe Whisper", "此封信件由系統自動發送，請勿直接回覆。");
+  lines.push(
+    "", D, "",
+    "這封信就是你的完整星盤深度解析保存版，建議妥善保存。",
+    "若想再次使用 Universe Whisper，可回到官網重新測算：",
+    `${siteUrl}/astro-profile`,
+    "",
+    "宇宙偷偷話 Universe Whisper",
+    "此封信件由系統自動發送，請勿直接回覆。",
+  );
   return lines.join("\n");
 }
 
