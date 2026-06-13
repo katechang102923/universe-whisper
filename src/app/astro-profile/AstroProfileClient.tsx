@@ -1751,6 +1751,16 @@ function PostUnlockActions({
 
     setEmailLoading(true);
     setEmailMsg("");
+    // 完整星盤深度內容（與網頁付費版同步）：僅自動模式（有 planets）時可取得各行星星座。
+    const planets = result.planets ?? null;
+    const hasPlanets = !!(planets && planets.length > 0);
+    const mercurySign = planets ? planetSignOf(planets, "mercury") : null;
+    const marsSign    = planets ? planetSignOf(planets, "mars")    : null;
+    const jupiterSign = planets ? planetSignOf(planets, "jupiter") : null;
+    const saturnSign  = planets ? planetSignOf(planets, "saturn")  : null;
+    const uranusSign  = planets ? planetSignOf(planets, "uranus")  : null;
+    const neptuneSign = planets ? planetSignOf(planets, "neptune") : null;
+    const plutoSign   = planets ? planetSignOf(planets, "pluto")   : null;
     try {
       const res = await fetch("/api/astro-profile/send-email", {
         method: "POST",
@@ -1772,6 +1782,22 @@ function PostUnlockActions({
           loveRelationshipText: sunTexts.loveRelationshipText,
           yearlyFortuneText: sunTexts.yearlyFortuneText,
           soulLessonText: sunTexts.soulLessonText,
+          // ── 完整星盤資料表（舊資料 / 手動模式無 planets → null，Email 端隱藏）──
+          planets: hasPlanets
+            ? planets!.map((p) => ({ key: p.key, label: p.label, degreeText: p.degreeText, houseText: p.houseText }))
+            : null,
+          // ── 付費深度星體區塊（同步網頁完整版）──
+          mercurySign, marsSign, jupiterSign, saturnSign,
+          mercuryText: mercurySign ? MERCURY_SIGN_TEXTS[mercurySign] : null,
+          marsText:    marsSign    ? MARS_SIGN_TEXTS[marsSign]       : null,
+          jupiterText: jupiterSign ? JUPITER_SIGN_TEXTS[jupiterSign] : null,
+          saturnText:  saturnSign  ? SATURN_SIGN_TEXTS[saturnSign]   : null,
+          outerPlanetText: (uranusSign || neptuneSign || plutoSign)
+            ? buildOuterPlanetText(uranusSign, neptuneSign, plutoSign)
+            : null,
+          fullChartIntegrationText: hasPlanets
+            ? buildFullChartIntegration(result, mercurySign, marsSign)
+            : null,
           siteUrl,
         }),
       });

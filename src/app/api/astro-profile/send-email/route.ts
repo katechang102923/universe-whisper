@@ -25,8 +25,34 @@ type AstroEmailPayload = {
   loveRelationshipText?: string | null;
   yearlyFortuneText?: string | null;
   soulLessonText?: string | null;
+  /** 完整星盤資料表（自動模式才有；舊資料 / 手動模式為 null → 隱藏表格） */
+  planets?: AstroEmailPlanet[] | null;
+  /** 付費深度星體區塊（與網頁完整版同步） */
+  mercurySign?: string | null;
+  marsSign?: string | null;
+  jupiterSign?: string | null;
+  saturnSign?: string | null;
+  mercuryText?: string | null;
+  marsText?: string | null;
+  jupiterText?: string | null;
+  saturnText?: string | null;
+  outerPlanetText?: string | null;
+  fullChartIntegrationText?: string | null;
   siteUrl?: string;
 };
+
+type AstroEmailPlanet = {
+  key?: string;
+  label?: string;
+  degreeText?: string | null;
+  houseText?: string | null;
+};
+
+// 完整星盤資料表的固定顯示順序：太陽、月亮、水星、金星、火星、木星、土星、天王星、海王星、冥王星、上升
+const PLANET_ORDER = [
+  "sun", "moon", "mercury", "venus", "mars", "jupiter",
+  "saturn", "uranus", "neptune", "pluto", "rising",
+];
 
 const ZODIAC_SYMBOLS: Record<string, string> = {
   牡羊座: "♈", 金牛座: "♉", 雙子座: "♊", 巨蟹座: "♋",
@@ -58,18 +84,19 @@ function nl2br(text: string): string {
 
 // ── Shared style constants ────────────────────────────────────────────────────
 
+// 白底、乾淨、像正式報告的配色（取代舊版深色星空，避免列印灰字偏淡與空白頁）。
 const S = {
-  bg:          "#0d0d1a",
-  text:        "#e8e0f0",
-  textDim:     "#b4a8d0",
-  textFaint:   "#7a6fa0",
-  gold:        "#d8bd70",
-  purple:      "#9b8fd4",
-  purpleBg:    "rgba(155,143,212,0.09)",
-  purpleBorder:"rgba(155,143,212,0.22)",
-  cardBg:      "rgba(155,143,212,0.07)",
-  cardBorder:  "rgba(155,143,212,0.16)",
-  divider:     "rgba(255,255,255,0.08)",
+  bg:          "#ffffff",
+  text:        "#2a2438",   // 內文：夠深，列印清楚
+  textDim:     "#4d4663",
+  textFaint:   "#7b7392",
+  gold:        "#9c7d28",   // 白底上仍清楚的金棕色
+  purple:      "#5f51a6",
+  purpleBg:    "#f5f2fc",
+  purpleBorder:"#ddd3f0",
+  cardBg:      "#faf9fd",
+  cardBorder:  "#e7e2f1",
+  divider:     "#e7e2f1",
   font:        "'Helvetica Neue',Arial,sans-serif",
 };
 
@@ -77,9 +104,9 @@ function sectionCard(label: string, icon: string, content: string, accent = fals
   const bg     = accent ? S.purpleBg  : S.cardBg;
   const border = accent ? S.purpleBorder : S.cardBorder;
   return `
-    <div style="background:${bg};border:1px solid ${border};border-radius:14px;padding:20px 22px;margin-bottom:18px;">
-      <p style="font-size:11px;letter-spacing:0.22em;color:${S.gold};margin:0 0 10px;text-transform:uppercase;">${icon} ${esc(label)}</p>
-      <p style="font-size:15px;line-height:1.85;color:${S.text};margin:0;">${nl2br(content)}</p>
+    <div class="card" style="background:${bg};border:1px solid ${border};border-radius:12px;padding:15px 18px;margin-bottom:12px;break-inside:avoid;page-break-inside:avoid;">
+      <p style="font-size:11px;letter-spacing:0.18em;color:${S.gold};margin:0 0 8px;text-transform:uppercase;font-weight:600;">${icon} ${esc(label)}</p>
+      <p style="font-size:14.5px;line-height:1.8;color:${S.text};margin:0;">${nl2br(content)}</p>
     </div>`;
 }
 
@@ -87,9 +114,48 @@ function signBadge(label: string, sign: string | null | undefined, color: string
   const value = sign ? `${sym(sign)}${sign}` : "尚未提供";
   const valueColor = sign ? color : S.textFaint;
   return `
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid ${S.divider};">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid ${S.divider};">
       <span style="font-size:14px;color:${S.textDim};">${esc(label)}</span>
       <span style="font-size:15px;font-weight:600;color:${valueColor};">${esc(value)}</span>
+    </div>`;
+}
+
+// 表格儲存格防呆：空值 / undefined / null / NaN 一律顯示「—」，不外洩假資料。
+function cell(value: string | null | undefined): string {
+  const v = (value ?? "").trim();
+  if (!v || /undefined|null|NaN/i.test(v)) return "—";
+  return esc(v);
+}
+
+/** 完整星盤資料表（僅 result.planets 存在時顯示；依固定行星順序排列） */
+function buildChartTable(planets: AstroEmailPlanet[] | null | undefined): string {
+  if (!planets || planets.length === 0) return "";
+  const byKey = new Map(planets.filter((p) => p.key).map((p) => [p.key as string, p]));
+  const rows = PLANET_ORDER
+    .map((key) => byKey.get(key))
+    .filter((p): p is AstroEmailPlanet => !!p)
+    .map((p) => `
+      <tr>
+        <td style="padding:9px 10px;border-bottom:1px solid ${S.divider};font-weight:600;color:${S.text};white-space:nowrap;">${cell(p.label)}</td>
+        <td style="padding:9px 10px;border-bottom:1px solid ${S.divider};color:${S.textDim};white-space:nowrap;">${cell(p.degreeText)}</td>
+        <td style="padding:9px 10px;border-bottom:1px solid ${S.divider};color:${S.textDim};white-space:nowrap;">${cell(p.houseText)}</td>
+      </tr>`)
+    .join("");
+  if (!rows) return "";
+  return `
+    <div class="card" style="background:${S.cardBg};border:1px solid ${S.cardBorder};border-radius:12px;padding:15px 18px;margin-bottom:12px;break-inside:avoid;page-break-inside:avoid;">
+      <p style="font-size:11px;letter-spacing:0.18em;color:${S.gold};margin:0 0 4px;text-transform:uppercase;font-weight:600;">✦ 完整星盤資料表</p>
+      <p style="font-size:12px;color:${S.textFaint};margin:0 0 12px;">十大行星與上升的星座、度數與宮位（Whole Sign 宮位制）</p>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;">
+        <thead>
+          <tr>
+            <th style="text-align:left;padding:6px 10px;border-bottom:2px solid ${S.cardBorder};font-size:12px;color:${S.textFaint};font-weight:600;">星體</th>
+            <th style="text-align:left;padding:6px 10px;border-bottom:2px solid ${S.cardBorder};font-size:12px;color:${S.textFaint};font-weight:600;">星座度數</th>
+            <th style="text-align:left;padding:6px 10px;border-bottom:2px solid ${S.cardBorder};font-size:12px;color:${S.textFaint};font-weight:600;">落入宮位</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
     </div>`;
 }
 
@@ -99,37 +165,63 @@ function buildAstroEmailHtml(payload: AstroEmailPayload, dateStr: string, siteUr
     overallSummary, sunCoreText, moonInnerText, risingOuterText, venusLoveText,
     whisper, advice,
     careerWealthText, loveRelationshipText, yearlyFortuneText, soulLessonText,
+    planets,
+    mercurySign, marsSign, jupiterSign, saturnSign,
+    mercuryText, marsText, jupiterText, saturnText,
+    outerPlanetText, fullChartIntegrationText,
   } = payload;
 
   const signCard = `
-    <div style="background:${S.cardBg};border:1px solid ${S.cardBorder};border-radius:14px;padding:20px 22px;margin-bottom:18px;">
-      <p style="font-size:11px;letter-spacing:0.22em;color:${S.gold};margin:0 0 12px;text-transform:uppercase;">✦ 三重星座</p>
-      ${signBadge("☀ 太陽星座", sunSign ?? null, "#f7d987")}
-      ${signBadge("🌙 月亮星座", moonSign, "#b8a0f0")}
-      ${signBadge("⬆ 上升星座", risingSign, "#88d8b0")}
-      ${venusSign ? signBadge("♀ 金星星座", venusSign, "#c9a0dc") : ""}
+    <div class="card" style="background:${S.cardBg};border:1px solid ${S.cardBorder};border-radius:12px;padding:15px 18px;margin-bottom:12px;break-inside:avoid;page-break-inside:avoid;">
+      <p style="font-size:11px;letter-spacing:0.18em;color:${S.gold};margin:0 0 8px;text-transform:uppercase;font-weight:600;">✦ 三重星座摘要</p>
+      ${signBadge("☀ 太陽星座", sunSign ?? null, "#b8860b")}
+      ${signBadge("🌙 月亮星座", moonSign, "#6f5fc0")}
+      ${signBadge("⬆ 上升星座", risingSign, "#1f9e6e")}
+      ${venusSign ? signBadge("♀ 金星星座", venusSign, "#a85ab0") : ""}
     </div>`;
 
-  // 延伸深度解析區塊分隔標題（只在有至少一個欄位時才顯示）
-  const hasExtended = careerWealthText || loveRelationshipText || yearlyFortuneText || soulLessonText;
-  const extendedDivider = hasExtended ? `
-    <div style="border-top:1px solid ${S.divider};margin:24px 0 20px;">
-      <p style="font-size:11px;letter-spacing:0.26em;color:${S.gold};margin:16px 0 0;text-transform:uppercase;">延伸深度解析</p>
+  // 小標題分隔（只在底下至少有一個區塊時顯示）
+  const divider = (label: string, show: boolean) => show ? `
+    <div style="border-top:1px solid ${S.divider};margin:18px 0 12px;">
+      <p style="font-size:11px;letter-spacing:0.24em;color:${S.gold};margin:14px 0 0;text-transform:uppercase;font-weight:600;">${esc(label)}</p>
     </div>` : "";
 
+  const hasPaidPlanets = !!(mercuryText || marsText || jupiterText || saturnText || outerPlanetText || fullChartIntegrationText);
+  const hasExtended = careerWealthText || loveRelationshipText || yearlyFortuneText || soulLessonText;
+
   const sections = [
+    // 1. 三重星座摘要 + 2. 完整星盤資料表
     signCard,
-    overallSummary ? sectionCard("三重星座整體解析", "✦", overallSummary, true) : "",
-    sunCoreText ? sectionCard(`核心本質｜${sunSign ?? "太陽"}`, "☀", sunCoreText) : "",
-    moonSign && moonInnerText ? sectionCard(`內在情感｜${moonSign}`, "🌙", moonInnerText) : "",
-    risingSign && risingOuterText ? sectionCard(`外在展現｜${risingSign}`, "⬆", risingOuterText) : "",
-    venusSign && venusLoveText ? sectionCard(`感情吸引力｜${venusSign}`, "♀", venusLoveText) : "",
+    buildChartTable(planets),
+
+    // 3. 三重星座核心解析
+    divider("三重星座核心解析", !!(overallSummary || sunCoreText || moonInnerText || risingOuterText)),
+    overallSummary ? sectionCard("三重星座整合輪廓", "✦", overallSummary, true) : "",
+    sunCoreText ? sectionCard(`太陽核心解析｜${sunSign ?? "太陽"}`, "☀", sunCoreText) : "",
+    moonSign && moonInnerText ? sectionCard(`月亮情緒解析｜${moonSign}`, "🌙", moonInnerText) : "",
+    risingSign && risingOuterText ? sectionCard(`上升外在印象｜${risingSign}`, "⬆", risingOuterText) : "",
+
+    // 4. 金星感情模式
+    venusSign && venusLoveText ? sectionCard(`金星感情模式｜${venusSign}`, "♀", venusLoveText, true) : "",
+
+    // 5. 付費深度星體區塊
+    divider("完整星盤深度解析", hasPaidPlanets),
+    mercuryText ? sectionCard(`水星 · 溝通與思考模式${mercurySign ? `｜${mercurySign}` : ""}`, "☿", mercuryText) : "",
+    marsText ? sectionCard(`火星 · 行動力與衝突模式${marsSign ? `｜${marsSign}` : ""}`, "♂", marsText) : "",
+    jupiterText ? sectionCard(`木星 · 成長與幸運方向${jupiterSign ? `｜${jupiterSign}` : ""}`, "♃", jupiterText) : "",
+    saturnText ? sectionCard(`土星 · 課題與責任感${saturnSign ? `｜${saturnSign}` : ""}`, "♄", saturnText) : "",
+    outerPlanetText ? sectionCard("外行星特質參考（世代特質）", "♅", outerPlanetText) : "",
+    fullChartIntegrationText ? sectionCard("完整星盤整合分析", "✦", fullChartIntegrationText, true) : "",
+
+    // 宇宙偷偷話 / 提醒
     whisper ? sectionCard("宇宙偷偷話", "🌌", whisper) : "",
     advice ? sectionCard("給你的提醒", "🌿", advice) : "",
-    extendedDivider,
-    careerWealthText ? sectionCard("個人事業與財富天賦報告", "💰", careerWealthText) : "",
+
+    // 6. 延伸深度解析
+    divider("延伸深度解析", !!hasExtended),
+    careerWealthText ? sectionCard("事業與財富天賦報告", "💰", careerWealthText) : "",
     loveRelationshipText ? sectionCard("情感正緣與人際模式分析", "❤️", loveRelationshipText) : "",
-    yearlyFortuneText ? sectionCard("未來半年能量提醒", "🌙", yearlyFortuneText) : "",
+    yearlyFortuneText ? sectionCard("未來半年的能量提醒", "🌙", yearlyFortuneText) : "",
     soulLessonText ? sectionCard("靈魂課題與人生方向", "✨", soulLessonText) : "",
   ].join("");
 
@@ -138,28 +230,37 @@ function buildAstroEmailHtml(payload: AstroEmailPayload, dateStr: string, siteUr
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>你的三重星座完整解析｜Universe Whisper</title>
+  <title>你的完整星盤深度解析｜Universe Whisper</title>
+  <style>
+    @media print {
+      body { margin: 0; background: #ffffff; }
+      .card { break-inside: avoid; page-break-inside: avoid; }
+    }
+  </style>
 </head>
 <body style="background:${S.bg};color:${S.text};font-family:${S.font};margin:0;padding:0;">
-  <div style="max-width:600px;margin:0 auto;padding:40px 20px;">
-    <p style="font-size:11px;letter-spacing:0.3em;color:${S.gold};text-transform:uppercase;margin:0 0 20px;">
+  <div style="max-width:640px;margin:0 auto;padding:24px 20px;">
+    <p style="font-size:11px;letter-spacing:0.28em;color:${S.gold};text-transform:uppercase;margin:0 0 12px;font-weight:600;">
       宇宙偷偷話 · Universe Whisper
     </p>
-    <h1 style="font-size:24px;font-weight:600;color:#f0eaff;margin:0 0 6px;">
-      你的三重星座完整解析
+    <h1 style="font-size:23px;font-weight:700;color:${S.text};margin:0 0 6px;">
+      你的完整星盤深度解析
     </h1>
-    <p style="font-size:13px;color:${S.textFaint};margin:0 0 32px;">${dateStr}</p>
+    <p style="font-size:13px;line-height:1.7;color:${S.textDim};margin:0 0 4px;">
+      包含三重星座、完整星盤資料、感情模式、人際盲點、職涯天賦與行動建議。
+    </p>
+    <p style="font-size:12px;color:${S.textFaint};margin:0 0 18px;">${dateStr}</p>
 
     ${sections}
 
-    <div style="text-align:center;margin-top:32px;padding-top:24px;border-top:1px solid ${S.divider};">
+    <div style="text-align:center;margin-top:20px;padding-top:18px;border-top:1px solid ${S.divider};">
       <a href="${esc(siteUrl)}/astro-profile"
-         style="display:inline-block;background:${S.purple};color:#fff;text-decoration:none;padding:13px 32px;border-radius:100px;font-size:14px;font-weight:500;letter-spacing:0.04em;">
+         style="display:inline-block;background:${S.purple};color:#fff;text-decoration:none;padding:12px 30px;border-radius:100px;font-size:14px;font-weight:600;letter-spacing:0.04em;">
         重新查看解析
       </a>
     </div>
 
-    <p style="margin-top:32px;font-size:12px;color:#3a3255;text-align:center;line-height:1.8;">
+    <p style="margin-top:20px;font-size:12px;color:${S.textFaint};text-align:center;line-height:1.8;">
       宇宙偷偷話 · Universe Whisper<br/>
       此封信件由系統自動發送，請勿直接回覆。
     </p>
@@ -172,38 +273,72 @@ function buildAstroEmailText(payload: AstroEmailPayload, dateStr: string, siteUr
   const { sunSign, moonSign, risingSign, venusSign,
     overallSummary, sunCoreText, moonInnerText, risingOuterText, venusLoveText, whisper, advice,
     careerWealthText, loveRelationshipText, yearlyFortuneText, soulLessonText,
+    planets,
+    mercurySign, marsSign, jupiterSign, saturnSign,
+    mercuryText, marsText, jupiterText, saturnText,
+    outerPlanetText, fullChartIntegrationText,
   } = payload;
   const D = "━━━━━━━━━━━━━━━━";
+  const txtCell = (v: string | null | undefined): string => {
+    const s = (v ?? "").trim();
+    return (!s || /undefined|null|NaN/i.test(s)) ? "—" : s;
+  };
   const lines = [
     "宇宙偷偷話 · Universe Whisper",
-    `你的三重星座完整解析 | ${dateStr}`,
+    `你的完整星盤深度解析 | ${dateStr}`,
+    "包含三重星座、完整星盤資料、感情模式、人際盲點、職涯天賦與行動建議。",
     "", D, "",
     `☀ 太陽：${sym(sunSign)}${sunSign ?? "未知"}`,
     `🌙 月亮：${moonSign ? `${sym(moonSign)}${moonSign}` : "尚未提供"}`,
     `⬆ 上升：${risingSign ? `${sym(risingSign)}${risingSign}` : "尚未提供"}`,
     ...(venusSign ? [`♀ 金星：${sym(venusSign)}${venusSign}`] : []),
-    "", D, "",
   ];
 
-  if (overallSummary) lines.push("✦ 整體解析", overallSummary, "");
-  if (sunCoreText) lines.push(`☀ 核心本質｜${sunSign ?? "太陽"}`, sunCoreText, "");
-  if (moonSign && moonInnerText) lines.push(`🌙 內在情感｜${moonSign}`, moonInnerText, "");
-  if (risingSign && risingOuterText) lines.push(`⬆ 外在展現｜${risingSign}`, risingOuterText, "");
-  if (venusSign && venusLoveText) lines.push(`♀ 感情吸引力｜${venusSign}`, venusLoveText, "");
+  // 完整星盤資料表（自動模式才有）
+  if (planets && planets.length > 0) {
+    const byKey = new Map(planets.filter((p) => p.key).map((p) => [p.key as string, p]));
+    const rows = PLANET_ORDER
+      .map((key) => byKey.get(key))
+      .filter((p): p is AstroEmailPlanet => !!p)
+      .map((p) => `${txtCell(p.label)}｜${txtCell(p.degreeText)}｜${txtCell(p.houseText)}`);
+    if (rows.length) {
+      lines.push("", D, "", "✦ 完整星盤資料表（星體｜星座度數｜落入宮位）", ...rows);
+    }
+  }
+
+  lines.push("", D, "");
+  if (overallSummary) lines.push("✦ 三重星座整合輪廓", overallSummary, "");
+  if (sunCoreText) lines.push(`☀ 太陽核心解析｜${sunSign ?? "太陽"}`, sunCoreText, "");
+  if (moonSign && moonInnerText) lines.push(`🌙 月亮情緒解析｜${moonSign}`, moonInnerText, "");
+  if (risingSign && risingOuterText) lines.push(`⬆ 上升外在印象｜${risingSign}`, risingOuterText, "");
+  if (venusSign && venusLoveText) lines.push(`♀ 金星感情模式｜${venusSign}`, venusLoveText, "");
+
+  // 付費深度星體區塊
+  const hasPaidPlanets = mercuryText || marsText || jupiterText || saturnText || outerPlanetText || fullChartIntegrationText;
+  if (hasPaidPlanets) {
+    lines.push("", D, "", "【完整星盤深度解析】", "");
+    if (mercuryText) lines.push(`☿ 水星 · 溝通與思考模式${mercurySign ? `｜${mercurySign}` : ""}`, mercuryText, "");
+    if (marsText)    lines.push(`♂ 火星 · 行動力與衝突模式${marsSign ? `｜${marsSign}` : ""}`, marsText, "");
+    if (jupiterText) lines.push(`♃ 木星 · 成長與幸運方向${jupiterSign ? `｜${jupiterSign}` : ""}`, jupiterText, "");
+    if (saturnText)  lines.push(`♄ 土星 · 課題與責任感${saturnSign ? `｜${saturnSign}` : ""}`, saturnText, "");
+    if (outerPlanetText) lines.push("♅ 外行星特質參考（世代特質）", outerPlanetText, "");
+    if (fullChartIntegrationText) lines.push("✦ 完整星盤整合分析", fullChartIntegrationText, "");
+  }
+
   if (whisper) lines.push("🌌 宇宙偷偷話", whisper, "");
   if (advice) lines.push("🌿 給你的提醒", advice, "");
 
   // 延伸深度解析四章節
   const hasExtended = careerWealthText || loveRelationshipText || yearlyFortuneText || soulLessonText;
   if (hasExtended) {
-    lines.push("", D, "");
-    if (careerWealthText)    lines.push("💰 個人事業與財富天賦報告", careerWealthText, "");
+    lines.push("", D, "", "【延伸深度解析】", "");
+    if (careerWealthText)    lines.push("💰 事業與財富天賦報告", careerWealthText, "");
     if (loveRelationshipText) lines.push("❤️ 情感正緣與人際模式分析", loveRelationshipText, "");
-    if (yearlyFortuneText)   lines.push("🌙 未來半年能量提醒", yearlyFortuneText, "");
+    if (yearlyFortuneText)   lines.push("🌙 未來半年的能量提醒", yearlyFortuneText, "");
     if (soulLessonText)      lines.push("✨ 靈魂課題與人生方向", soulLessonText, "");
   }
 
-  lines.push(D, "", `重新查看解析：${siteUrl}/astro-profile`, "", "宇宙偷偷話 Universe Whisper");
+  lines.push(D, "", `重新查看解析：${siteUrl}/astro-profile`, "", "宇宙偷偷話 Universe Whisper", "此封信件由系統自動發送，請勿直接回覆。");
   return lines.join("\n");
 }
 
@@ -248,7 +383,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         from:    emailFrom,
         to:      [email],
-        subject: "宇宙偷偷話｜你的三重星座完整解析",
+        subject: "宇宙偷偷話｜你的完整星盤深度解析",
         html,
         text,
       }),
