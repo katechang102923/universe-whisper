@@ -116,9 +116,168 @@ function toReadingTopic(topic: TarotTopicOption): ReadingTopic {
 
 function toMeaningTopic(topic: TarotTopicOption) {
   if (topic === "工作") return "work";
-  if (topic === "財運") return "work";
   if (topic === "生活") return "life";
+  // 財運不再走 work；財運的 topicMeaning 由 getFinanceMeaningForPayload 專責產生
   return "love";
+}
+
+// ── 財運專用：問題類型 + 牌組 → 財運 topicMeaning ────────────────────────────
+// 財運不走 work 牌義，依子語境（投資 / 泛投資決策 / 支出付款決策 / 一般財運）與牌組（suit）給不同語境。
+type FinanceQuestionKind = "investment" | "investment_decision" | "expense_decision" | "finance_general";
+
+// 具體市場 / 標的 / 操作（含標的代碼），不含裸「買 / 賣」避免吃到一般購物題
+const FINANCE_INVESTMENT_HINTS = [
+  "台股", "美股", "股票", "ETF", "大盤", "股市", "指數",
+  "0050", "00878", "00940", "00948", "基金", "加密", "比特幣",
+  "買進", "賣出", "進場", "出場", "加碼", "減碼", "停損", "停利",
+  "漲", "跌", "持倉", "波段",
+] as const;
+
+// 泛投資（無具體標的）：投資決策語境，isInvestment 維持 false、不套股市術語
+const FINANCE_INVEST_DECISION_HINTS = [
+  "投資", "理財", "適合投資", "該不該投資", "要不要投資", "可以投資嗎",
+  "現在投資", "投入資金", "資金配置", "風險承受",
+] as const;
+
+// 支出 / 付款決策：值不值得、是否延後、是否分期
+const FINANCE_EXPENSE_HINTS = [
+  "支出", "花費", "花太多", "付款", "大額付款", "這筆錢", "這筆支出",
+  "要不要買", "值不值得買", "要不要先延後", "是否延後", "刷卡", "分期",
+] as const;
+
+const FINANCE_GENERAL_HINTS = [
+  "收入", "存款", "財運", "錢", "現金流",
+] as const;
+
+function getFinanceQuestionKind(question: string): FinanceQuestionKind {
+  const q = question || "";
+  if (FINANCE_INVESTMENT_HINTS.some((k) => q.includes(k))) return "investment";
+  if (FINANCE_INVEST_DECISION_HINTS.some((k) => q.includes(k))) return "investment_decision";
+  if (FINANCE_EXPENSE_HINTS.some((k) => q.includes(k))) return "expense_decision";
+  if (FINANCE_GENERAL_HINTS.some((k) => q.includes(k))) return "finance_general";
+  return "finance_general";
+}
+
+/**
+ * 財運 topicMeaning（傳給 /api/tarot-reading 的 cards.topicMeaning）。
+ * 投資題：允許風險控管語境，但依牌組變化。
+ * 一般財運題：收入／支出／現金流／存款／財務壓力，禁止「進場／加碼／停損／量能／支撐壓力」。
+ */
+function getFinanceMeaningForPayload(card: TarotCardFaceData, kind: FinanceQuestionKind): string {
+  const up = card.orientation === "upright";
+  if (kind === "investment") {
+    switch (card.suit) {
+      case "pentacles":
+        return up
+          ? "投資語境：錢幣牌偏向實際部位與資金，代表手上的資源有撐住的條件，適合用穩健、可控的方式配置，不必急著重押。"
+          : "投資語境：錢幣牌逆位提醒資金或部位有壓力，先確認自己能承受的最大風險，把部位控制在安心的範圍。";
+      case "wands":
+        return up
+          ? "投資語境：權杖牌帶著向上的動能，市場情緒偏積極，但動能強波動也大，行動前先設好自己的風險上限。"
+          : "投資語境：權杖牌逆位代表動能轉弱或追高過頭，熱度退潮時別逆勢硬撐，先觀察方向再決定加減。";
+      case "cups":
+        return up
+          ? "投資語境：聖杯牌提醒別讓情緒主導買賣，現在心態算穩，但獲利或帳面變化容易牽動情緒，依計畫而非感覺操作。"
+          : "投資語境：聖杯牌逆位指向耐心不足、患得患失，越焦慮越容易做錯決定，先讓情緒回穩再看部位。";
+      case "swords":
+        return up
+          ? "投資語境：寶劍牌偏向理性與資訊，適合用數據和條件重新檢視風險，把判斷建立在事實上而非消息面。"
+          : "投資語境：寶劍牌逆位提醒資訊雜訊多、判斷易失準，別被單一消息帶著走，先把風險想清楚再行動。";
+      case "major":
+        return up
+          ? "投資語境：大牌指向中期趨勢與週期，這比較是看方向的階段，不適合只盯短線一兩天的漲跌。"
+          : "投資語境：大牌逆位代表趨勢還沒站穩、處在週期低點，方向不明時以守為主，等局勢清楚再評估。";
+      default:
+        return up
+          ? "投資語境：牌面偏穩，但仍要控制部位、設好風險上限，依趨勢與量能分批調整，不要一次重押。"
+          : "投資語境：牌面偏弱，方向未明，先降低部位、保留現金，等訊號清楚再考慮重新布局。";
+    }
+  }
+  if (kind === "investment_decision") {
+    // 泛投資決策（無具體標的）：投資決策／風險承受／資金配置／小額／分批／延後，禁止股市術語
+    switch (card.suit) {
+      case "pentacles":
+        return up
+          ? "投資決策：錢幣牌代表你有可動用的本金，條件還算實在，但適合從小額、分批開始，先確認能承受多少波動。"
+          : "投資決策：錢幣牌逆位提醒資金準備還不夠穩，先把緊急預備金留好，這筆投入可考慮縮小或延後。";
+      case "wands":
+        return up
+          ? "投資決策：權杖牌帶著想行動的衝勁，可以小額試試，但先設好願意投入的上限，別被一時熱度推著走。"
+          : "投資決策：權杖牌逆位代表衝動偏高，先把想投的念頭緩一緩，確認是理性判斷再決定。";
+      case "cups":
+        return up
+          ? "投資決策：聖杯牌提醒投資情緒要穩，這筆投入若讓你安心可以考慮，但仍依計畫小額分批。"
+          : "投資決策：聖杯牌逆位指向焦慮或興奮主導決定，先讓情緒回穩，別在不安時做大額投入。";
+      case "swords":
+        return up
+          ? "投資決策：寶劍牌偏理性，適合把預期報酬、風險與資金需求算清楚，再決定投不投、投多少。"
+          : "投資決策：寶劍牌逆位提醒資訊或判斷有盲點，先把風險想清楚，這筆投入別急著拍板。";
+      case "major":
+        return up
+          ? "投資決策：大牌指向長期方向，這是看人生階段與資金配置的題，可以規劃但不必急於一時。"
+          : "投資決策：大牌逆位代表時機未明、處在週期低點，先以延後或小額為宜，等準備更充足再加大。";
+      default:
+        return up
+          ? "投資決策：先確認風險承受與資金配置，從小額或分批開始，準備更充足再加大投入。"
+          : "投資決策：條件還不夠成熟，先以延後或小額試水溫為主，把緊急預備金留好。";
+    }
+  }
+  if (kind === "expense_decision") {
+    // 支出／付款決策：值不值得／是否超出負擔／現金流／延後／分期，禁止投資語氣與股市術語
+    switch (card.suit) {
+      case "pentacles":
+        return up
+          ? "支出決策：錢幣牌看實際負擔，這筆支出若在預算內、不動到存款，可以考慮。"
+          : "支出決策：錢幣牌逆位提醒會壓到現金流或存款，先確認必要性，必要時延後或分期。";
+      case "wands":
+        return up
+          ? "支出決策：權杖牌帶著想買的衝動，先分清是需要還是想要，真的需要再出手。"
+          : "支出決策：權杖牌逆位代表衝動消費偏高，先把這筆花費緩一緩，避免買完就後悔。";
+      case "cups":
+        return up
+          ? "支出決策：聖杯牌指向這筆花費和心情有關，若是真實需求可以買，先別讓情緒做主。"
+          : "支出決策：聖杯牌逆位偏情緒性消費，先看清是不是在補情緒，再決定要不要付。";
+      case "swords":
+        return up
+          ? "支出決策：寶劍牌偏理性，適合把付款條件、能不能分期或退算清楚再決定。"
+          : "支出決策：寶劍牌逆位提醒條款或費用可能沒看清，先確認細節，別急著刷下去。";
+      case "major":
+        return up
+          ? "支出決策：大牌代表這是較重大的支出，看的是長期影響，值得就投，但先想清楚。"
+          : "支出決策：大牌逆位建議這筆大額支出先延後，等預算和時機更穩再決定。";
+      default:
+        return up
+          ? "支出決策：先確認值不值得、是否超出負擔，不影響緊急預備金再決定。"
+          : "支出決策：先確認是否影響現金流，必要時延後或分期，避免單筆壓力過大。";
+    }
+  }
+  // 一般財運題（禁止股市操作術語）
+  switch (card.suit) {
+    case "pentacles":
+      return up
+        ? "財運語境：錢幣牌指向收入、存款與現金流，現在的實際資源有餘裕，適合趁機把財務結構整理清楚、把能存的留住。"
+        : "財運語境：錢幣牌逆位提醒現金流被某筆固定支出卡住，先盤點數字，找出最大的支出漏洞補起來。";
+    case "wands":
+      return up
+        ? "財運語境：權杖牌帶著開源動能，適合主動為收入做點事（副業、接案、整理可變現的資源），但要量力而為。"
+        : "財運語境：權杖牌逆位提醒衝動花費或想衝的念頭讓錢留不住，先把計畫想清楚，確認真的需要再花。";
+    case "cups":
+      return up
+        ? "財運語境：聖杯牌談金錢的安全感，當下收支讓你心裡踏實，提醒你把花費和情緒分開，先分清需要與想要。"
+        : "財運語境：聖杯牌逆位指向情緒性消費與金錢焦慮，花錢常是在補情緒缺口，看清那份不安來源，壓力會鬆開。";
+    case "swords":
+      return up
+        ? "財運語境：寶劍牌偏向理性檢視，適合把帳單、合約、每一筆固定支出攤開來看清楚，用數字做財務決定。"
+        : "財運語境：寶劍牌逆位提醒帳目或決定有沒算清楚的地方，隱藏費用正增加負擔，先確認細節再付、再簽。";
+    case "major":
+      return up
+        ? "財運語境：大牌指向財務大方向與週期，現在是調整資源配置的階段，看的是長期結構，而不是單筆花費。"
+        : "財運語境：大牌逆位代表財務週期還在低點，大方向未明，先穩住收支，別急著做重大財務承諾。";
+    default:
+      return up
+        ? "財運語境：先把收入與支出的全貌看清楚，把資源放對位置，財務空間才會慢慢打開。"
+        : "財運語境：財務還有些地方沒理清，先守住現金流，把卡住的支出找出來，再決定怎麼動。";
+  }
 }
 
 function toSpreadPosition(position: TarotCardFaceData["position"]): SpreadPosition | undefined {
@@ -2533,6 +2692,8 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
 
   function buildReadingPayload(targetCards: TarotCardFaceData[]) {
     const meaningTopic = toMeaningTopic(topic);
+    const isFinance = topic === "財運";
+    const financeKind = isFinance ? getFinanceQuestionKind(question) : null;
     return {
       cards: targetCards.map((card) => ({
         name: card.name,
@@ -2547,7 +2708,10 @@ export function TarotDrawClient({ initialSpread }: { initialSpread?: "single" | 
             : (card.uprightKeywords ?? card.keywords),
         baseMeaning:
           card.orientation === "reversed" ? card.reversedMeaning : card.uprightMeaning,
-        topicMeaning: card.meanings?.[meaningTopic]?.[card.orientation],
+        // 財運走專用牌義，不再套 work/life/love 的 meanings
+        topicMeaning: isFinance
+          ? getFinanceMeaningForPayload(card, financeKind!)
+          : card.meanings?.[meaningTopic]?.[card.orientation],
         meaning: card.cosmicMessage,
       })),
       topic: toReadingTopic(topic),

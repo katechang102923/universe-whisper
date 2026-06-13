@@ -304,6 +304,35 @@ function isInvestmentQuestion(question: string): boolean {
   return INVESTMENT_KEYWORDS.some((k) => question.includes(k));
 }
 
+// ── 泛投資決策 / 支出付款決策（finance 的輕量子語境，isInvestment 仍維持 false）─────
+// 這兩類都「不」套股市術語（量能/支撐壓力/短線震盪/追高/停損），但要給對應的決策語境。
+// 泛投資決策：投資決策／風險承受／資金配置／是否先小額／是否分批／是否延後／是否準備更充足。
+const INVESTMENT_DECISION_KEYWORDS = [
+  "投資", "理財", "適合投資", "該不該投資", "要不要投資", "可以投資嗎",
+  "現在投資", "投入資金", "資金配置", "風險承受",
+];
+// 支出/付款決策：值不值得／是否超出負擔／是否影響現金流／是否延後／是否分期／緊急預備金／情緒性消費。
+const EXPENSE_DECISION_KEYWORDS = [
+  "支出", "花費", "花太多", "付款", "大額付款", "這筆錢", "這筆支出",
+  "要不要買", "值不值得買", "要不要先延後", "是否延後", "刷卡", "分期",
+];
+
+type FinanceContext = "investment" | "investment_decision" | "expense_decision" | "finance_general";
+
+/**
+ * 財運子語境判定（不改動 isInvestmentQuestion 的結果）：
+ * 具體市場/標的（台股/美股/股票/ETF/0050…）→ investment；
+ * 泛投資（投資/理財，無具體標的）→ investment_decision；
+ * 支出/付款（支出/付款/大額付款…）→ expense_decision；其餘 → finance_general。
+ */
+function detectFinanceContext(question: string): FinanceContext {
+  if (!question) return "finance_general";
+  if (isInvestmentQuestion(question)) return "investment";
+  if (INVESTMENT_DECISION_KEYWORDS.some((k) => question.includes(k))) return "investment_decision";
+  if (EXPENSE_DECISION_KEYWORDS.some((k) => question.includes(k))) return "expense_decision";
+  return "finance_general";
+}
+
 // ── 業績/成交/追單問題關鍵字 ──────────────────────────────────────────────────
 const BUSINESS_TARGET_KEYWORDS = [
   "業績", "達標", "成交", "簽約", "報價", "追單", "訂單", "獎金",
@@ -758,6 +787,28 @@ function getStrengthHint(cards: TarotReadingCard[]): string {
 本次牌面（${names}）出現明顯的負面強牌，且正面支撐不足。結論力度必須跟著下修：
 請用「難度偏高／目前不太看好／短期不樂觀」這類說法，不要把明顯偏弱的牌還含糊講成「有機會／仍有變數／需要觀察」。
 但不要恐嚇或斷言絕對的壞結果，仍保留「調整後仍可能改善」的空間。`;
+}
+
+/** 泛投資決策 / 支出付款決策 — 給對應決策語境，禁止股市操作術語（最高優先，僅 finance）*/
+function getFinanceDecisionHint(focus: QuestionFocus, question: string): string {
+  if (focus.primary !== "finance") return "";
+  const ctx = detectFinanceContext(question);
+  if (ctx === "investment_decision") {
+    return `\n【泛投資決策題 — 語氣強制規則（最高優先）】
+使用者問的是「${question}」，這題在問「要不要投資／適不適合投資」，但沒有指定具體市場或標的（台股／美股／股票／ETF／0050…）。
+✓ 必須用「投資決策」語境回答：投資決策、風險承受、資金配置、是否先小額、是否分批、是否先延後、是否需要先準備更充足。
+✗ 嚴禁股市操作術語：量能、支撐、壓力、短線震盪、追高、停損、停利、進場、加碼、減碼、滿倉、部位。
+✗ 不要把它變成單純「整理收支／記帳」題；重點是「這筆投資該不該做、怎麼做比較穩」。
+結論第一句要給明確傾向（可以考慮／先小額嘗試／需要再評估／暫時不建議），再說明風險承受與資金準備夠不夠。`;
+  }
+  if (ctx === "expense_decision") {
+    return `\n【支出／付款決策題 — 語氣強制規則（最高優先）】
+使用者問的是「${question}」，這題在問一筆支出／付款值不值得、要不要先延後。
+✓ 必須用「支出決策」語境回答：值不值得、是否超出負擔、是否影響現金流、是否可以延後、是否分期、是否先保留緊急預備金、是否只是情緒性消費。
+✗ 嚴禁投資語氣與股市術語：全押、進場、加碼、減碼、停損、停利、量能、支撐、壓力、追高、短線震盪、投資式資金配置。
+是非／選擇題要明確給「建議買／可考慮／先延後／不建議」傾向，並說明原因（負擔、現金流、必要性）。`;
+  }
+  return "";
 }
 
 /** 居住搬遷類（買房/租屋/搬家/換房/住宅）— 禁止股票投資語氣 */
@@ -1252,15 +1303,17 @@ function describeCard(card: TarotReadingCard, posLabel: string): string {
   const enName = card.nameEn ? `｜英文：${card.nameEn}` : "";
   const kw     = card.keywords?.length ? `｜關鍵字：${card.keywords.join("、")}` : "";
 
-  // meaning = baseMeaning + topicMeaning 合體，三者只取其一避免 AI 看到重複內容
-  // 優先用 meaning（最完整）；若沒有才分別給 base + topicMeaning
-  let meaningLine: string;
-  if (card.meaning) {
+  // 優先「同時」提供牌面核心 + 本分類牌義，避免錯語境的 meaning（cosmicMessage）覆蓋本分類牌義。
+  // card.meaning 只能當補充，不可覆蓋本分類牌義（財運題務必看得到財運專用 topicMeaning）。
+  const base  = card.baseMeaning  ? `\n   牌面核心：${card.baseMeaning}`  : "";
+  const topic = card.topicMeaning ? `\n   本分類牌義：${card.topicMeaning}` : "";
+  let meaningLine = base + topic;
+  if (base || topic) {
+    if (card.meaning && card.meaning !== card.baseMeaning && card.meaning !== card.topicMeaning) {
+      meaningLine += `\n   補充訊息：${card.meaning}`;
+    }
+  } else if (card.meaning) {
     meaningLine = `\n   牌義：${card.meaning}`;
-  } else {
-    const base  = card.baseMeaning  ? `\n   牌面核心：${card.baseMeaning}`  : "";
-    const topic = card.topicMeaning ? `\n   主題牌義：${card.topicMeaning}` : "";
-    meaningLine = base + topic;
   }
 
   return `牌位：${posLabel}｜${card.name}（${ori}）${suit}${enName}${kw}${meaningLine}`;
@@ -2142,9 +2195,20 @@ function getDirectConclusionSentence(
         : "這組牌顯示可以考慮，但先別急著主動，再觀察一陣子對方的態度會更穩。";
     }
     if (f === "finance") {
+      const fc = detectFinanceContext(q);
+      if (fc === "expense_decision") {
+        return hasReversed
+          ? "這筆支出偏向先緩一緩，目前不太建議馬上花，先確認是否超出負擔、會不會壓到現金流。"
+          : "這筆支出可以考慮，但先別急著刷下去，確認值不值得、不影響緊急預備金再決定。";
+      }
+      if (fc === "investment_decision") {
+        return hasReversed
+          ? "目前偏向先不要大額投入，風險承受和資金準備都還不夠，先以小額或延後為宜。"
+          : "可以考慮投資，但先別一次投太多，從小額、分批開始，確認風險承受範圍再加大。";
+      }
       return hasReversed
         ? "這組牌偏向暫時不建議現在投入，目前風險偏高、資源準備還不夠。"
-        : "這組牌顯示這個想法不是不行，但現階段先別急著全押，準備足夠再行動。";
+        : "這組牌顯示這個想法不是不行，但現階段先別急著一次投入太多，準備足夠再行動。";
     }
     return hasReversed
       ? "這組牌偏向暫時不建議現在行動，條件還沒成熟，先再觀察一下。"
@@ -2772,8 +2836,8 @@ function getCardQuestionAnswerByIndex(
       ? `${qPrefix}目前財務有改善的條件，但機會需要你主動整理出來。把近期的收支狀況具體寫下來，你會看到哪裡有空間可以調整。`
       : `${qPrefix}目前財務上有個你沒有正視的漏洞。先把支出最大的項目找出來，不要只靠感覺，看數字才能知道問題在哪裡。`;
     return up
-      ? `${qPrefix}接下來財務有機會改善，可以小幅嘗試新的收入方式。但不要因為看到機會就全押，先試小的，確認可行再加碼。`
-      : `${qPrefix}接下來先以守為主，這不是好的時機做高風險財務決定。先確保現金流穩定，再談擴張或投資。`;
+      ? `${qPrefix}接下來財務有機會改善，可以小幅嘗試新的收入方式。但不要因為看到機會就全押，先試小的，確認可行再慢慢放大投入。`
+      : `${qPrefix}接下來先以守為主，這不是好的時機做高風險財務決定。先確保現金流穩定，再談擴張或新的安排。`;
   }
 
   // general / relationship / health / 其他
@@ -2979,6 +3043,167 @@ function buildThreeCardFallback(
   });
 }
 
+// ── 財運 fallback：依實際三張牌（正逆位／牌組）動態生成，不再固定模板 ──────────
+// 讀取 reversedCount / pentaclesCount / majorCount 等，投資題與一般財運題分開。
+// 一般財運題禁止出現「進場／加碼／停損／量能／支撐壓力」這類股市操作術語。
+function countFinanceSpread(cards: TarotReadingCard[]) {
+  let reversed = 0, pentacles = 0, wands = 0, cups = 0, swords = 0, major = 0;
+  for (const c of cards) {
+    if (c.position === "reversed") reversed++;
+    if (c.suit === "pentacles") pentacles++;
+    else if (c.suit === "wands") wands++;
+    else if (c.suit === "cups") cups++;
+    else if (c.suit === "swords") swords++;
+    else if (c.suit === "major") major++;
+  }
+  return { reversed, pentacles, wands, cups, swords, major, total: cards.length || 0 };
+}
+
+type FinanceSuit = "pentacles" | "wands" | "cups" | "swords" | "major" | "mixed";
+
+/** 取主要牌組（最多者）；無牌或平手 → mixed，讓 fallback 依實際 suit 換句話說 */
+function financeDominantSuit(s: { pentacles: number; wands: number; cups: number; swords: number; major: number }): FinanceSuit {
+  const arr: Array<[Exclude<FinanceSuit, "mixed">, number]> = [
+    ["pentacles", s.pentacles], ["wands", s.wands], ["cups", s.cups], ["swords", s.swords], ["major", s.major],
+  ];
+  arr.sort((a, b) => b[1] - a[1]);
+  if (arr[0][1] === 0 || arr[0][1] === arr[1][1]) return "mixed";
+  return arr[0][0];
+}
+
+/**
+ * 財運 fallback 牌陣總結（overallSummary）— 依實際三張牌（正逆位 × 主要牌組 × 子語境）動態生成。
+ * 子語境：investment（具體標的）／investment_decision（泛投資）／expense_decision（支出付款）／finance_general。
+ * 同樣逆位數，也會因為主要牌組與牌名不同而換句話說；一般財運與決策題禁止股市操作術語。
+ */
+function getFinanceFallbackOverall(
+  cards: TarotReadingCard[] | undefined,
+  question: string,
+  n1: string,
+  n2: string,
+  n3: string,
+): string {
+  const list = cards ?? [];
+  const s = countFinanceSpread(list);
+  const { reversed, pentacles, wands, swords, major, total } = s;
+  const allReversed = total > 0 && reversed === total;
+  const noReversed = total > 0 && reversed === 0;
+  const cautious = !noReversed; // 有任何逆位 → 偏保守版方向
+  const dom = financeDominantSuit(s);
+
+  // ── 投資題（具體標的）：允許風險控管語言，依牌面變化（維持原有口徑）──────────────
+  if (isInvestmentQuestion(question)) {
+    const tone = allReversed
+      ? "這組牌整體偏弱，逆位偏多，代表市場目前缺乏明確支撐，方向還沒站穩，先以保守為主。"
+      : noReversed
+        ? "這組牌整體偏穩，正位較多，代表市場有一定支撐，但偏穩不等於可以無限樂觀。"
+        : `這組牌正逆位交雜（逆位 ${reversed} 張），代表多空還在拉鋸，方向還要再確認。`;
+    const suitNote = pentacles >= 2
+      ? "錢幣牌偏多，焦點落在實際部位與資金控管，把能承受的風險先界定清楚。"
+      : wands >= 2
+        ? "權杖牌偏多，市場動能較強但波動也大，越是熱越要小心追高。"
+        : swords >= 2
+          ? "寶劍牌偏多，提醒你多看資訊與風險，別讓情緒或單一消息帶著走。"
+          : major >= 2
+            ? "大牌偏多，這比較是中期趨勢題，不適合只盯短線一兩天的漲跌。"
+            : "牌組分散，建議用分批、控制單筆部位的方式應對波動。";
+    const direction = allReversed
+      ? "操作上以守為主，先降低部位、保留現金，等逆位訊號淡化、方向明朗後再評估。"
+      : noReversed
+        ? "可維持現有部位，但別重押；設好自己的風險上限，依趨勢與量能分批調整。"
+        : "建議分批、控制單筆部位，先設好能承受的風險上限，再依後續走勢決定加減。";
+    return `整體答案：\n${tone}\n\n為什麼會這樣：\n${n1} 反映這段行情的背景，${n2} 點出目前的多空力道，${n3} 指向接下來的可能走向。${suitNote}\n\n接下來的方向：\n${direction}`;
+  }
+
+  const ctx = detectFinanceContext(question); // investment_decision | expense_decision | finance_general
+
+  // ── 泛投資決策題：投資決策／風險承受／資金配置／小額／分批／延後（禁止股市術語）─────
+  if (ctx === "investment_decision") {
+    const tone = allReversed
+      ? "這幾張牌偏向保守，逆位偏多，現在還不是大額投入的好時機，先把風險和資金準備看清楚。"
+      : noReversed
+        ? "這幾張牌偏穩，正位較多，投資的條件還不錯，但仍建議從小額、分批開始，別一次投太多。"
+        : `這幾張牌有起有伏（逆位 ${reversed} 張），投資前先確認自己的風險承受與資金配置，再決定要不要進一步投入。`;
+    const suitNote: Record<FinanceSuit, string> = {
+      pentacles: "以錢幣為主，代表你有可運用的本金，但合不合適還是看你能承受多少波動。",
+      wands:     "以權杖為主，有想行動的衝勁，提醒你別被一時熱度推著走，先想清楚再投。",
+      cups:      "以聖杯為主，投資情緒容易上下，先確認這是理性判斷還是情緒驅動。",
+      swords:    "以寶劍為主，適合把預期報酬、風險和資金需求算清楚再決定。",
+      major:     "以大牌為主，這是看人生階段與長期方向的題，不急於一時。",
+      mixed:     "牌組分散，投資涉及的面向不少，先確認你最在意的是報酬還是安全感。",
+    };
+    const direction = cautious
+      ? "先以延後或小額試水溫為主，把緊急預備金留好，等準備更充足再加大。"
+      : "可以先用小額、分批的方式參與，依自己的風險承受逐步調整，不必一次到位。";
+    return `整體答案：\n${tone}\n\n為什麼會這樣：\n${n1} 反映你目前的財務底氣，${n2} 點出讓你猶豫的地方，${n3} 指向比較適合的投入節奏。${suitNote[dom]}\n\n接下來的方向：\n${direction}`;
+  }
+
+  // ── 支出／付款決策題：值不值得／是否超出負擔／現金流／延後／分期（禁止投資語氣）──────
+  if (ctx === "expense_decision") {
+    const tone = allReversed
+      ? "這筆支出偏向先緩一緩，逆位偏多，現在花下去容易壓到現金流，先確認是否真的必要。"
+      : noReversed
+        ? "這筆支出沒有明顯阻力，正位較多，但仍建議先確認值不值得、會不會超出負擔再決定。"
+        : `這筆支出有利有弊（逆位 ${reversed} 張），先分清楚是需要還是想要，確認不影響現金流再行動。`;
+    const suitNote: Record<FinanceSuit, string> = {
+      pentacles: "以錢幣為主，看的是實際負擔，先確認這筆錢會不會動到存款或必要開銷。",
+      wands:     "以權杖為主，帶著想買的衝動，先分清楚是需要還是一時想要。",
+      cups:      "以聖杯為主，這筆花費可能偏情緒性，先看是滿足需求還是補情緒。",
+      swords:    "以寶劍為主，適合把付款條件、是否分期、能不能退算清楚再決定。",
+      major:     "以大牌為主，這是比較重大的支出決定，看的是長期影響。",
+      mixed:     "牌組分散，先把這筆支出的必要性與替代方案列出來比較。",
+    };
+    const direction = cautious
+      ? "建議先延後或分期，留住緊急預備金，避免一次大額付款讓現金流吃緊。"
+      : "可以買，但先確認預算與是否影響存款，必要時用分期分攤，別讓單筆負擔過大。";
+    return `整體答案：\n${tone}\n\n為什麼會這樣：\n${n1} 反映你目前的財務狀況，${n2} 點出這筆支出的考量點，${n3} 指向比較合適的處理方式。${suitNote[dom]}\n\n接下來的方向：\n${direction}`;
+  }
+
+  // ── 一般財運題：依「主要牌組」換 suitNote 與接下來的方向（禁止股市操作術語）──────────
+  const tone = allReversed
+    ? "近期財務狀況偏緊，逆位偏多，現金流有些地方被卡住，先以穩住收支為主。"
+    : noReversed
+      ? "近期財運相對平穩，正位較多，手上的資源有餘裕，適合趁現在把財務結構整理得更清楚。"
+      : `近期財運有起有伏（逆位 ${reversed} 張），有些地方順、有些地方卡，先分清楚哪些能動、哪些要守。`;
+  const generalSuitNote: Record<FinanceSuit, string> = {
+    pentacles: "三張牌以錢幣為主，重點落在收入、存款與固定支出這些實際的數字。",
+    wands:     "三張牌以權杖為主，能量偏向行動與開源，適合主動為收入做點事但別衝過頭。",
+    cups:      "三張牌以聖杯為主，金錢和情緒綁得比較緊，要留意衝動購物與金錢焦慮。",
+    swords:    "三張牌以寶劍為主，重點在判斷與資訊，適合把帳單、合約和付款條件看清楚。",
+    major:     "三張牌以大牌為主，這是財務大方向與週期的題，看的是長期結構而不是單筆花費。",
+    mixed:     "三張牌牌組分散，幾個財務面向交疊，先從最在意的那一塊開始理清楚。",
+  };
+  // 接下來的方向：依主要牌組 ×（順／卡）給不同句型（穩定整理／開源嘗試／支出控管／長期方向…）
+  const generalDirection: Record<FinanceSuit, { ok: string; caution: string }> = {
+    pentacles: {
+      ok:      "可以開始規劃存款與資源配置，把穩定收入留住，固定支出逐項檢查一次，慢慢建立餘裕。",
+      caution: "先把固定支出和負擔列出來，找出最大的那個洞，存款先守住，暫時別做大額花費。",
+    },
+    wands: {
+      ok:      "適合主動開源，挑一個低成本的副業或收入嘗試先做做看，但設好可承受的投入上限。",
+      caution: "開源的衝勁先收一收，把想衝的念頭緩下來，確認真的划算、不影響本業再行動。",
+    },
+    cups: {
+      ok:      "先分清楚需要和想要，把情緒和花費分開記錄，留住安全感也留住存款。",
+      caution: "最近的花費可能在補情緒，先暫停衝動購物，看清那份不安從哪來，心裡會比較鬆一口氣。",
+    },
+    swords: {
+      ok:      "把帳單、合約與付款條件攤開來逐筆核對，用數字而不是感覺做財務決定。",
+      caution: "先別急著簽或付，帳目裡可能有沒算清楚的細節或隱藏費用，確認清楚再決定。",
+    },
+    major: {
+      ok:      "這是調整財務大方向的好時機，先看長期結構，再決定資源要往哪裡配置。",
+      caution: "財務正處在一個週期低點，大方向還沒明朗，先穩住收支，別急著做重大財務承諾。",
+    },
+    mixed: {
+      ok:      "先把收支記錄下來，留住能存的部分，再決定哪裡可以增加、哪裡需要縮減。",
+      caution: "先分清楚哪些能動、哪些要守，從最大的一筆支出開始，逐項把收支看清楚。",
+    },
+  };
+  const direction = cautious ? generalDirection[dom].caution : generalDirection[dom].ok;
+  return `整體答案：\n${tone}\n\n為什麼會這樣：\n${n1} 反映你目前的財務背景，${n2} 點出讓你卡住的地方，${n3} 指向接下來財務可以走的方向。${generalSuitNote[dom]}\n\n接下來的方向：\n${direction}`;
+}
+
 /** Fallback 牌陣總結（overallSummary），兩段格式：整體答案 + 為什麼會這樣 */
 /** Fallback 牌陣總結（overallSummary），三段結構：整體答案 + 為什麼會這樣（含三牌關係）+ 接下來的方向 */
 function getFallbackOverallSummary(focus: QuestionFocus, cardNamesStr: string, cards?: TarotReadingCard[], question = ""): string {
@@ -2993,13 +3218,8 @@ function getFallbackOverallSummary(focus: QuestionFocus, cardNamesStr: string, c
   const base = ((): string => {
   switch (focus.primary) {
     case "finance":
-      // 投資/股市問題：市場導向解讀
-      if (isInvestmentQuestion(question)) {
-        return hasRevCard
-          ? `整體答案：\n這組牌顯示市場目前情緒不穩，短線有修正壓力。建議暫時觀望，先不要追高或加碼，等量能回穩、趨勢方向確認後再行動。\n\n為什麼會這樣：\n${n1} 顯示過去市場的推動力道，${n2} 出現逆位，指出目前有阻力或資金在觀望。${n3} 給出接下來的方向提示，整體看來這段時間波動偏大。\n\n接下來的方向：\n先設好停損位置，不要滿倉操作；等待成交量回升再考慮進場。如果已持倉，可以先減碼到較安全的比例，保留現金等待機會。`
-          : `整體答案：\n這組牌顯示市場情緒偏正向，短線仍有支撐。但不建議全倉追進，先確認手上持倉的停損點，保留部分現金應對波動。\n\n為什麼會這樣：\n${n1} 顯示市場過去的上漲動能，${n2} 提示目前是中繼整理或觀察期。${n3} 正位出現，指出接下來有繼續往上的可能，但需要搭配量能確認。\n\n接下來的方向：\n可以維持現有持倉，但先不要追高加碼。設好停損點（約 5～8%），觀察大盤量能是否放大，有支撐再決定是否續抱或擴倉。`;
-      }
-      return `整體答案：\n近期財務有可以調整的空間，但你還沒把「錢去哪裡了、哪裡可以減少、哪裡可以增加」看清楚。在這件事確認之前，不適合做大的財務決定，先從整理收支開始。\n\n為什麼會這樣：\n${n1} 反映你目前財務背景，${n2} 指出讓你卡住的阻力（舊的支出習慣或一直迴避的決定）。${n3} 告訴你接下來財務可以往哪個方向走，財務空間一直被佔住，是因為有些東西還沒處理乾淨。\n\n接下來的方向：\n先把近期收支記錄下來，找出最大的支出漏洞，從縮減那裡開始。有投資或大額支出計畫的，等現金流穩定後再決定。`;
+      // 財運：依實際三張牌（正逆位／牌組）動態生成，投資題與一般財運題分開
+      return getFinanceFallbackOverall(cards, question, n1, n2, n3);
     case "career":
       return `整體答案：\n工作上卡住了，主要是方向還沒確認清楚。在方向說清楚之前，不管是留下來硬撐還是衝動離職，都容易讓你陷入更亂的處境。先把想要的工作狀態具體說清楚，再決定下一步。\n\n為什麼會這樣：\n${n1} 說明你目前承受的工作背景，${n2} 點出你在職涯上真正卡住的核心。${n3} 給你接下來比較適合走的方向提示，問題在於你一直在用舊有的方式應對一個已經需要重新選擇的處境。\n\n接下來的方向：\n先把真正想要的工作型態用具體文字寫下來，確認方向後，再決定要整理履歷、爭取機會、或先建立備案——動作要有順序，不能同時衝所有事。`;
     case "love":
@@ -3168,6 +3388,8 @@ function buildSingleCardPrompt(
   const relocationHint = getRelocationHint(question);
   // 牌面強弱 → 結論力度
   const strengthHint = getStrengthHint([card]);
+  // 泛投資決策 / 支出付款決策：給對應決策語境，禁止股市術語
+  const financeDecisionHint = getFinanceDecisionHint(focus, question);
   // 降低模板感：敘事模式輪替、宇宙偷偷話去模板、逆位多面向、結論給根據
   const narrativeRules = getNarrativeRules(false, pickNarrativeMode());
 
@@ -3295,6 +3517,7 @@ ${narrativeRules}
 ${answerTypeHint}
 ${yesNoHint}
 ${investmentHint}
+${financeDecisionHint}
 ${antiSimilarityHint}
 
 【各欄位職責 — 嚴格遵守，不能越界】
@@ -3427,6 +3650,8 @@ function buildThreeCardPrompt(
   const relocationHint = getRelocationHint(question);
   // 牌面強弱 → 結論力度
   const strengthHint = getStrengthHint(cards);
+  // 泛投資決策 / 支出付款決策：給對應決策語境，禁止股市術語
+  const financeDecisionHint = getFinanceDecisionHint(focus, question);
   // 降低模板感：敘事模式輪替、去模板、逆位多面向、結論給根據、牌與牌互動敘事
   const narrativeRules = getNarrativeRules(true, pickNarrativeMode());
 
@@ -3525,6 +3750,7 @@ ${narrativeRules}
 ${answerTypeHint}
 ${threeCardYesNoHint}
 ${threeCardInvestmentHint}
+${financeDecisionHint}
 ${antiSimilarityHint}
 
 【解讀品質規範 — 嚴格遵守】
@@ -3851,11 +4077,17 @@ export async function POST(request: Request) {
 
     // ── server log（診斷用，不回傳前台）──────────────────────────────────────────
     const drawnCards = cards.map((c) => `${c.name}（${c.position === "upright" ? "正位" : "逆位"}）`);
+    const detectedFocus = detectQuestionFocus(question);
+    const detectedTopic = detectQuestionTopic(question, detectedFocus);
     console.log("[tarot-reading] request", {
       requestId,
       spreadType,
       readingMode,
       category: topic,
+      detectedTopic,
+      isInvestment: isInvestmentQuestion(question),
+      cardNames: cards.map((c) => c.name),
+      orientations: cards.map((c) => (c.position === "upright" ? "正位" : "逆位")),
       question: question.slice(0, 80),
       drawnCards,
     });
@@ -3894,6 +4126,7 @@ export async function POST(request: Request) {
     // ── 廣告解鎖版（standard 深度）──────────────────────────────────────────────
     if (readingMode === "ad") {
       if (!apiKey) {
+        console.log("[tarot-reading] usedFallback", true);
         console.log("[tarot-reading]", { requestId, parseStatus: "fallback", fallbackReason: "no-api-key-ad" });
         return jsonNoStore({
           readingMode,
@@ -3913,6 +4146,7 @@ export async function POST(request: Request) {
         : await callThreeCard (client, model, cards,    topic, question, "standard", 1900);
 
       const usedFallback = !reading;
+      console.log("[tarot-reading] usedFallback", usedFallback);
       console.log("[tarot-reading]", {
         requestId,
         parseStatus: usedFallback ? "fallback" : "success",
@@ -3934,6 +4168,7 @@ export async function POST(request: Request) {
 
     // ── Premium 版（deep 深度）────────────────────────────────────────────────
     if (!apiKey) {
+      console.log("[tarot-reading] usedFallback", true);
       console.log("[tarot-reading]", { requestId, parseStatus: "fallback", fallbackReason: "no-api-key-premium" });
       return jsonNoStore({
         readingMode,
@@ -3953,6 +4188,7 @@ export async function POST(request: Request) {
       : await callThreeCard (client, model, cards,    topic, question, "deep", 2200);
 
     const usedFallback = !reading;
+    console.log("[tarot-reading] usedFallback", usedFallback);
     console.log("[tarot-reading]", {
       requestId,
       parseStatus: usedFallback ? "fallback" : "success",
