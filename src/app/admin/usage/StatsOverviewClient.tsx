@@ -3,8 +3,10 @@
 import { useCallback, useState } from "react";
 import { readJsonResponse } from "@/lib/readJsonResponse";
 
-// ── 低 Firebase 讀取成本版本 ────────────────────────────────────────────────────
-// 初始不自動查詢；由管理者手動選日期或區間後才打 /api/admin/stats（只讀 daily_admin_stats）。
+// ── 原始資料計算版本 ────────────────────────────────────────────────────────────
+// 進頁不自動查詢、不讀快照、不自動重新整理。管理員手動選日期區間並按「查詢」後，
+// 才呼叫 /api/admin/stats（從原始 collection 即時彙整，不使用 daily_admin_stats 快照）。
+// 單次最多 31 天；不使用 onSnapshot / 即時監聽 / 自動輪詢。
 
 type BreakdownRow = { label: string; count: number; ratio: string };
 type PaymentBreakdownRow = { label: string; count: number; ratio: string; revenue: number };
@@ -18,9 +20,11 @@ type DayMetrics = {
   tarotSingleSuccess: number;
   tarotThreeSuccess: number;
   freeSuccess: number;
+  paidAttempts: number;
   paidSuccess: number;
   revenue: number;
   astroProfilePageViews: number;
+  astroProfileAttempts: number;
   astroProfileSuccess: number;
   astroProfileFreeSuccess: number;
   astroProfilePaidSuccess: number;
@@ -31,17 +35,20 @@ type DayMetrics = {
   paymentSourceStats: PaymentBreakdownRow[];
 };
 
-type DayResult = { date: string; isToday: boolean; missingSnapshot: boolean; fallback?: boolean; metrics: DayMetrics | null };
+type DayResult = { date: string; isToday: boolean; hasRawData: boolean; metrics: DayMetrics | null };
 
 type Totals = {
   visitors: number;
+  pageViews: number;
   tarotDrawSuccess: number;
   tarotSingleSuccess: number;
   tarotThreeSuccess: number;
   freeSuccess: number;
+  paidAttempts: number;
   paidSuccess: number;
   revenue: number;
   astroProfilePageViews: number;
+  astroProfileAttempts: number;
   astroProfileSuccess: number;
   astroProfileFreeSuccess: number;
   astroProfilePaidSuccess: number;
@@ -49,15 +56,34 @@ type Totals = {
   conversionRates: ConversionRates;
 };
 
+type Diagnostics = {
+  start: string;
+  end: string;
+  days: number;
+  timezone: string;
+  analyticsEventsRead: number;
+  pageViewCount: number;
+  sessionStartCount: number;
+  rateLimitsRead: number;
+  tripleZodiacEventsRead: number;
+  paymentOrdersRead: number;
+  astroProfileOrdersRead: number;
+  pendingOrders: number;
+  paidOrders: number;
+  excludedAdminTest: number;
+  source: string;
+};
+
 type StatsResponse = {
   ok: true;
   today: string;
   needsSelection?: boolean;
+  source?: string;
   start?: string;
   end?: string;
   days?: DayResult[];
   totals: Totals;
-  snapshotsRead?: number;
+  diagnostics?: Diagnostics;
 };
 type StatsApiResponse = StatsResponse | { ok: false; error?: string };
 
@@ -66,8 +92,7 @@ interface UsageOverviewProps {
   fetchError: boolean;
 }
 
-const TODAY_NOTICE = "今日完整統計將於明日 00:05 產出，目前不提供即時統計。";
-const NO_SNAPSHOT_NOTICE = "該日期尚無統計快照，可稍後再查詢或重新產生統計。";
+const MAX_RANGE_DAYS = 31;
 
 function formatMoney(value: number) {
   return `NT$${Math.max(0, value || 0).toLocaleString("zh-TW")}`;
@@ -85,9 +110,34 @@ function addDays(dateKey: string, days: number) {
   }).format(d);
 }
 
+/** [start, end] 含端點的天數；start > end 回 0 */
+function dayCount(start: string, end: string): number {
+  if (start > end) return 0;
+  let cursor = start;
+  let n = 1;
+  while (cursor !== end) {
+    cursor = addDays(cursor, 1);
+    n += 1;
+    if (n > 400) return n; // 安全上限，避免無窮迴圈
+  }
+  return n;
+}
+
+/** 將多天的 breakdown 合併（加總 count），重算百分比 */
+function mergeBreakdown(daysMetrics: DayMetrics[], pick: (m: DayMetrics) => BreakdownRow[]): BreakdownRow[] {
+  const counts = new Map<string, number>();
+  for (const m of daysMetrics) {
+    for (const row of pick(m)) counts.set(row.label, (counts.get(row.label) ?? 0) + row.count);
+  }
+  const total = Array.from(counts.values()).reduce((s, n) => s + n, 0);
+  return Array.from(counts.entries())
+    .map(([label, count]) => ({ label, count, ratio: total ? `${Math.round((count / total) * 1000) / 10}%` : "0%" }))
+    .sort((a, b) => b.count - a.count);
+}
+
 function SummaryCards({ cards }: { cards: { label: string; value: string | number; highlight?: boolean }[] }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {cards.map((card) => (
         <div
           key={card.label}
@@ -186,7 +236,7 @@ function DayTable({ days }: { days: DayResult[] }) {
         <table className="w-full min-w-max text-sm">
           <thead>
             <tr className="border-b border-white/8 text-left">
-              {["日期", "訪客", "完成抽牌", "單張", "三張", "免費成功", "付費成功", "收入", "狀態"].map((h) => (
+              {["日期", "訪客", "完成抽牌", "單張", "三張", "免費成功", "付費嘗試", "付費成功", "收入", "狀態"].map((h) => (
                 <th key={h} className="whitespace-nowrap px-4 py-3 text-xs font-medium uppercase tracking-wider text-moon/42">{h}</th>
               ))}
             </tr>
@@ -194,6 +244,7 @@ function DayTable({ days }: { days: DayResult[] }) {
           <tbody>
             {days.map((day) => {
               const m = day.metrics;
+              const hasData = Boolean(m && day.hasRawData);
               return (
                 <tr key={day.date} className="border-b border-white/6 last:border-b-0">
                   <td className="whitespace-nowrap px-4 py-3 font-medium text-moon">{day.date}</td>
@@ -202,19 +253,14 @@ function DayTable({ days }: { days: DayResult[] }) {
                   <td className="whitespace-nowrap px-4 py-3 text-moon/75">{m ? m.tarotSingleSuccess : "—"}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-moon/75">{m ? m.tarotThreeSuccess : "—"}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-moon/75">{m ? m.freeSuccess : "—"}</td>
+                  <td className="whitespace-nowrap px-4 py-3 text-moon/75">{m ? m.paidAttempts : "—"}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-moon/75">{m ? m.paidSuccess : "—"}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-moon/75">{m ? formatMoney(m.revenue) : "—"}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-xs">
-                    {m ? (
-                      day.fallback ? (
-                        <span className="text-lavender/80">即時回補</span>
-                      ) : (
-                        <span className="text-aurora/80">有快照</span>
-                      )
-                    ) : day.isToday ? (
-                      <span className="text-amber-300">今日未產出</span>
+                    {hasData ? (
+                      <span className="text-aurora/80">原始資料計算</span>
                     ) : (
-                      <span className="text-moon/40">尚無快照</span>
+                      <span className="text-moon/40">查無原始資料</span>
                     )}
                   </td>
                 </tr>
@@ -224,6 +270,47 @@ function DayTable({ days }: { days: DayResult[] }) {
         </table>
       </div>
     </div>
+  );
+}
+
+function DiagnosticsPanel({ diag }: { diag: Diagnostics }) {
+  const [open, setOpen] = useState(false);
+  const rows: [string, string | number][] = [
+    ["查詢日期區間", `${diag.start} ～ ${diag.end}（${diag.days} 天）`],
+    ["使用時區", diag.timezone],
+    ["analytics_events 讀取", diag.analyticsEventsRead],
+    ["page_view", diag.pageViewCount],
+    ["session_start", diag.sessionStartCount],
+    ["rate_limits 讀取", diag.rateLimitsRead],
+    ["triple_zodiac_events 讀取", diag.tripleZodiacEventsRead],
+    ["paymentOrders（建立）", diag.paymentOrdersRead],
+    ["astroProfileOrders（建立）", diag.astroProfileOrdersRead],
+    ["pending / unpaid 訂單", diag.pendingOrders],
+    ["paid / success 訂單", diag.paidOrders],
+    ["被 admin / test 排除", diag.excludedAdminTest],
+    ["最終採用來源", diag.source],
+  ];
+  return (
+    <section className="rounded-3xl border border-white/10 bg-midnight/70 p-4 sm:p-5">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between text-left"
+      >
+        <span className="text-xs uppercase tracking-[0.24em] text-lavender/70">統計診斷（raw_events）</span>
+        <span className="text-sm text-moon/50">{open ? "收合 ▲" : "展開 ▼"}</span>
+      </button>
+      {open ? (
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          {rows.map(([label, value]) => (
+            <div key={label} className="flex items-center justify-between rounded-xl border border-white/8 bg-midnight/50 px-4 py-2.5 text-sm">
+              <span className="text-moon/55">{label}</span>
+              <span className="font-mono text-moon/85">{value}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -240,36 +327,38 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [hasQueried, setHasQueried] = useState(false);
-  const [todayBlocked, setTodayBlocked] = useState(false);
 
   const runQuery = useCallback(async (start: string, end: string) => {
     setError("");
-    setTodayBlocked(false);
-    // 今日守則：單日選到今天 → 不打 API、不讀任何資料，只顯示提示
-    if (start === end && start === today) {
+    const lo = start <= end ? start : end;
+    const hi = start <= end ? end : start;
+
+    // 單次最多 31 天（前端先擋，後端也會再驗證）
+    if (dayCount(lo, hi) > MAX_RANGE_DAYS) {
       setData(null);
       setHasQueried(true);
-      setTodayBlocked(true);
+      setError(`為避免 Firebase 讀取過量，單次最多查詢 ${MAX_RANGE_DAYS} 天。`);
       return;
     }
+
     setLoading(true);
     setHasQueried(true);
     try {
-      const res = await fetch(`/api/admin/stats?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
+      const res = await fetch(`/api/admin/stats?start=${encodeURIComponent(lo)}&end=${encodeURIComponent(hi)}`);
       const json = await readJsonResponse<StatsApiResponse>(res, { ok: false });
       if (!json.ok) {
-        setError(json.error ?? "讀取統計快照失敗");
+        setError(json.error ?? "讀取統計資料失敗");
         setData(null);
         return;
       }
       setData(json as StatsResponse);
     } catch {
-      setError("讀取統計快照失敗，請稍後再試。");
+      setError("讀取統計資料失敗，請稍後再試。");
       setData(null);
     } finally {
       setLoading(false);
     }
-  }, [today]);
+  }, []);
 
   const onQuery = () => {
     if (mode === "single") void runQuery(singleDate, singleDate);
@@ -286,18 +375,36 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
   const monthStart = `${today.slice(0, 7)}-01`;
 
   const days = data?.days ?? [];
-  const withMetrics = days.filter((d) => d.metrics);
-  const singleDayMetrics = withMetrics.length === 1 ? withMetrics[0].metrics : null;
+  const withMetrics = days.filter((d) => d.metrics).map((d) => d.metrics as DayMetrics);
+
+  // 查詢區間的合併排行（跨多天加總）
+  const mergedSources = mergeBreakdown(withMetrics, (m) => m.sourceStats);
+  const mergedFeatures = mergeBreakdown(withMetrics, (m) => m.popularFeatureStats);
+  const mergedPayments = (() => {
+    const counts = new Map<string, { count: number; revenue: number }>();
+    for (const m of withMetrics) {
+      for (const row of m.paymentSourceStats) {
+        const cur = counts.get(row.label) ?? { count: 0, revenue: 0 };
+        cur.count += row.count;
+        cur.revenue += row.revenue;
+        counts.set(row.label, cur);
+      }
+    }
+    const total = Array.from(counts.values()).reduce((s, r) => s + r.count, 0);
+    return Array.from(counts.entries())
+      .map(([label, r]) => ({ label, count: r.count, ratio: total ? `${Math.round((r.count / total) * 1000) / 10}%` : "0%", revenue: r.revenue }))
+      .sort((a, b) => b.count - a.count);
+  })();
 
   return (
     <div className="space-y-4">
       {/* 說明 + 查詢區 */}
       <section className="rounded-3xl border border-white/10 bg-midnight/72 p-4 sm:p-5">
         <div>
-          <p className="text-xs uppercase tracking-[0.24em] text-lavender/70">Admin Statistics Snapshot</p>
-          <h2 className="mt-1 text-xl font-semibold text-moon">後台統計快照</h2>
+          <p className="text-xs uppercase tracking-[0.24em] text-lavender/70">Admin Statistics（raw events）</p>
+          <h2 className="mt-1 text-xl font-semibold text-moon">後台使用統計</h2>
           <p className="mt-1 text-xs leading-6 text-moon/48">
-            每日 00:05 產出前一日完整統計；請手動選擇日期或日期區間查詢。
+            請選擇日期區間後查詢。系統會從原始資料重新計算，不使用快照作為主要統計來源。單次最多查詢 {MAX_RANGE_DAYS} 天。
           </p>
         </div>
 
@@ -366,6 +473,8 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
         <div className="mt-3 flex flex-wrap gap-2">
           <button type="button" onClick={() => { setMode("single"); setSingleDate(yesterday); void runQuery(yesterday, yesterday); }}
             className="rounded-full border border-white/12 bg-white/6 px-4 py-1.5 text-xs text-moon/75 transition hover:bg-white/12">昨日</button>
+          <button type="button" onClick={() => { setMode("single"); setSingleDate(today); void runQuery(today, today); }}
+            className="rounded-full border border-white/12 bg-white/6 px-4 py-1.5 text-xs text-moon/75 transition hover:bg-white/12">今日</button>
           <button type="button" onClick={() => quick(addDays(today, -7), yesterday)}
             className="rounded-full border border-white/12 bg-white/6 px-4 py-1.5 text-xs text-moon/75 transition hover:bg-white/12">最近 7 天</button>
           <button type="button" onClick={() => quick(monthStart, monthStart > yesterday ? monthStart : yesterday)}
@@ -375,26 +484,20 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
 
       {props.fetchError ? (
         <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
-          Firestore 快照讀取失敗，請確認 Firebase 環境變數設定。
+          Firestore 讀取失敗，請確認 Firebase 環境變數設定。
         </div>
       ) : null}
 
       {!hasQueried ? (
         <div className="rounded-2xl border border-white/10 bg-midnight/50 p-6 text-center text-sm text-moon/55">
-          請選擇日期或日期區間查詢統計資料
-        </div>
-      ) : null}
-
-      {todayBlocked ? (
-        <div className="rounded-2xl border border-amber-400/30 bg-amber-400/8 px-5 py-4 text-sm text-amber-200">
-          {TODAY_NOTICE}
+          請選擇日期區間後查詢統計資料。
         </div>
       ) : null}
 
       {loading ? (
         <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-midnight/40 p-5 text-sm text-moon/50">
           <span className="h-4 w-4 animate-spin rounded-full border-2 border-lavender/30 border-t-lavender" />
-          讀取統計快照中...
+          從原始資料計算中...
         </div>
       ) : null}
 
@@ -402,17 +505,19 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
         <div className="rounded-xl border border-red-400/20 bg-red-400/8 px-4 py-3 text-sm text-red-300">{error}</div>
       ) : null}
 
-      {!loading && !todayBlocked && data && data.days ? (
+      {!loading && data && data.days ? (
         <>
           <Panel
             title="1. 查詢區間摘要"
-            subtitle={`${data.start} ～ ${data.end}（共 ${data.days.length} 天，讀取 ${data.snapshotsRead ?? data.days.length} 筆快照）`}
+            subtitle={`${data.start} ～ ${data.end}（共 ${data.days.length} 天 · 原始資料計算）`}
           >
             <SummaryCards
               cards={[
                 { label: "訪客", value: data.totals.visitors },
+                { label: "頁面瀏覽", value: data.totals.pageViews },
                 { label: "完成抽牌", value: data.totals.tarotDrawSuccess },
                 { label: "免費成功", value: data.totals.freeSuccess },
+                { label: "付費嘗試", value: data.totals.paidAttempts },
                 { label: "付費成功", value: data.totals.paidSuccess, highlight: data.totals.paidSuccess > 0 },
                 { label: "收入", value: formatMoney(data.totals.revenue), highlight: data.totals.revenue > 0 },
               ]}
@@ -422,48 +527,52 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
               <span>抽牌→付費：{data.totals.conversionRates?.drawToPaid ?? "0%"}</span>
               <span>訪客→付費：{data.totals.conversionRates?.visitorToPaid ?? "0%"}</span>
             </div>
-            {data.totals.visitors === 0 && (data.totals.paidSuccess > 0 || data.totals.revenue > 0) ? (
-              <p className="mt-3 rounded-2xl border border-white/10 bg-midnight/50 px-4 py-3 text-xs leading-6 text-moon/55">
-                此日期舊版可能未記錄訪客事件，因此訪客可能無法回補；付款與收入已依訂單回補。
-              </p>
-            ) : null}
           </Panel>
 
-          <Panel title="2. 三重星座（查詢區間）" subtitle="頁面瀏覽｜成功產出｜免費成功｜付費成功｜收入">
+          <Panel title="2. 免費功能使用" subtitle="免費單張抽牌｜免費三張抽牌｜免費四核心星座解析">
+            <SummaryCards
+              cards={[
+                { label: "免費單張抽牌", value: data.totals.tarotSingleSuccess },
+                { label: "免費三張抽牌", value: data.totals.tarotThreeSuccess },
+                { label: "免費四核心星座解析", value: data.totals.astroProfileFreeSuccess },
+              ]}
+            />
+          </Panel>
+
+          <Panel title="3. 頁面瀏覽排行" subtitle="首頁｜塔羅抽牌｜四核心星座｜今日星座｜其他頁面">
+            <BreakdownTable rows={mergedFeatures} countLabel="瀏覽次數" />
+          </Panel>
+
+          <Panel title="4. 四核心星座" subtitle="頁面瀏覽｜成功產出｜免費成功｜付費嘗試｜付費成功｜收入">
             <SummaryCards
               cards={[
                 { label: "頁面瀏覽", value: data.totals.astroProfilePageViews },
                 { label: "成功產出", value: data.totals.astroProfileSuccess },
                 { label: "免費成功", value: data.totals.astroProfileFreeSuccess },
+                { label: "付費嘗試", value: data.totals.astroProfileAttempts },
                 { label: "付費成功", value: data.totals.astroProfilePaidSuccess, highlight: data.totals.astroProfilePaidSuccess > 0 },
                 { label: "收入", value: formatMoney(data.totals.astroProfileRevenue), highlight: data.totals.astroProfileRevenue > 0 },
               ]}
             />
           </Panel>
 
-          <Panel title="3. 每日明細" subtitle="每天一筆 daily_admin_stats；無快照或今日會標示狀態">
+          <Panel title="5. 每日明細" subtitle="狀態欄：原始資料計算 / 查無原始資料">
             {days.length ? <DayTable days={days} /> : <EmptyBox text="此區間沒有任何日期" />}
-            {days.some((d) => d.isToday && d.missingSnapshot) ? (
-              <p className="mt-3 rounded-2xl border border-amber-400/30 bg-amber-400/8 px-4 py-3 text-xs text-amber-200">{TODAY_NOTICE}</p>
-            ) : null}
-            {days.some((d) => !d.isToday && d.missingSnapshot) ? (
-              <p className="mt-2 rounded-2xl border border-white/10 bg-midnight/50 px-4 py-3 text-xs text-moon/50">{NO_SNAPSHOT_NOTICE}</p>
-            ) : null}
           </Panel>
 
-          {singleDayMetrics ? (
-            <>
-              <Panel title="4. 訪客來源" subtitle={singleDayMetrics.date}>
-                <BreakdownTable rows={singleDayMetrics.sourceStats} countLabel="訪客" />
-              </Panel>
-              <Panel title="5. 熱門功能排行" subtitle={singleDayMetrics.date}>
-                <BreakdownTable rows={singleDayMetrics.popularFeatureStats} countLabel="瀏覽次數" />
-              </Panel>
-              <Panel title="6. 付費來源排行" subtitle={singleDayMetrics.date}>
-                <PaymentTable rows={singleDayMetrics.paymentSourceStats} />
-              </Panel>
-            </>
+          {mergedSources.some((r) => r.count > 0) ? (
+            <Panel title="6. 訪客來源" subtitle={`${data.start} ～ ${data.end}`}>
+              <BreakdownTable rows={mergedSources} countLabel="訪客" />
+            </Panel>
           ) : null}
+
+          {mergedPayments.some((r) => r.count > 0 || r.revenue > 0) ? (
+            <Panel title="7. 付費來源排行" subtitle={`${data.start} ～ ${data.end}`}>
+              <PaymentTable rows={mergedPayments} />
+            </Panel>
+          ) : null}
+
+          {data.diagnostics ? <DiagnosticsPanel diag={data.diagnostics} /> : null}
         </>
       ) : null}
     </div>
