@@ -293,7 +293,7 @@ export function SiteNav() {
           塔羅牌介紹
         </Link>
 
-        {/* 三重星座 */}
+        {/* 四核心星座 */}
         <Link
           href="/astro-profile"
           className={[
@@ -303,7 +303,7 @@ export function SiteNav() {
               : "hover:bg-white/10 hover:text-moon",
           ].join(" ")}
         >
-          三重星座
+          四核心星座
         </Link>
       </nav>
 
@@ -384,7 +384,7 @@ export function SiteNav() {
             塔羅牌介紹
           </Link>
 
-          {/* 三重星座 */}
+          {/* 四核心星座 */}
           <Link
             href="/astro-profile"
             onClick={() => setOpen(false)}
@@ -393,7 +393,7 @@ export function SiteNav() {
               pathname === "/astro-profile" ? "text-moon" : "hover:bg-white/10",
             ].join(" ")}
           >
-            三重星座
+            四核心星座
           </Link>
 
         </nav>
