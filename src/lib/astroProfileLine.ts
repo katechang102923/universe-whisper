@@ -116,16 +116,17 @@ export function buildLineAstroProfileMessage(data: AstroProfileClaimData): strin
     }
 
     parts.push("【完整內容】");
-    parts.push("完整星盤資料表、宮位解析、金星感情模式、水星到冥王星深度解析、職涯天賦、人際盲點與行動建議，請回網站或 Email 完整報告查看。");
+    parts.push("完整星盤資料表、宮位解析、金星感情模式、水星到冥王星深度解析、職涯天賦、人際盲點與行動建議，都收錄在你當次的網頁結果與 Email 完整版裡。");
     parts.push("");
 
-    parts.push("【查看完整解析】");
+    parts.push("【回到三重星座頁面】");
     parts.push(ASTRO_PROFILE_URL);
-    parts.push("Email 版完整報告可長期保存。");
+    parts.push("此 LINE 訊息為精簡摘要，完整內容請以當次網頁結果或 Email 完整版保存。");
+    parts.push("Email 版會寄出完整報告，較適合長期保存。");
     parts.push("");
 
     parts.push("【保存提醒】");
-    parts.push("這則 LINE 為精簡保存版；NT$149 完整星盤深度解析的完整內容，請回網站或查收 Email 完整報告。");
+    parts.push("這則 LINE 是精簡摘要版，方便你隨手保存重點；NT$149 完整星盤深度解析的完整內容，請以 Email 完整版為準。");
   } else {
     parts.push("🌙 你的免費三重星座解析已保存");
     parts.push("Universe Whisper");
@@ -154,8 +155,9 @@ export function buildLineAstroProfileMessage(data: AstroProfileClaimData): strin
       parts.push("");
     }
 
-    parts.push("【查看完整解析】");
+    parts.push("【回到三重星座頁面】");
     parts.push(ASTRO_PROFILE_URL);
+    parts.push("此 LINE 訊息為精簡摘要；想要完整星盤深度解析，可在頁面升級 NT$149 完整版。");
   }
 
   parts.push("");

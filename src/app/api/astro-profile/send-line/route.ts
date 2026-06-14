@@ -80,7 +80,9 @@ function buildAstroLineMessage(payload: AstroLinePayload, siteUrl: string): stri
     parts.push("🌌 宇宙偷偷話", truncate(whisper, 120), "");
   }
 
-  parts.push(`🔮 查看完整解析：\n${siteUrl}/astro-profile`);
+  parts.push(`📍 回到三重星座頁面：\n${siteUrl}/astro-profile`);
+  parts.push("");
+  parts.push("此 LINE 訊息為精簡摘要，完整內容請以當次網頁結果或 Email 完整版保存。");
 
   return parts.join("\n");
 }

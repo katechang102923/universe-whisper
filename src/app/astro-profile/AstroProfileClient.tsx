@@ -12,9 +12,6 @@ import {
   MARS_SIGN_TEXTS,
   JUPITER_SIGN_TEXTS,
   SATURN_SIGN_TEXTS,
-  URANUS_SIGN_TEXTS,
-  NEPTUNE_SIGN_TEXTS,
-  PLUTO_SIGN_TEXTS,
 } from "@/lib/astroProfileTexts";
 import type { ZodiacSign, AstroProfileText } from "@/lib/astroProfileTexts";
 import { BIRTH_CITIES } from "@/lib/birthCities";
@@ -1262,22 +1259,30 @@ function buildEssenceCards(result: CalcResult, planets: PlanetPosition[] | undef
 }
 
 /**
- * 外行星「世代底色」（約 120～180 字，分 2～3 段）：用白話把天王星 / 海王星 / 冥王星
- * 寫成你這個世代共同的背景感，不寫命定、不用抽象靈性術語，明確標示為背景參考。
+ * 外行星「世代底色」：用白話把天王星 / 海王星 / 冥王星寫成「出生年代共同的時代氛圍」，
+ * 像真人在解釋，明確標示為背景參考、不是個人命運判斷。
+ * 回傳單一字串（段落以 \n 分隔）；網頁端依 \n 拆段顯示，Email 端沿用單一字串不變。
+ * uranus / neptune / pluto 僅作為「該星是否有資料」的判斷，不再丟抽象星座片語。
  */
 function buildOuterPlanetText(
   uranus: ZodiacSign | null,
   neptune: ZodiacSign | null,
   pluto: ZodiacSign | null,
 ): string {
-  const parts: string[] = [
-    "天王星、海王星與冥王星移動較慢，比起個人性格，它們更像是你這個世代共同面對的課題與氛圍。",
+  const paras: string[] = [
+    "這一段不是在定義你的個性，而是補充你出生年代共同受到的時代氛圍。",
   ];
-  if (uranus) parts.push(`天王星讓你這個世代${URANUS_SIGN_TEXTS[uranus]}。`);
-  if (neptune) parts.push(`海王星讓你們${NEPTUNE_SIGN_TEXTS[neptune]}。`);
-  if (pluto) parts.push(`冥王星則${PLUTO_SIGN_TEXTS[pluto]}。`);
-  parts.push("這不是用來定義你個人的全部，而是補充你所處時代的背景感，當作背景參考就好，不是個人命運的判決。");
-  return parts.join("");
+  if (uranus) {
+    paras.push("在天王星的影響下，你這個世代普遍會對傳統的成功標準、工作制度和人生責任，有自己的一套想法；你不一定想完全照舊規則走，也常在穩定和自由之間拉扯。");
+  }
+  if (neptune) {
+    paras.push("海王星帶來的是一種理想感：你可能會希望工作或人生不只是為了賺錢，也想要有意義、有感覺。提醒自己，夢想需要慢慢落地，別只停留在想像。");
+  }
+  if (pluto) {
+    paras.push("冥王星代表比較深層的時代轉變，對你可以當成背景參考——比起上一代，你會更在意信任、真假和能不能掌控自己的生活，也更需要替自己重新開始的勇氣。");
+  }
+  paras.push("這段只作為背景參考，不是個人命運判斷。");
+  return paras.join("\n");
 }
 
 // ── 星體職能化描述（同一星座在不同星體上用不同說法，避免整合分析重複用詞）──────────
@@ -1466,7 +1471,7 @@ function PaidPlanetSections({ result, planets }: { result: CalcResult; planets: 
           </div>
           <h3 className="text-lg font-semibold text-moon/85">你的世代底色</h3>
           <div className="mt-3 space-y-3">
-            {splitToParagraphs(outerText, 3).map((p, i) => (
+            {outerText.split("\n").filter(Boolean).map((p, i) => (
               <p key={i} className="text-sm leading-8 text-moon/80">{p}</p>
             ))}
           </div>
@@ -2277,25 +2282,31 @@ function PostUnlockActions({
 
         <div className="flex flex-col gap-3">
           {/* Download image */}
-          <button
-            onClick={handleDownloadImage}
-            disabled={dlLoading}
-            className="flex items-center justify-center gap-2 rounded-full border border-[#d8bd70]/40 bg-[#d8bd70]/10 py-3 text-sm font-semibold text-[#d8bd70] transition hover:bg-[#d8bd70]/20 active:scale-[0.98] disabled:opacity-60"
-          >
-            {dlLoading ? "產生中…" : "↓ 下載限動圖"}
-          </button>
+          <div>
+            <button
+              onClick={handleDownloadImage}
+              disabled={dlLoading}
+              className="flex w-full items-center justify-center gap-2 rounded-full border border-[#d8bd70]/40 bg-[#d8bd70]/10 py-3 text-sm font-semibold text-[#d8bd70] transition hover:bg-[#d8bd70]/20 active:scale-[0.98] disabled:opacity-60"
+            >
+              {dlLoading ? "產生中…" : "↓ 下載限動圖"}
+            </button>
+            <p className="mt-1.5 text-center text-[11px] leading-5 text-moon/40">精簡版 ｜ 適合分享，不含完整報告</p>
+          </div>
           {dlError && <p className="text-xs text-red-300">{dlError}</p>}
 
           {/* Send to LINE – claim-code flow */}
           {!lineClaimCode ? (
             <>
-              <button
-                onClick={() => void handleGenerateLineClaim()}
-                disabled={lineLoading}
-                className="flex items-center justify-center gap-2 rounded-full border border-[#06C755]/40 bg-[#06C755]/10 py-3 text-sm font-semibold text-[#06C755] transition hover:bg-[#06C755]/20 active:scale-[0.98] disabled:opacity-60"
-              >
-                {lineLoading ? "產生查詢碼中…" : "傳送到 LINE 官方帳號"}
-              </button>
+              <div>
+                <button
+                  onClick={() => void handleGenerateLineClaim()}
+                  disabled={lineLoading}
+                  className="flex w-full items-center justify-center gap-2 rounded-full border border-[#06C755]/40 bg-[#06C755]/10 py-3 text-sm font-semibold text-[#06C755] transition hover:bg-[#06C755]/20 active:scale-[0.98] disabled:opacity-60"
+                >
+                  {lineLoading ? "產生查詢碼中…" : "傳送到 LINE 官方帳號"}
+                </button>
+                <p className="mt-1.5 text-center text-[11px] leading-5 text-moon/40">精簡版 ｜ 傳送摘要與查詢碼</p>
+              </div>
               {lineClaimError && (
                 <p className="text-xs text-red-300">{lineClaimError}</p>
               )}
@@ -2348,12 +2359,15 @@ function PostUnlockActions({
 
           {/* Send email */}
           {!showEmailPanel ? (
-            <button
-              onClick={() => setShowEmailPanel(true)}
-              className="flex items-center justify-center gap-2 rounded-full border border-lavender/40 bg-lavender/10 py-3 text-sm font-semibold text-lavender transition hover:bg-lavender/20 active:scale-[0.98]"
-            >
-              寄送到 EMAIL
-            </button>
+            <div>
+              <button
+                onClick={() => setShowEmailPanel(true)}
+                className="flex w-full items-center justify-center gap-2 rounded-full border border-lavender/40 bg-lavender/10 py-3 text-sm font-semibold text-lavender transition hover:bg-lavender/20 active:scale-[0.98]"
+              >
+                寄送到 EMAIL
+              </button>
+              <p className="mt-1.5 text-center text-[11px] leading-5 text-moon/40">完整版 ｜ 寄送完整報告，建議保存</p>
+            </div>
           ) : (
             <div className="space-y-3 rounded-xl border border-lavender/20 bg-lavender/5 p-4">
               <input
