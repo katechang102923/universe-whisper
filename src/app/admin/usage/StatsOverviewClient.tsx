@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { readJsonResponse } from "@/lib/readJsonResponse";
 
 // ── 低 Firebase 讀取成本版本 ────────────────────────────────────────────────────
-// 初始不自動查詢；由管理者手動選日期或區間後才打 /api/admin/stats（只讀 daily_admin_stats）。
+// 預設只讀 daily_admin_stats 快照（初始自動顯示昨日）；原始事件重算需管理者手動按鈕觸發。
 
 type BreakdownRow = { label: string; count: number; ratio: string };
 type PaymentBreakdownRow = { label: string; count: number; ratio: string; revenue: number };
@@ -31,7 +31,10 @@ type DayMetrics = {
   paymentSourceStats: PaymentBreakdownRow[];
 };
 
-type DayResult = { date: string; isToday: boolean; missingSnapshot: boolean; metrics: DayMetrics | null };
+type DayStatus = "data" | "empty" | "missing" | "raw";
+type SnapshotState = "ok" | "partial" | "empty" | "missing" | null;
+type DataSource = "snapshot" | "raw";
+type DayResult = { date: string; isToday: boolean; status?: DayStatus; missingSnapshot: boolean; metrics: DayMetrics | null };
 
 type Totals = {
   visitors: number;
@@ -49,6 +52,45 @@ type Totals = {
   conversionRates: ConversionRates;
 };
 
+type Granular = {
+  tarotLineSent: number;
+  tarotEmailSent: number;
+  tarotStoryDownloaded: number;
+  astroProfileStarted: number;
+  astroProfileLineSent: number;
+  astroProfileEmailSent: number;
+  astroProfileStoryDownloaded: number;
+  lineSentTotal: number;
+  emailSentTotal: number;
+  storyDownloadedTotal: number;
+};
+
+type Diagnostics = {
+  start: string;
+  end: string;
+  days: number;
+  mode: DataSource;
+  dataSource: DataSource;
+  snapshotState: SnapshotState;
+  rawRecomputable: boolean;
+  counts: {
+    analyticsEvents: number | null;
+    tripleZodiacEvents: number | null;
+    paymentOrders: number | null;
+    astroProfileOrders: number | null;
+    rateLimits: number | null;
+    dailyAdminStats: number | null;
+    shareImageDownloads: number | null;
+  };
+  adminEventCount: number | null;
+  testEventCount: number | null;
+  normalEventCount: number | null;
+  allEventCount: number | null;
+  truncated: string[];
+  shareImageAvailable: boolean | null;
+  notes: string[];
+};
+
 type StatsResponse = {
   ok: true;
   today: string;
@@ -57,9 +99,35 @@ type StatsResponse = {
   end?: string;
   days?: DayResult[];
   totals: Totals;
+  granular?: Granular;
+  dataSource?: DataSource;
+  snapshotState?: SnapshotState;
+  displayNotice?: string;
+  rawRecomputable?: boolean;
+  diagnostics?: Diagnostics;
   snapshotsRead?: number;
 };
 type StatsApiResponse = StatsResponse | { ok: false; error?: string };
+
+/** 依資料來源與快照狀態組出顯示用標籤 */
+function sourceLabel(dataSource?: DataSource, snapshotState?: SnapshotState): string {
+  if (dataSource === "raw") return "手動原始事件重算";
+  if (snapshotState === "missing") return "快照缺失";
+  if (snapshotState === "empty") return "快照為空";
+  return "快照資料";
+}
+
+function dayStatusLabel(status: DayStatus | undefined, isToday: boolean): { text: string; cls: string } {
+  if (status === "raw") return { text: "原始重算", cls: "text-lavender/80" };
+  if (status === "data") return { text: "快照資料", cls: "text-aurora/80" };
+  if (status === "empty") return { text: "快照為空", cls: "text-amber-300/80" };
+  if (isToday) return { text: "今日未產出", cls: "text-amber-300" };
+  return { text: "快照缺失", cls: "text-moon/40" };
+}
+
+function fmtCount(value: number | null | undefined): string {
+  return typeof value === "number" ? value.toLocaleString("zh-TW") : "—";
+}
 
 interface UsageOverviewProps {
   today: string;
@@ -205,13 +273,10 @@ function DayTable({ days }: { days: DayResult[] }) {
                   <td className="whitespace-nowrap px-4 py-3 text-moon/75">{m ? m.paidSuccess : "—"}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-moon/75">{m ? formatMoney(m.revenue) : "—"}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-xs">
-                    {m ? (
-                      <span className="text-aurora/80">有快照</span>
-                    ) : day.isToday ? (
-                      <span className="text-amber-300">今日未產出</span>
-                    ) : (
-                      <span className="text-moon/40">尚無快照</span>
-                    )}
+                    {(() => {
+                      const s = dayStatusLabel(day.status, day.isToday);
+                      return <span className={s.cls}>{s.text}</span>;
+                    })()}
                   </td>
                 </tr>
               );
@@ -220,6 +285,67 @@ function DayTable({ days }: { days: DayResult[] }) {
         </table>
       </div>
     </div>
+  );
+}
+
+function DiagRow({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-white/6 py-1.5 last:border-b-0">
+      <span className="text-moon/50">{label}</span>
+      <span className="font-medium text-moon/80">{value}</span>
+    </div>
+  );
+}
+
+/** 小型診斷區：資料來源、各 collection 筆數、管理員/一般/測試事件數、是否不一致 */
+function DiagnosticsPanel({ diag, granular }: { diag: Diagnostics; granular?: Granular }) {
+  return (
+    <Panel title="診斷 / 資料來源" subtitle="預設快照優先；原始事件需手動重算。以下為本次查詢的資料來源與筆數">
+      <div className="grid gap-x-6 gap-y-0 text-xs sm:grid-cols-2">
+        <DiagRow label="查詢區間" value={`${diag.start} ～ ${diag.end}（${diag.days} 天）`} />
+        <DiagRow label="資料來源" value={sourceLabel(diag.dataSource, diag.snapshotState)} />
+        <DiagRow label="可手動原始重算" value={diag.rawRecomputable ? "可（≤ 31 天）" : "否（區間過長）"} />
+        <DiagRow label="本次是否即時掃描原始事件" value={diag.mode === "raw" ? "是（手動重算）" : "否（僅讀快照）"} />
+        <DiagRow label="analytics_events 筆數" value={fmtCount(diag.counts.analyticsEvents)} />
+        <DiagRow label="triple_zodiac_events 筆數" value={fmtCount(diag.counts.tripleZodiacEvents)} />
+        <DiagRow label="paymentOrders 筆數" value={fmtCount(diag.counts.paymentOrders)} />
+        <DiagRow label="astroProfileOrders 筆數" value={fmtCount(diag.counts.astroProfileOrders)} />
+        <DiagRow label="rate_limits 筆數" value={fmtCount(diag.counts.rateLimits)} />
+        <DiagRow label="daily_admin_stats 筆數" value={fmtCount(diag.counts.dailyAdminStats)} />
+        <DiagRow label="share_image_downloads 筆數" value={fmtCount(diag.counts.shareImageDownloads)} />
+        <DiagRow label="一般使用者事件數" value={fmtCount(diag.normalEventCount)} />
+        <DiagRow label="管理員事件數" value={fmtCount(diag.adminEventCount)} />
+        <DiagRow label="測試事件數" value={fmtCount(diag.testEventCount)} />
+        <DiagRow label="全部事件數" value={fmtCount(diag.allEventCount)} />
+      </div>
+
+      {granular ? (
+        <div className="mt-4 grid gap-x-6 gap-y-0 text-xs sm:grid-cols-2">
+          <DiagRow label="LINE 傳送（塔羅）" value={fmtCount(granular.tarotLineSent)} />
+          <DiagRow label="LINE 傳送（三重星座）" value={fmtCount(granular.astroProfileLineSent)} />
+          <DiagRow label="LINE 傳送（合計）" value={fmtCount(granular.lineSentTotal)} />
+          <DiagRow label="Email 傳送（三重星座）" value={fmtCount(granular.astroProfileEmailSent)} />
+          <DiagRow label="Email 傳送（塔羅）" value={`${fmtCount(granular.tarotEmailSent)}（無事件來源）`} />
+          <DiagRow label="限動下載（塔羅）" value={fmtCount(granular.tarotStoryDownloaded)} />
+          <DiagRow label="限動下載（三重星座）" value={fmtCount(granular.astroProfileStoryDownloaded)} />
+          <DiagRow label="三重星座開始填寫" value={fmtCount(granular.astroProfileStarted)} />
+        </div>
+      ) : null}
+
+      {diag.truncated.length ? (
+        <p className="mt-3 rounded-xl border border-amber-400/25 bg-amber-400/8 px-4 py-2 text-xs text-amber-200">
+          以下 collection 達讀取上限、數字可能被截斷：{diag.truncated.join("、")}
+        </p>
+      ) : null}
+
+      {diag.notes.length ? (
+        <ul className="mt-3 space-y-1 text-xs text-moon/40">
+          {diag.notes.map((n) => (
+            <li key={n}>・{n}</li>
+          ))}
+        </ul>
+      ) : null}
+    </Panel>
   );
 }
 
@@ -237,8 +363,19 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
   const [error, setError] = useState("");
   const [hasQueried, setHasQueried] = useState(false);
   const [todayBlocked, setTodayBlocked] = useState(false);
+  // 記住本次查詢的區間（state，供 render 與「手動原始事件重算」沿用同一區間）
+  const [queried, setQueried] = useState<{ start: string; end: string } | null>(null);
 
-  const runQuery = useCallback(async (start: string, end: string) => {
+  // 兩日期（含端點）相差天數
+  const countDays = useCallback((start: string, end: string) => {
+    const [ys, ms, ds] = start.split("-").map(Number);
+    const [ye, me, de] = end.split("-").map(Number);
+    const a = Date.UTC(ys, ms - 1, ds);
+    const b = Date.UTC(ye, me - 1, de);
+    return Math.round((b - a) / 86400000) + 1;
+  }, []);
+
+  const runQuery = useCallback(async (start: string, end: string, queryMode: DataSource = "snapshot") => {
     setError("");
     setTodayBlocked(false);
     // 今日守則：單日選到今天 → 不打 API、不讀任何資料，只顯示提示
@@ -250,22 +387,32 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
     }
     setLoading(true);
     setHasQueried(true);
+    setQueried({ start, end });
     try {
-      const res = await fetch(`/api/admin/stats?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
+      const modeParam = queryMode === "raw" ? "&mode=raw" : "";
+      const res = await fetch(`/api/admin/stats?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}${modeParam}`);
       const json = await readJsonResponse<StatsApiResponse>(res, { ok: false });
       if (!json.ok) {
-        setError(json.error ?? "讀取統計快照失敗");
+        setError(json.error ?? "讀取統計失敗");
         setData(null);
         return;
       }
       setData(json as StatsResponse);
     } catch {
-      setError("讀取統計快照失敗，請稍後再試。");
+      setError("讀取統計失敗，請稍後再試。");
       setData(null);
     } finally {
       setLoading(false);
     }
   }, [today]);
+
+  // 預設：初次載入只讀「昨日」快照（不讀原始 collection）。
+  // 延後到 setTimeout 觸發，避免在 effect body 內同步 setState。
+  useEffect(() => {
+    const t = setTimeout(() => { void runQuery(yesterday, yesterday, "snapshot"); }, 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const onQuery = () => {
     if (mode === "single") void runQuery(singleDate, singleDate);
@@ -278,6 +425,14 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
     setEndDate(end);
     void runQuery(start, end);
   };
+
+  // 手動原始事件重算：沿用本次查詢區間，改以原始 collection 即時計算
+  const recomputeRaw = () => {
+    if (!queried || loading) return;
+    void runQuery(queried.start, queried.end, "raw");
+  };
+  const recomputeDays = queried ? countDays(queried.start, queried.end) : 0;
+  const recomputeAllowed = Boolean(queried) && recomputeDays <= 31 && !loading;
 
   const monthStart = `${today.slice(0, 7)}-01`;
 
@@ -293,7 +448,7 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
           <p className="text-xs uppercase tracking-[0.24em] text-lavender/70">Admin Statistics Snapshot</p>
           <h2 className="mt-1 text-xl font-semibold text-moon">後台統計快照</h2>
           <p className="mt-1 text-xs leading-6 text-moon/48">
-            每日 00:05 產出前一日完整統計；請手動選擇日期或日期區間查詢。
+            每日 00:05 產出前一日完整快照；預設顯示昨日，僅讀快照。原始事件需手動重算（最多 31 天）。
           </p>
         </div>
 
@@ -367,6 +522,25 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
           <button type="button" onClick={() => quick(monthStart, monthStart > yesterday ? monthStart : yesterday)}
             className="rounded-full border border-white/12 bg-white/6 px-4 py-1.5 text-xs text-moon/75 transition hover:bg-white/12">本月</button>
         </div>
+
+        {/* 手動原始事件重算：只有按這顆才會讀 analytics_events / triple_zodiac_events / 訂單等原始 collection */}
+        <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-white/8 pt-4">
+          <button
+            type="button"
+            onClick={recomputeRaw}
+            disabled={!recomputeAllowed}
+            className="rounded-full border border-lavender/35 bg-lavender/10 px-5 py-2 text-xs font-semibold text-lavender transition hover:bg-lavender/20 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading ? "重算中..." : "手動用原始事件重算"}
+          </button>
+          <span className="text-xs text-moon/40">
+            {queried
+              ? recomputeDays > 31
+                ? "目前區間超過 31 天，無法手動重算（請縮短區間）"
+                : "改以原始事件即時計算本區間（read-only，不寫回快照）"
+              : "先查詢一個區間後即可重算"}
+          </span>
+        </div>
       </section>
 
       {props.fetchError ? (
@@ -400,6 +574,15 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
 
       {!loading && !todayBlocked && data && data.days ? (
         <>
+          {data.dataSource ? (
+            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-midnight/50 px-4 py-3 text-xs text-moon/60">
+              <span className="rounded-full border border-lavender/30 bg-lavender/10 px-2.5 py-1 font-medium text-lavender">
+                資料來源：{sourceLabel(data.dataSource, data.snapshotState)}
+              </span>
+              {data.displayNotice ? <span className="text-amber-200/90">{data.displayNotice}</span> : null}
+            </div>
+          ) : null}
+
           <Panel
             title="1. 查詢區間摘要"
             subtitle={`${data.start} ～ ${data.end}（共 ${data.days.length} 天，讀取 ${data.snapshotsRead ?? data.days.length} 筆快照）`}
@@ -460,6 +643,8 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
               </Panel>
             </>
           ) : null}
+
+          {data.diagnostics ? <DiagnosticsPanel diag={data.diagnostics} granular={data.granular} /> : null}
         </>
       ) : null}
     </div>
