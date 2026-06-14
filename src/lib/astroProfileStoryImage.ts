@@ -102,7 +102,7 @@ function clean(raw: string | null | undefined): string {
     .replace(/\*\*/g, "")
     .replace(/<br\s*\/?>/gi, " ")
     .replace(/<[^>]+>/g, "")
-    .replace(/\bundefined\b|\bnull\b/gi, "")
+    .replace(/\bundefined\b|\bnull\b|\bNaN\b/gi, "")
     .replace(/在下方可以分別細看/g, "")
     .replace(/下方有完整解析/g, "")
     .replace(/延伸解析/g, "")
@@ -211,6 +211,104 @@ function summarizeParagraphs(
   if (!source) return [];
   const summary = getCompleteSentenceSummary(source, maxChars, 3);
   return summary ? [summary] : [];
+}
+
+// ── 限動圖專用短摘要（不產生「…」，自然斷句）──────────────────────────────────────
+
+function charLen(text: string): number {
+  return [...text].length;
+}
+
+function stripEdgePunct(text: string): string {
+  // 去掉句首句尾殘留的標點（逗號、頓號、冒號、破折號等），避免奇怪斷點
+  return text.replace(/^[，、：；。！？—\s]+/, "").replace(/[，、：；—\s]+$/, "");
+}
+
+/**
+ * 限動圖短摘要核心：把一段文字壓成 min～max 字的「自然短句」。
+ * - 以句末標點與逗號/頓號為斷點，逐個子句累積，落在 [min,max] 即停。
+ * - 不在畫面上補「…」；若單一子句就超過 max，才在標點處硬收，仍不補省略號。
+ * - 已先經 clean()（移除 undefined / null / NaN / markdown / HTML）。
+ */
+function buildShortSummary(text: string | null | undefined, min: number, max: number): string {
+  const s = clean(text);
+  if (!s) return "";
+  if (charLen(s) <= max) return stripEdgePunct(s);
+
+  const clauses = s
+    .split(/(?<=[。！？；])|[，、]/)
+    .map((c) => stripEdgePunct(c))
+    .filter(Boolean);
+
+  let acc = "";
+  for (const clause of clauses) {
+    const next = acc ? `${acc}，${clause}` : clause;
+    if (charLen(next) > max) {
+      if (charLen(acc) >= min) return stripEdgePunct(acc);
+      // 單一子句即超過 max：在 max 內找最後一個標點收尾，否則硬收（皆不補「…」）
+      const sub = [...clause].slice(0, max).join("");
+      const m = sub.match(/^.*[，、：；]/);
+      if (m && charLen(m[0]) >= min) return stripEdgePunct(m[0]);
+      return stripEdgePunct(sub);
+    }
+    acc = next;
+    if (charLen(acc) >= min) return stripEdgePunct(acc);
+  }
+  return stripEdgePunct(acc || s);
+}
+
+interface StoryHighlights {
+  career: string;
+  relationship: string;
+  fortune: string;
+  soul: string;
+}
+
+// 來源缺漏時的安全模板（皆約 28～40 字、完整句、不含「…」）
+const HIGHLIGHT_FALLBACK: StoryHighlights = {
+  career: "適合把目標拆小後穩定執行，長期累積會比短線衝刺更有利。",
+  relationship: "你需要踏實陪伴與穩定回應，也容易被可靠、有耐心的人吸引。",
+  fortune: "近期適合整理計畫，把正在做的事慢慢推進，不急著大改方向。",
+  soul: "先允許自己開始，不必等到完全準備好，行動會慢慢帶來答案。",
+};
+
+/**
+ * 限動圖「本次解析重點」四張卡專用短摘要。
+ * 有對應解析文字時抓第一段壓成 30～44 字完整短句；沒有就用安全模板，避免截斷與假資料。
+ */
+function buildStoryHighlightSummary(params: StoryImageParams): StoryHighlights {
+  const MIN = 30;
+  const MAX = 44;
+  const line = (src: string | null | undefined, fb: string): string => {
+    const short = buildShortSummary(src, MIN, MAX);
+    return short || fb;
+  };
+  return {
+    career:       line(params.careerWealthText,     HIGHLIGHT_FALLBACK.career),
+    relationship: line(params.loveRelationshipText, HIGHLIGHT_FALLBACK.relationship),
+    fortune:      line(params.yearlyFortuneText,    HIGHLIGHT_FALLBACK.fortune),
+    soul:         line(params.soulLessonText,       HIGHLIGHT_FALLBACK.soul),
+  };
+}
+
+/**
+ * 限動圖「三重星座整體解析」短版：約 90～120 字、最多 4 行、以完整句收尾，不補「…」。
+ */
+function buildStoryOverallSummary(params: StoryImageParams): string {
+  const source = pick([params.overallSummary, params.shortSummary, params.whisper, params.advice]);
+  if (!source) return "";
+
+  const sentences = splitSentences(source);
+  const MAX = 120;
+  let acc = "";
+  for (const sentence of sentences) {
+    if (acc && charLen(acc + sentence) > MAX) break;
+    acc += sentence;
+    if (charLen(acc) >= 90) break;   // 落在 90～120 即停，維持完整句
+  }
+  if (acc) return stripEdgePunct(acc);
+  // 第一句就超過 120：壓成 ≤120 的自然短句（仍不補「…」）
+  return buildShortSummary(source, 84, MAX);
 }
 
 /**
@@ -458,49 +556,60 @@ function drawHeader(ctx: CanvasRenderingContext2D): number {
 
   ctx.font      = "bold 64px sans-serif";
   ctx.fillStyle = "#f7d987";
-  ctx.fillText("我的三重星座", W / 2, 244);
+  ctx.fillText("我的四核心星座", W / 2, 244);
 
   ctx.font      = "400 30px sans-serif";
   ctx.fillStyle = "rgba(255,247,230,0.46)";
-  ctx.fillText("太陽  ×  月亮  ×  上升", W / 2, 300);
+  ctx.fillText("太陽 × 月亮 × 上升 × 金星", W / 2, 300);
 
   const divY = 338;
   drawDivider(ctx, divY);
   return divY + 12;
 }
 
-/** 星座資訊卡，回傳底部 Y */
+/**
+ * 星盤快速摘要卡（純資料，不放解讀）。視覺權重刻意降低，像「資料卡」而非主內容卡，
+ * 避免與下方四張短解析卡重複。回傳底部 Y。
+ */
 function drawSignCard(
   ctx: CanvasRenderingContext2D,
   startY: number,
   params: StoryImageParams,
 ): number {
-  const ROW_H  = 52;   // 縮小約 10%（原 58）
-  const CARD_H = ROW_H * 4 + 18;
+  const TITLE_H = 40;
+  const ROW_H   = 42;
+  const CARD_H  = TITLE_H + ROW_H * 4 + 12;
 
+  // 背景：較淡、邊框較細，弱化為資料卡
   ctx.save();
-  roundRectPath(ctx, MARGIN_X, startY, INNER_W, CARD_H, 28);
-  ctx.fillStyle   = "rgba(7,11,30,0.72)";
+  roundRectPath(ctx, MARGIN_X, startY, INNER_W, CARD_H, 26);
+  ctx.fillStyle   = "rgba(7,11,30,0.55)";
   ctx.fill();
-  ctx.strokeStyle = "rgba(247,217,135,0.32)";
-  ctx.lineWidth   = 1.5;
+  ctx.strokeStyle = "rgba(247,217,135,0.18)";
+  ctx.lineWidth   = 1;
   ctx.stroke();
   ctx.restore();
 
+  // 區塊標題（小、低調）
+  ctx.textAlign = "left";
+  ctx.font      = "600 22px sans-serif";
+  ctx.fillStyle = "rgba(247,217,135,0.62)";
+  ctx.fillText("你的星盤快速摘要", MARGIN_X + 40, startY + 30);
+
   const rows: Array<{ sym: string; label: string; sign: string | null | undefined; color: string }> = [
-    { sym: "☉",  label: "太陽", sign: params.sunSign,    color: "#f7d987" },
-    { sym: "☽",  label: "月亮", sign: params.moonSign,   color: "#b8a0f0" },
-    { sym: "↑",  label: "上升", sign: params.risingSign, color: "#88d8b0" },
-    { sym: "♀",  label: "金星", sign: params.venusSign,  color: "#c9a0dc" },
+    { sym: "☀", label: "太陽", sign: params.sunSign,    color: "#f7d987" },
+    { sym: "🌙", label: "月亮", sign: params.moonSign,   color: "#b8a0f0" },
+    { sym: "⬆", label: "上升", sign: params.risingSign, color: "#88d8b0" },
+    { sym: "♀", label: "金星", sign: params.venusSign,  color: "#c9a0dc" },
   ];
 
   rows.forEach((row, i) => {
-    const rowTop = startY + 9 + i * ROW_H;
-    const baseY  = rowTop + ROW_H / 2 + 10;
+    const rowTop = startY + TITLE_H + i * ROW_H;
+    const baseY  = rowTop + ROW_H / 2 + 8;
 
     if (i > 0) {
       ctx.save();
-      ctx.strokeStyle = "rgba(255,255,255,0.07)";
+      ctx.strokeStyle = "rgba(255,255,255,0.06)";
       ctx.lineWidth   = 1;
       ctx.beginPath();
       ctx.moveTo(MARGIN_X + 28, rowTop);
@@ -510,12 +619,10 @@ function drawSignCard(
     }
 
     ctx.textAlign = "left";
-    ctx.font      = row.sign ? "bold 28px sans-serif" : "400 25px sans-serif";
-    ctx.fillStyle = row.sign ? row.color : "rgba(255,247,230,0.22)";
-    const signLabel = row.sign
-      ? `${row.sym}  ${row.label}  ${row.sign}`
-      : `${row.sym}  ${row.label}  尚未提供`;
-    ctx.fillText(signLabel, MARGIN_X + 44, baseY);
+    ctx.font      = "500 24px sans-serif";
+    ctx.fillStyle = row.sign ? row.color : "rgba(255,247,230,0.28)";
+    const signLabel = `${row.sym}  ${row.label}｜${row.sign ?? "尚未提供"}`;
+    ctx.fillText(signLabel, MARGIN_X + 40, baseY);
   });
 
   return startY + CARD_H;
@@ -677,6 +784,7 @@ function drawFittedSummaryLines(
   minFontSize: number,
   lineHeightRatio: number,
   color: string,
+  allowEllipsis = true,
 ): number {
   const text = lines.map(clean).filter(Boolean).join("\n");
   if (!text) return 0;
@@ -712,7 +820,7 @@ function drawFittedSummaryLines(
 
   const maxLines = Math.max(1, Math.floor(maxHeight / lineHeight));
   const displayed = wrapped.slice(0, maxLines);
-  if (wrapped.length > maxLines && displayed.length) {
+  if (allowEllipsis && wrapped.length > maxLines && displayed.length) {
     displayed[displayed.length - 1] = fitOneLine(ctx, displayed[displayed.length - 1], maxWidth);
   }
 
@@ -735,7 +843,7 @@ function drawOverallSummaryCard(
 ): number {
   if (!paragraphs.length) return startY;
 
-  const cardH = 240;   // 縮小（原 274）
+  const cardH = 220;   // 再縮小，把垂直空間讓給下方四張短解析卡
   const padX = 44;
   const titleY = startY + 48;
   const textY  = startY + 96;
@@ -752,7 +860,7 @@ function drawOverallSummaryCard(
   ctx.textAlign = "left";
   ctx.font = "bold 30px sans-serif";   // 縮小（原 34px）
   ctx.fillStyle = "#f7d987";
-  ctx.fillText("三重星座整體解析", MARGIN_X + padX, titleY);
+  ctx.fillText("四核心整體解析", MARGIN_X + padX, titleY);
 
   drawFittedSummaryLines(
     ctx,
@@ -765,6 +873,7 @@ function drawOverallSummaryCard(
     21,
     1.38,
     "rgba(255,247,230,0.94)",
+    false,         // 限動圖整體解析短版：不補「…」，已壓成完整句
   );
 
   return startY + cardH;
@@ -789,7 +898,7 @@ function drawAspectSummaryGrid(
   const rowGap = 20;
   const cardW = (INNER_W - colGap) / 2;
   const rows = Math.ceil(visible.length / 2);
-  const cardH = Math.min(200, Math.floor((bottomY - startY - rowGap * (rows - 1)) / rows));
+  const cardH = Math.min(215, Math.floor((bottomY - startY - rowGap * (rows - 1)) / rows));
   const padX = 24;
 
   visible.forEach((aspect, index) => {
@@ -816,13 +925,14 @@ function drawAspectSummaryGrid(
       ctx,
       aspect.lines,
       x + padX,
-      y + 91,
+      y + 86,
       cardW - padX * 2,
-      cardH - 112,
-      28,
-      20,
-      1.34,
-      "rgba(255,247,230,0.90)",
+      cardH - 104,
+      26,
+      19,
+      1.36,
+      "rgba(255,247,230,0.92)",
+      false,   // 不補「…」
     );
   });
 
@@ -840,7 +950,7 @@ function drawUnlockTeaserCard(
   items?: Array<{ icon: string; title: string; desc: string }>,
 ): number {
   const isUnlocked = items && items.length > 0;
-  const CARD_H = 310;   // 縮小（原 340）
+  const CARD_H = 318;   // 短摘要卡 2 行的穩定空間（同時把垂直空間讓給上方解析卡）
   const padX = 38;
 
   // 卡片背景
@@ -860,7 +970,7 @@ function drawUnlockTeaserCard(
   ctx.font = "bold 30px sans-serif";
   ctx.fillStyle = "#f7d987";
   ctx.fillText(
-    isUnlocked ? "本次完整解析摘要" : "🔓 完整版額外包含",
+    isUnlocked ? "本次解析重點" : "🔓 完整版額外包含",
     MARGIN_X + padX,
     startY + 52,
   );
@@ -878,16 +988,16 @@ function drawUnlockTeaserCard(
   const DISPLAY_ITEMS = isUnlocked ? items! : [
     { icon: "💰", title: "個人事業與財富天賦報告", desc: "分析工作模式、累積財富的方式與金錢盲點。" },
     { icon: "❤️", title: "情感正緣與人際模式分析", desc: "了解你的吸引力、感情需求與人際互動模式。" },
-    { icon: "🌙", title: "流年與未來半年運勢",     desc: "整理三重星座能量與未來半年的方向機會。" },
-    { icon: "✨", title: "靈魂課題與人生方向",     desc: "找出太陽、月亮、上升三重能量的成長課題。" },
+    { icon: "🌙", title: "流年與未來半年運勢",     desc: "整理你的星盤能量與未來半年的方向機會。" },
+    { icon: "✨", title: "靈魂課題與人生方向",     desc: "找出太陽、月亮、上升、金星的成長課題。" },
   ];
 
   const colGap = 20;
   const rowGap = 14;
   const contentW = INNER_W - padX * 2;
   const itemW = (contentW - colGap) / 2;
-  const itemH = 103;   // 縮小（原 106）
-  const gridTop = startY + 78;   // 往上移（原 82）
+  const itemH = 108;   // 短摘要 28～40 字、2 行可穩定容納
+  const gridTop = startY + 78;
 
   DISPLAY_ITEMS.forEach((item, idx) => {
     const col = idx % 2;
@@ -919,7 +1029,7 @@ function drawUnlockTeaserCard(
       iy + 30,
     );
 
-    // desc（自動縮字，最多 1～2 行）
+    // desc（自動縮字，最多 2 行；不補「…」，文字已壓成 28～42 字短句）
     drawFittedSummaryLines(
       ctx,
       [item.desc],
@@ -928,11 +1038,12 @@ function drawUnlockTeaserCard(
       itemW - 28,
       itemH - 62,   // 足夠放 2 行
       19,
-      14,
-      1.38,
+      16,           // 最小字加大到 16，手機觀看仍清楚
+      1.42,         // 行距略放寬，避免擠在一起
       isUnlocked
-        ? "rgba(255,247,230,0.80)"
+        ? "rgba(255,247,230,0.84)"
         : "rgba(255,247,230,0.55)",
+      false,        // 不補「…」
     );
   });
 
@@ -958,30 +1069,19 @@ function render(
   const signCardBottom = drawSignCard(ctx, signCardTop, params);
 
   // 3. 主內容區：精簡分享版，不直接照貼完整版
-  const overallParagraphs = summarizeParagraphs(
-    [params.overallSummary, params.shortSummary, params.whisper, params.advice],
-    132,
-  );
-  const sunLines = summarizeSentences(
-    [params.sunCoreText, params.sunText, params.coreText, params.overallSummary],
-    2,
-    76,
-  );
-  const moonLines = summarizeSentences(
-    [params.moonEmotionText, params.moonText, params.emotionText, params.overallSummary],
-    2,
-    76,
-  );
-  const risingLines = summarizeSentences(
-    [params.risingOuterText, params.risingText, params.outerText, params.overallSummary],
-    2,
-    76,
-  );
-  const venusLines = summarizeSentences(
-    [params.venusLoveText, params.venusText, params.loveText, params.overallSummary],
-    2,
-    66,
-  );
+  // 整體解析改用限動圖專用短版（90～120 字、完整句、不補「…」）
+  const storyOverall = buildStoryOverallSummary(params);
+  const overallParagraphs = storyOverall ? [storyOverall] : [];
+  // 四張卡的短解析（45～58 字、自然完整、不補「…」），與上方資料摘要區分工：
+  // 上方只列星座配置，這裡才是針對每個星體的個人化短解讀。
+  const aspectLine = (cands: Array<string | null | undefined>): string[] => {
+    const s = buildShortSummary(pick(cands), 44, 58);
+    return s ? [s] : [];
+  };
+  const sunLines    = aspectLine([params.sunCoreText, params.sunText, params.coreText]);
+  const moonLines   = aspectLine([params.moonEmotionText, params.moonText, params.emotionText]);
+  const risingLines = aspectLine([params.risingOuterText, params.risingText, params.outerText]);
+  const venusLines  = aspectLine([params.venusLoveText, params.venusText, params.loveText]);
 
   const aspects: AspectSummary[] = [
     {
@@ -1008,7 +1108,7 @@ function render(
   // ── 版面安全區常數 ────────────────────────────────────────────────────────────
   const FOOTER_RESERVED  = 220;   // footer div + 網址 + 底部留白（原 148）
   const FOOTER_GAP       = 80;    // teaser 底部到 footer 分隔線的最小間距
-  const SUMMARY_CARD_H   = 310;   // 底部摘要卡固定高度（原 340）
+  const SUMMARY_CARD_H   = 318;   // 底部摘要卡固定高度（與 drawUnlockTeaserCard CARD_H 一致）
   const GAP              = 18;    // 各區塊間距（原 24）
 
   const footerDivY       = H - FOOTER_RESERVED + 20;          // 分隔線 Y
@@ -1020,15 +1120,19 @@ function render(
   curY = drawAspectSummaryGrid(ctx, aspects, curY, contentAreaBottom - SUMMARY_CARD_H - GAP);
 
   // 已解鎖時傳入真實摘要，未解鎖傳 undefined → 顯示功能預告
+  // 四張卡改用限動圖專用短摘要（28～42 字、最多 2 行、不截斷成「…」）
   const unlockedItems =
     params.careerWealthText && params.loveRelationshipText &&
     params.yearlyFortuneText && params.soulLessonText
-      ? [
-          { icon: "💰", title: "事業與財富", desc: getCompleteSentenceSummary(params.careerWealthText,  60, 1) },
-          { icon: "❤️", title: "情感與人際", desc: getCompleteSentenceSummary(params.loveRelationshipText, 60, 1) },
-          { icon: "🌙", title: "流年運勢",   desc: getCompleteSentenceSummary(params.yearlyFortuneText, 60, 1) },
-          { icon: "✨", title: "靈魂方向",   desc: getCompleteSentenceSummary(params.soulLessonText,    60, 1) },
-        ]
+      ? (() => {
+          const h = buildStoryHighlightSummary(params);
+          return [
+            { icon: "💰", title: "事業與財富", desc: h.career },
+            { icon: "❤️", title: "情感與人際", desc: h.relationship },
+            { icon: "🌙", title: "流年運勢",   desc: h.fortune },
+            { icon: "✨", title: "靈魂方向",   desc: h.soul },
+          ];
+        })()
       : undefined;
 
   drawUnlockTeaserCard(ctx, Math.min(curY + GAP, contentAreaBottom - SUMMARY_CARD_H), unlockedItems);

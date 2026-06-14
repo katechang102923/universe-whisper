@@ -19,6 +19,7 @@ type TarotMode = keyof typeof modeToCardCount;
 function normalizeTopic(topic: unknown): TarotTopic {
   if (topic === "工作") return "工作";
   if (topic === "生活") return "生活";
+  if (topic === "財運") return "財運";
   return "愛情";
 }
 
@@ -96,6 +97,13 @@ export async function POST(request: Request) {
   }
 
   const cards = drawCards(modeToCardCount[mode], topic);
+
+  // ── server log（診斷用，不回傳前台）─────────────────────────────────────────
+  console.log("[draw]", {
+    rawTopic: body.topic,
+    normalizedTopic: topic,
+    cardNames: cards.map((c) => `${c.name}（${c.orientationLabel}）`),
+  });
 
   return NextResponse.json(
     {
