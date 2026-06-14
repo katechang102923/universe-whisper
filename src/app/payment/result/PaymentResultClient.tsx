@@ -119,6 +119,8 @@ export default function PaymentResultClient() {
       );
       const data = await readJsonResponse<{
         ok:               boolean;
+        productType?:     string;
+        redirectTo?:      string;
         status?:          string;
         merchantTradeNo?: string;
         planName?:        string;
@@ -133,6 +135,13 @@ export default function PaymentResultClient() {
         emailSentAt?:     string | null;
         emailError?:      string | null;
       }>(res, { ok: false });
+
+      // 若這其實是 NT$149 四核心星座訂單（非通行碼），導回 astro-profile 流程，
+      // 不要在通行碼結果頁顯示通行碼 UI。
+      if (data.ok && data.productType === "astro_profile" && data.redirectTo) {
+        window.location.replace(data.redirectTo);
+        return;
+      }
 
       if (!res.ok || !data.ok) {
         setOrder((prev) => ({ ...prev, status: "not_found" }));
@@ -248,7 +257,7 @@ export default function PaymentResultClient() {
         await fetchOrder();
       } else if (data.ok && data.status === "pending") {
         setSyncStatus("still_pending");
-        setSyncMsg("目前尚未查到綠界付款成功紀錄，請稍後再試或聯繫客服。");
+        setSyncMsg("尚未收到綠界付款確認，通常需要 1～3 分鐘。請稍候片刻再按一次「重新同步付款狀態」；若已扣款且超過 5 分鐘仍未成功，請複製訂單編號聯繫客服。");
       } else {
         setSyncStatus("error");
         setSyncMsg(
@@ -389,7 +398,7 @@ export default function PaymentResultClient() {
             <p className="mt-3 text-sm leading-7 text-moon/60">
               {isPaid
                 ? <>系統已收到付款，正在產生通行碼。<br/>請點下方按鈕立即同步。</>
-                : <>系統尚未收到付款確認，可能是網路延遲。<br/>請點下方按鈕查詢付款狀態。</>}
+                : <>付款確認同步中，綠界通知可能需要 1～3 分鐘。<br/>請點下方按鈕重新同步付款狀態。</>}
             </p>
           </div>
 
@@ -453,11 +462,44 @@ export default function PaymentResultClient() {
   // ── 找不到 / 錯誤 ─────────────────────────────────────────────────────────
 
   if (order.status === "not_found" || order.status === "error") {
+    const isError = order.status === "error";
     return (
       <AppShell>
-        <section className="mx-auto w-full max-w-md py-20 text-center">
-          <p className="text-moon/50">找不到此筆付款記錄。</p>
-          <Link href="/tarot" className="mt-6 inline-block text-sm text-lavender/80 underline underline-offset-4">回到塔羅頁</Link>
+        <section className="mx-auto w-full max-w-md py-16 text-center">
+          <p className="text-4xl">{isError ? "⚠️" : "🔍"}</p>
+          <h1 className="mt-4 text-xl font-semibold text-moon">
+            {isError ? "查詢時發生錯誤" : "查不到此訂單"}
+          </h1>
+          <p className="mt-3 text-sm leading-7 text-moon/60">
+            {isError
+              ? <>查詢付款狀態時發生暫時性錯誤。<br/>請稍後再試或重新整理頁面。</>
+              : <>查不到此訂單，請確認訂單編號或聯繫客服。<br/>若你剛完成付款，綠界通知可能需要 1～3 分鐘，請稍候再查詢。</>}
+          </p>
+
+          {merchantTradeNo && (
+            <div className="mt-6 rounded-2xl border border-white/10 bg-midnight/50 p-5 text-sm">
+              <p className="text-xs text-moon/40">查詢的訂單編號</p>
+              <p className="mt-0.5 font-mono text-moon/80 break-all">{merchantTradeNo}</p>
+            </div>
+          )}
+
+          <div className="mt-6 space-y-3">
+            <button onClick={() => void fetchOrder()}
+              className="flex w-full items-center justify-center rounded-full border border-white/15 px-5 py-3.5 text-sm text-moon/70 transition hover:bg-white/8">
+              重新查詢
+            </button>
+            {merchantTradeNo && (
+              <button onClick={handleCopyTradeNo}
+                className="flex w-full items-center justify-center rounded-full border border-white/10 px-5 py-3 text-sm text-moon/50 transition hover:bg-white/6">
+                {tradeNoCopied ? "✓ 已複製訂單編號" : "複製訂單編號"}
+              </button>
+            )}
+            <a href={`mailto:support@universewhisper.com?subject=查不到付款訂單&body=訂單編號：${merchantTradeNo}`}
+              className="flex w-full items-center justify-center rounded-full border border-white/10 px-5 py-3 text-sm text-moon/50 transition hover:bg-white/6">
+              聯繫客服
+            </a>
+            <Link href="/tarot" className="inline-block pt-1 text-sm text-lavender/80 underline underline-offset-4">回到塔羅頁</Link>
+          </div>
         </section>
       </AppShell>
     );

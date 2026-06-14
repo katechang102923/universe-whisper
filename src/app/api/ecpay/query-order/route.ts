@@ -18,7 +18,7 @@ import {
   generateRedeemCode,
   type RedeemPlan,
 } from "@/lib/redeemCodes";
-import { generateCheckMacValue } from "@/lib/ecpay";
+import { generateCheckMacValue, getEcpayCredentials } from "@/lib/ecpay";
 import crypto from "crypto";
 
 export const runtime = "nodejs";
@@ -76,10 +76,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 403 });
   }
 
-  const merchantId = process.env.ECPAY_MERCHANT_ID;
-  const hashKey    = process.env.ECPAY_HASH_KEY;
-  const hashIV     = process.env.ECPAY_HASH_IV;
-  const isStage    = process.env.ECPAY_STAGE === "true";
+  // 使用 getEcpayCredentials()：stage 模式自動切換官方測試帳號，
+  // 與 create-order / return / sync-order 一致，避免查到不存在的環境而誤判未付款。
+  const { merchantId, hashKey, hashIV, isStage } = getEcpayCredentials();
   const siteUrl    = (
     process.env.NEXT_PUBLIC_SITE_URL || "https://universe-whisper.vercel.app"
   ).replace(/\/$/, "");
