@@ -85,6 +85,22 @@ function ecpayUrlEncode(str: string): string {
  *   5. PHP-urlencode, lowercase.
  *   6. SHA-256 → hex → UPPERCASE.
  */
+/**
+ * Case-insensitive ASCII (byte-wise) key comparison — matches ECPay's official
+ * PHP SDK, which sorts with `uksort($p, 'strcasecmp')`.
+ *
+ * 不可改用 String.prototype.localeCompare：localeCompare 依 runtime 預設 locale
+ * 與 ICU collation，對含底線/數字的欄位（信用卡 callback 的 auth_code、card_4no、
+ * process_date…）排序結果可能與綠界的 strcasecmp 不一致，且不同部署環境結果不一定相同，
+ * 會造成 CheckMacValue 驗證偶發失敗。此處用 lowercase + code-unit 比較，對 ASCII 欄位名
+ * 與 strcasecmp 完全等價且確定性。
+ */
+function ecpayKeyCompare(a: string, b: string): number {
+  const la = a.toLowerCase();
+  const lb = b.toLowerCase();
+  return la < lb ? -1 : la > lb ? 1 : 0;
+}
+
 export function generateCheckMacValue(
   params: Record<string, string>,
   hashKey: string,
@@ -92,9 +108,9 @@ export function generateCheckMacValue(
 ): string {
   const { CheckMacValue: _removed, ...rest } = params;
 
-  // Case-insensitive sort（符合綠界官方規格）
+  // Case-insensitive ASCII sort（與綠界官方 SDK strcasecmp 一致，且不受 locale 影響）
   const sorted = Object.keys(rest)
-    .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
+    .sort(ecpayKeyCompare)
     .map((k) => `${k}=${rest[k]}`)
     .join("&");
 
@@ -131,6 +147,73 @@ export function generateMerchantTradeNo(): string {
     () => chars[Math.floor(Math.random() * chars.length)],
   ).join("");
   return `UW${ts}${rand}`;
+}
+
+/**
+ * 安全診斷資訊：判斷 stage/production 與 ReturnURL 等設定是否正確。
+ * 絕對不回傳 HashKey / HashIV / 任何密鑰；正式 MerchantID 只回傳「是否已設定」與末四碼。
+ */
+export function getEcpayConfigDiagnostics(): {
+  ecpayStageRaw:        string | null;
+  isStage:              boolean;
+  hasMerchantId:        boolean;
+  merchantIdTail:       string | null;
+  usingTestMerchant:    boolean;
+  hasHashKey:           boolean;
+  hasHashIV:            boolean;
+  checkoutUrl:          string;
+  queryUrl:             string;
+  siteUrl:              string;
+  returnUrl:            string;
+  orderResultUrl:       string;
+  returnHost:           string;
+  isProductionHost:     boolean;
+  notes:                string[];
+} {
+  const { merchantId, hashKey, hashIV, isStage } = getEcpayCredentials();
+  const siteUrl = (
+    process.env.NEXT_PUBLIC_SITE_URL || "https://universe-whisper.vercel.app"
+  ).replace(/\/$/, "");
+  const returnUrl      = `${siteUrl}/api/ecpay/return`;
+  const orderResultUrl = `${siteUrl}/api/ecpay/order-result`;
+
+  let returnHost = "";
+  try { returnHost = new URL(returnUrl).host; } catch { /* ignore */ }
+  const isProductionHost = returnHost === "universe-whisper.vercel.app";
+
+  const notes: string[] = [];
+  if (isStage) {
+    notes.push("ECPAY_STAGE=true：使用官方測試帳號 3002607 與 payment-stage.ecpay.com.tw，不會真的扣款。若使用者刷的是正式卡卻顯示 stage，付款不會被正式環境記錄。");
+  }
+  if (!isStage && !merchantId) {
+    notes.push("正式模式但缺少 ECPAY_MERCHANT_ID，create-order 會回 503，使用者無法結帳。");
+  }
+  if (!isProductionHost) {
+    notes.push(`ReturnURL host 為 ${returnHost || "(空白)"}，非正式站 universe-whisper.vercel.app。若為 preview/localhost，綠界 server-to-server callback 可能無法回到正確站台。`);
+  }
+  if (/localhost|127\.0\.0\.1|vercel\.app$/.test(returnHost) && returnHost !== "universe-whisper.vercel.app" && returnHost.endsWith("vercel.app")) {
+    notes.push("ReturnURL 指向 preview deployment（*.vercel.app 但非正式 host）；preview 部署常啟用 Deployment Protection，會擋下綠界的 server callback。");
+  }
+
+  return {
+    ecpayStageRaw:     process.env.ECPAY_STAGE ?? null,
+    isStage,
+    hasMerchantId:     Boolean(merchantId),
+    merchantIdTail:    merchantId ? merchantId.slice(-4) : null,
+    usingTestMerchant: merchantId === ECPAY_TEST_MERCHANT_ID,
+    hasHashKey:        Boolean(hashKey),
+    hasHashIV:         Boolean(hashIV),
+    checkoutUrl:       getEcpayCheckoutUrl(),
+    queryUrl:          isStage
+      ? "https://payment-stage.ecpay.com.tw/Cashier/QueryTradeInfo/V5"
+      : "https://payment.ecpay.com.tw/Cashier/QueryTradeInfo/V5",
+    siteUrl,
+    returnUrl,
+    orderResultUrl,
+    returnHost,
+    isProductionHost,
+    notes,
+  };
 }
 
 /**

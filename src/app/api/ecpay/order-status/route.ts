@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { DocumentSnapshot } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { PAYMENT_ORDERS_COLLECTION, REDEEM_CODES_COLLECTION } from "@/lib/redeemCodes";
 
@@ -27,18 +28,48 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const db   = getAdminDb();
+    const db = getAdminDb();
+
+    // ── 依序查找通行碼訂單（NT$49）：───────────────────────────────────────────
+    //   1) merchantTradeNo 欄位（綠界回傳用的編號，最常見）
+    //   2) 文件 id（internal order id，少數情況前端帶的是 doc id）
     const snap = await db
       .collection(PAYMENT_ORDERS_COLLECTION)
       .where("merchantTradeNo", "==", merchantTradeNo)
       .limit(1)
       .get();
 
-    if (snap.empty) {
+    let doc: DocumentSnapshot | null = snap.empty ? null : snap.docs[0];
+
+    if (!doc) {
+      const byId = await db.collection(PAYMENT_ORDERS_COLLECTION).doc(merchantTradeNo).get();
+      if (byId.exists) doc = byId;
+    }
+
+    // ── 找不到通行碼訂單 → 確認是否為 NT$149 四核心星座訂單（不同 collection） ──
+    if (!doc) {
+      const astro = await db
+        .collection("astroProfileOrders")
+        .where("merchantTradeNo", "==", merchantTradeNo)
+        .limit(1)
+        .get();
+      if (!astro.empty) {
+        const ad = astro.docs[0].data() as { status?: string; amount?: number; sessionId?: string };
+        return NextResponse.json({
+          ok:              true,
+          productType:     "astro_profile",   // 四核心星座 / 完整星盤人格解析（非通行碼）
+          status:          ad.status ?? "pending",
+          merchantTradeNo,
+          amount:          ad.amount ?? 149,
+          planName:        "四核心星座完整解析",
+          // 此頁是通行碼結果頁；星盤訂單請回到 astro-profile 流程查看
+          redirectTo:      ad.sessionId ? `/astro-profile?session=${encodeURIComponent(ad.sessionId)}&order=${encodeURIComponent(merchantTradeNo)}` : "/astro-profile",
+        });
+      }
       return NextResponse.json({ ok: false, error: "NOT_FOUND" }, { status: 404 });
     }
 
-    const data = snap.docs[0].data() as {
+    const data = doc.data() as {
       status:           string;
       planName?:        string;
       amount?:          number;
@@ -89,6 +120,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       ok:               true,
+      productType:      "passcode",   // NT$49 宇宙通行碼
       status:           data.status,
       merchantTradeNo:  data.merchantTradeNo ?? merchantTradeNo,
       planName:         data.planName ?? "",
