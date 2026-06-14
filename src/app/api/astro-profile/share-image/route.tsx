@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
               margin: "14px 0 0",
             }}
           >
-            我的三重星座
+            我的四核心星座
           </p>
           <p
             style={{
@@ -142,7 +142,7 @@ export async function POST(request: NextRequest) {
               margin: "10px 0 0",
             }}
           >
-            太陽 × 月亮 × 上升
+            太陽 × 月亮 × 上升 × 金星
           </p>
         </div>
 

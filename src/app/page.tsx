@@ -85,12 +85,12 @@ export default function Home() {
               >
                 抽三張看完整脈絡
               </Link>
-              {/* 三重星座入口（金邊外框，與抽牌按鈕區分；導向 /astro-profile，不開新視窗） */}
+              {/* 四核心星座入口（金邊外框，與抽牌按鈕區分；導向 /astro-profile，不開新視窗） */}
               <Link
                 href="/astro-profile"
                 className="inline-flex min-h-[52px] w-full max-w-[360px] items-center justify-center rounded-full border border-[#d8bd70]/45 bg-[#d8bd70]/10 px-6 text-sm font-semibold text-[#d8bd70] transition hover:-translate-y-0.5 hover:bg-[#d8bd70]/20 hover:shadow-[0_0_22px_rgba(216,189,112,0.28)] active:scale-[0.98] sm:w-auto"
               >
-                免費算三重星座 ✨
+                免費算四核心星座 ✨
               </Link>
             </div>
 
@@ -105,7 +105,7 @@ export default function Home() {
               >
                 LINE
               </a>
-              ；每日免費也能看完整訊息，想再問更多問題可選擇加抽。也可以免費查看你的太陽、月亮與上升星座輪廓。
+              ；每日免費也能看完整訊息，想再問更多問題可選擇加抽。也可以免費查看你的太陽、月亮、上升與金星四核心星座輪廓。
             </p>
           </div>
 
@@ -263,7 +263,7 @@ export default function Home() {
         <div className="grid grid-cols-2 gap-3 sm:hidden">
           {[
             { href: "/daily", label: "今日運勢", icon: "🌙" },
-            { href: "/astro-profile", label: "我的三重星座", icon: "✦" },
+            { href: "/astro-profile", label: "我的四核心星座", icon: "✦" },
             { href: "/tarot-cards", label: "塔羅牌庫", icon: "🃏" },
           ].map((item) => (
             <Link
@@ -304,13 +304,13 @@ export default function Home() {
             }
           />
 
-          {/* 我的三重星座 */}
+          {/* 我的四核心星座 */}
           <FeatureCard
             gradient="from-[#d8bd70]/38 to-lavender/30"
-            title="我的三重星座"
-            description="輸入出生資訊，看看你的核心個性、內在情感與外在氣質。延伸查看金星感情吸引力。"
+            title="我的四核心星座"
+            description="輸入出生資訊，看看你的核心個性、內在情感、外在氣質與感情吸引力。"
             href="/astro-profile"
-            badge="太陽 × 月亮 × 上升"
+            badge="太陽 × 月亮 × 上升 × 金星"
             icon={
               <svg
                 viewBox="0 0 22 22"
