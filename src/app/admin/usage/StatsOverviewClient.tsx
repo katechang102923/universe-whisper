@@ -18,6 +18,9 @@ type DayMetrics = {
   tarotSingleSuccess: number;
   tarotThreeSuccess: number;
   freeSuccess: number;
+  paymentAttempts: number;
+  tarotPaymentAttempts: number;
+  astroProfilePaymentAttempts: number;
   paidSuccess: number;
   revenue: number;
   astroProfilePageViews: number;
@@ -43,6 +46,9 @@ type Totals = {
   tarotSingleSuccess: number;
   tarotThreeSuccess: number;
   freeSuccess: number;
+  paymentAttempts: number;
+  tarotPaymentAttempts: number;
+  astroProfilePaymentAttempts: number;
   paidSuccess: number;
   revenue: number;
   astroProfilePageViews: number;
@@ -76,6 +82,8 @@ type Diagnostics = {
   rawRecomputable: boolean;
   counts: {
     analyticsEvents: number | null;
+    pageViewEvents: number | null;
+    sessionStartEvents: number | null;
     tripleZodiacEvents: number | null;
     paymentOrders: number | null;
     astroProfileOrders: number | null;
@@ -83,6 +91,9 @@ type Diagnostics = {
     dailyAdminStats: number | null;
     shareImageDownloads: number | null;
   };
+  pendingOrderCount: number | null;
+  paidOrderCount: number | null;
+  excludedOrderCount: number | null;
   adminEventCount: number | null;
   testEventCount: number | null;
   normalEventCount: number | null;
@@ -100,6 +111,7 @@ type StatsResponse = {
   end?: string;
   days?: DayResult[];
   totals: Totals;
+  pageViewRanking?: BreakdownRow[];
   granular?: Granular;
   dataSource?: DataSource;
   snapshotState?: SnapshotState;
@@ -317,13 +329,19 @@ function DiagnosticsPanel({ diag }: { diag: Diagnostics }) {
 
       <div className="mt-4 grid gap-x-6 gap-y-0 text-xs sm:grid-cols-2">
         <DiagRow label="查詢區間" value={`${diag.start} ～ ${diag.end}（${diag.days} 天）`} />
+        <DiagRow label="時區" value="Asia/Taipei（00:00–23:59）" />
         <DiagRow label="資料來源" value={sourceLabel(diag.dataSource, diag.snapshotState)} />
         <DiagRow label="本次是否即時掃描原始資料" value={diag.mode === "raw" ? "是（手動重新計算）" : "否（僅讀每日統計）"} />
         <DiagRow label="是否可手動重新計算" value={diag.rawRecomputable ? "可（最多 31 天）" : "否（區間過長）"} />
         <DiagRow label="網站瀏覽事件筆數" hint="analytics_events" value={fmtCount(diag.counts.analyticsEvents)} />
-        <DiagRow label="三重星座事件筆數" hint="triple_zodiac_events" value={fmtCount(diag.counts.tripleZodiacEvents)} />
+        <DiagRow label="其中 page_view 筆數" hint="page_view" value={fmtCount(diag.counts.pageViewEvents)} />
+        <DiagRow label="其中 session_start 筆數" hint="session_start" value={fmtCount(diag.counts.sessionStartEvents)} />
+        <DiagRow label="四核心星座事件筆數" hint="triple_zodiac_events" value={fmtCount(diag.counts.tripleZodiacEvents)} />
         <DiagRow label="塔羅付費訂單筆數" hint="paymentOrders" value={fmtCount(diag.counts.paymentOrders)} />
-        <DiagRow label="三重星座付費訂單筆數" hint="astroProfileOrders" value={fmtCount(diag.counts.astroProfileOrders)} />
+        <DiagRow label="四核心星座付費訂單筆數" hint="astroProfileOrders" value={fmtCount(diag.counts.astroProfileOrders)} />
+        <DiagRow label="待付款 / 未付款訂單" value={fmtCount(diag.pendingOrderCount)} />
+        <DiagRow label="已付款訂單" value={fmtCount(diag.paidOrderCount)} />
+        <DiagRow label="被排除的 admin / test 訂單" value={fmtCount(diag.excludedOrderCount)} />
         <DiagRow label="免費使用紀錄筆數" hint="rate_limits" value={fmtCount(diag.counts.rateLimits)} />
         <DiagRow label="每日統計快照筆數" hint="daily_admin_stats" value={fmtCount(diag.counts.dailyAdminStats)} />
         <DiagRow label="限動圖下載紀錄筆數" hint="share_image_downloads" value={fmtCount(diag.counts.shareImageDownloads)} />
@@ -435,6 +453,32 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
   const recomputeDays = queried ? countDays(queried.start, queried.end) : 0;
   const recomputeAllowed = Boolean(queried) && recomputeDays <= 31 && !loading;
 
+  // 校正快照：逐日呼叫快照產生器（管理員授權）重建 daily_admin_stats，再讀回快照
+  const [rebuilding, setRebuilding] = useState(false);
+  const [rebuildMsg, setRebuildMsg] = useState("");
+  const rebuildAllowed = Boolean(queried) && recomputeDays <= 31 && !loading && !rebuilding;
+  const rebuildSnapshot = async () => {
+    if (!queried || !rebuildAllowed) return;
+    setRebuilding(true);
+    setRebuildMsg("");
+    try {
+      const dateList: string[] = [];
+      let cur = queried.start;
+      for (let i = 0; i < recomputeDays; i++) { dateList.push(cur); cur = addDays(cur, 1); }
+      let okCount = 0;
+      for (const d of dateList) {
+        const res = await fetch(`/api/admin/daily-stats/generate?date=${encodeURIComponent(d)}&period=full`);
+        if (res.ok) okCount += 1;
+      }
+      setRebuildMsg(`已校正 ${okCount}/${dateList.length} 天，重新讀取快照…`);
+      await runQuery(queried.start, queried.end, "snapshot");
+    } catch {
+      setRebuildMsg("校正失敗，請稍後再試。");
+    } finally {
+      setRebuilding(false);
+    }
+  };
+
   const monthStart = `${today.slice(0, 7)}-01`;
 
   const days = data?.days ?? [];
@@ -534,12 +578,22 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
           >
             {loading ? "重新計算中..." : "手動重新計算"}
           </button>
+          <button
+            type="button"
+            onClick={rebuildSnapshot}
+            disabled={!rebuildAllowed}
+            className="rounded-full border border-[#d8bd70]/35 bg-[#d8bd70]/10 px-5 py-2 text-xs font-semibold text-[#d8bd70] transition hover:bg-[#d8bd70]/20 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {rebuilding ? "校正中..." : "校正快照（重算並寫回）"}
+          </button>
           <span className="text-xs text-moon/40">
-            {queried
-              ? recomputeDays > 31
-                ? "目前區間超過 31 天，無法手動重新計算（請縮短區間）"
-                : "改用原始資料重新計算本區間（只顯示、不會覆蓋每日統計）"
-              : "先查詢一個區間後即可重新計算"}
+            {rebuildMsg
+              ? rebuildMsg
+              : queried
+                ? recomputeDays > 31
+                  ? "目前區間超過 31 天，無法重新計算 / 校正（請縮短區間）"
+                  : "「重新計算」只即時顯示原始資料；「校正快照」會重建並寫回每日統計快照。"
+                : "先查詢一個區間後即可重新計算 / 校正"}
           </span>
         </div>
       </section>
@@ -592,7 +646,9 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
               cards={[
                 { label: "訪客數", value: data.totals.visitors },
                 { label: "頁面瀏覽數", value: data.totals.pageViews },
-                { label: "免費使用成功", value: data.totals.freeSuccess + data.totals.astroProfileFreeSuccess },
+                { label: "完成抽牌", value: data.totals.tarotDrawSuccess },
+                { label: "免費成功", value: data.totals.freeSuccess + data.totals.astroProfileFreeSuccess },
+                { label: "付費嘗試", value: data.totals.paymentAttempts, highlight: data.totals.paymentAttempts > 0 },
                 { label: "付費成功", value: data.totals.paidSuccess, highlight: data.totals.paidSuccess > 0 },
                 { label: "收入", value: formatMoney(data.totals.revenue), highlight: data.totals.revenue > 0 },
               ]}
@@ -609,12 +665,31 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
             ) : null}
           </Panel>
 
-          <Panel title="2. 塔羅牌" subtitle="單張 / 三張完成、免費解鎖、付費成功、LINE 傳送、限動圖下載">
+          <Panel title="2. 免費功能使用" subtitle="免費單張抽牌、免費三張抽牌、免費四核心星座解析">
+            <SummaryCards
+              cards={[
+                { label: "免費單張抽牌", value: data.totals.tarotSingleSuccess },
+                { label: "免費三張抽牌", value: data.totals.tarotThreeSuccess },
+                { label: "免費四核心星座解析", value: data.totals.astroProfileFreeSuccess },
+              ]}
+            />
+          </Panel>
+
+          <Panel title="3. 頁面瀏覽排行" subtitle="依頁面分類的瀏覽次數（首頁 / 塔羅抽牌 / 四核心星座 / 今日星座 / 其他）">
+            {data.pageViewRanking && data.pageViewRanking.length ? (
+              <BreakdownTable rows={data.pageViewRanking} countLabel="瀏覽次數" />
+            ) : (
+              <EmptyBox />
+            )}
+          </Panel>
+
+          <Panel title="4. 塔羅牌" subtitle="單張 / 三張完成、免費解鎖、付費嘗試、付費成功、LINE 傳送、限動圖下載">
             <SummaryCards
               cards={[
                 { label: "單張牌完成", value: data.totals.tarotSingleSuccess },
                 { label: "三張牌完成", value: data.totals.tarotThreeSuccess },
                 { label: "塔羅免費解鎖", value: data.totals.freeSuccess },
+                { label: "塔羅付費嘗試", value: data.totals.tarotPaymentAttempts, highlight: data.totals.tarotPaymentAttempts > 0 },
                 { label: "塔羅付費成功", value: Math.max(0, data.totals.paidSuccess - data.totals.astroProfilePaidSuccess), highlight: data.totals.paidSuccess - data.totals.astroProfilePaidSuccess > 0 },
                 { label: "塔羅 LINE 傳送", value: data.granular?.tarotLineSent ?? 0 },
                 { label: "塔羅限動圖下載", value: data.granular?.tarotStoryDownloaded ?? 0 },
@@ -622,14 +697,16 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
             />
           </Panel>
 
-          <Panel title="3. 三重星座" subtitle="頁面瀏覽、開始填寫、成功產出、免費 / 付費成功、LINE / Email 傳送、限動圖下載">
+          <Panel title="5. 四核心星座" subtitle="頁面瀏覽、開始填寫、成功產出、免費成功、付費嘗試、付費成功、收入、LINE / Email 傳送、限動圖下載">
             <SummaryCards
               cards={[
                 { label: "頁面瀏覽", value: data.totals.astroProfilePageViews },
                 { label: "開始填寫", value: data.granular?.astroProfileStarted ?? 0 },
                 { label: "成功產出", value: data.totals.astroProfileSuccess },
                 { label: "免費成功", value: data.totals.astroProfileFreeSuccess },
+                { label: "付費嘗試", value: data.totals.astroProfilePaymentAttempts, highlight: data.totals.astroProfilePaymentAttempts > 0 },
                 { label: "付費成功", value: data.totals.astroProfilePaidSuccess, highlight: data.totals.astroProfilePaidSuccess > 0 },
+                { label: "收入", value: formatMoney(data.totals.astroProfileRevenue), highlight: data.totals.astroProfileRevenue > 0 },
                 { label: "LINE 傳送", value: data.granular?.astroProfileLineSent ?? 0 },
                 { label: "Email 傳送", value: data.granular?.astroProfileEmailSent ?? 0 },
                 { label: "限動圖下載", value: data.granular?.astroProfileStoryDownloaded ?? 0 },
@@ -637,7 +714,7 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
             />
           </Panel>
 
-          <Panel title="4. 每日明細" subtitle="每天一列；尚未產生統計或今日會在狀態欄標示">
+          <Panel title="6. 每日明細" subtitle="每天一列；尚未產生統計或今日會在狀態欄標示">
             {days.length ? <DayTable days={days} /> : <EmptyBox text="此區間沒有任何日期" />}
             {days.some((d) => d.isToday && d.missingSnapshot) ? (
               <p className="mt-3 rounded-2xl border border-amber-400/30 bg-amber-400/8 px-4 py-3 text-xs text-amber-200">{TODAY_NOTICE}</p>
@@ -649,13 +726,13 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
 
           {singleDayMetrics ? (
             <>
-              <Panel title="5. 訪客來源" subtitle={singleDayMetrics.date}>
+              <Panel title="7. 訪客來源" subtitle={singleDayMetrics.date}>
                 <BreakdownTable rows={singleDayMetrics.sourceStats} countLabel="訪客" />
               </Panel>
-              <Panel title="6. 熱門功能排行" subtitle={singleDayMetrics.date}>
+              <Panel title="8. 熱門功能排行" subtitle={singleDayMetrics.date}>
                 <BreakdownTable rows={singleDayMetrics.popularFeatureStats} countLabel="瀏覽次數" />
               </Panel>
-              <Panel title="7. 付費來源排行" subtitle={singleDayMetrics.date}>
+              <Panel title="9. 付費來源排行" subtitle={singleDayMetrics.date}>
                 <PaymentTable rows={singleDayMetrics.paymentSourceStats} />
               </Panel>
             </>

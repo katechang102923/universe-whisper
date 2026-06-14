@@ -5,7 +5,7 @@ import { getAdminDb } from "@/lib/firebaseAdmin";
 import { verifyAdminSessionCookie, SESSION_COOKIE_NAME } from "@/lib/verifyAdmin";
 import { getAdminUserIds, getTaipeiDate } from "@/lib/rateLimit";
 import { jsonServerError } from "@/lib/apiErrors";
-import { computeRawMetrics, type RawDayMetrics, type RawDiagnostics } from "@/lib/adminStatsRaw";
+import { computeRawMetrics, PAGE_FEATURES, type RawDayMetrics, type RawDiagnostics } from "@/lib/adminStatsRaw";
 
 export const runtime = "nodejs";
 
@@ -14,7 +14,7 @@ export const runtime = "nodejs";
 //   - 快照存在且有資料 → 顯示快照。
 //   - 快照不存在 → 標記「快照缺失」，不自動讀原始 collection。
 //   - 快照存在但全為 0 → 標記「快照為空」，不自動讀原始 collection。
-// 手動重算（mode=raw）：管理者按「手動用原始事件重算」才會讀原始 collection 即時計算。
+// 手動重算（mode=raw）：管理者按「重新計算」才會讀原始 collection 即時計算。
 //   - 僅支援最多 31 天；以 Asia/Taipei dateKey 範圍查詢、每 collection 有 limit；read-only 不寫回。
 // 日期一律 Asia/Taipei；昨日 / 區間皆以台灣時間判定。
 
@@ -34,10 +34,14 @@ type DayMetrics = {
   date: string;
   visitors: number;
   pageViews: number;
+  pageViewByFeature: Record<string, number>;
   tarotDrawSuccess: number;
   tarotSingleSuccess: number;
   tarotThreeSuccess: number;
   freeSuccess: number;
+  paymentAttempts: number; // 付費嘗試 / 建立訂單（塔羅 + 四核心，含 pending）
+  tarotPaymentAttempts: number;
+  astroProfilePaymentAttempts: number;
   paidSuccess: number;
   revenue: number;
   astroProfilePageViews: number;
@@ -140,6 +144,41 @@ function safePaymentRows(value: unknown): PaymentBreakdownRow[] {
     .filter((row) => row.label);
 }
 
+function emptyFeatureMap(): Record<string, number> {
+  const m: Record<string, number> = {};
+  for (const f of PAGE_FEATURES) m[f] = 0;
+  return m;
+}
+
+// 舊快照的功能排行標籤對應到目前後台顯示用分類（三重星座 → 四核心星座）
+const SNAP_FEATURE_RELABEL: Record<string, (typeof PAGE_FEATURES)[number]> = {
+  "首頁": "首頁",
+  "塔羅抽牌": "塔羅抽牌",
+  "三重星座": "四核心星座",
+  "四核心星座": "四核心星座",
+  "每日星座": "今日星座",
+  "今日星座": "今日星座",
+  "其他頁面": "其他頁面",
+  "其他": "其他頁面",
+};
+
+/** 把快照的 popularFeatureStats（featureRanking）整理成 pageViewByFeature */
+function featureMapFromRows(rows: BreakdownRow[]): Record<string, number> {
+  const m = emptyFeatureMap();
+  for (const row of rows) {
+    const key = SNAP_FEATURE_RELABEL[row.label] ?? "其他頁面";
+    m[key] += row.count;
+  }
+  return m;
+}
+
+function buildPageRanking(byFeature: Record<string, number>): BreakdownRow[] {
+  const total = PAGE_FEATURES.reduce((s, f) => s + (byFeature[f] ?? 0), 0);
+  return PAGE_FEATURES
+    .map((f) => ({ label: f, count: byFeature[f] ?? 0, ratio: calcRatio(byFeature[f] ?? 0, total) }))
+    .sort((a, b) => b.count - a.count);
+}
+
 type SnapshotDoc = Record<string, unknown> & {
   dailyMetrics?: Record<string, unknown>;
   zodiacStats?: Record<string, unknown>;
@@ -173,14 +212,25 @@ function metricsFromDoc(doc: DocumentSnapshot, date: string): DayMetrics {
     astroProfilePaidSuccess + astroProfileFreeSuccess;
   const astroProfileRevenue = num(data.astroProfileRevenue) || num(zodiac.tripleZodiacRevenue);
 
+  // 付費嘗試 / 建立訂單（新欄位；舊快照沒有 → 0，可用「重新計算」或「校正快照」補上）
+  const tarotPaymentAttempts = num(data.tarotOrderAttempts);
+  const astroProfilePaymentAttempts = num(data.astroProfileOrderAttempts) || num(zodiac.tripleZodiacOrderAttempts);
+  const paymentAttempts = num(data.orderAttempts) || (tarotPaymentAttempts + astroProfilePaymentAttempts);
+
+  const popularFeatureStats = safeBreakdownRows(data.popularFeatureStats ?? dm.featureRanking);
+
   return {
     date,
     visitors,
     pageViews,
+    pageViewByFeature: featureMapFromRows(popularFeatureStats),
     tarotDrawSuccess,
     tarotSingleSuccess,
     tarotThreeSuccess,
     freeSuccess,
+    paymentAttempts,
+    tarotPaymentAttempts,
+    astroProfilePaymentAttempts,
     paidSuccess,
     revenue,
     astroProfilePageViews,
@@ -199,7 +249,7 @@ function metricsFromDoc(doc: DocumentSnapshot, date: string): DayMetrics {
       pageToPaid: calcRatio(astroProfilePaidSuccess, astroProfilePageViews),
     },
     sourceStats: safeBreakdownRows(data.sourceStats ?? dm.visitorSources),
-    popularFeatureStats: safeBreakdownRows(data.popularFeatureStats ?? dm.featureRanking),
+    popularFeatureStats,
     paymentSourceStats: safePaymentRows(data.paymentSourceStats ?? dm.paymentSources),
   };
 }
@@ -210,16 +260,21 @@ function metricsFromRaw(r: RawDayMetrics, snap?: DocumentSnapshot): DayMetrics {
   const paidSuccess = r.tarotPaidSuccess + r.astroProfilePaidSuccess;
   const revenue = r.tarotRevenue + r.astroProfileRevenue;
   const astroProfileSuccess = r.astroProfileFreeSuccess + r.astroProfilePaidSuccess;
+  const paymentAttempts = r.tarotPaymentAttempts + r.astroProfilePaymentAttempts;
   const snapData = (snap?.data() ?? {}) as SnapshotDoc;
   const dm = (snapData.dailyMetrics ?? {}) as Record<string, unknown>;
   return {
     date: r.date,
     visitors: r.visitors,
     pageViews: r.pageViews,
+    pageViewByFeature: { ...r.pageViewByFeature },
     tarotDrawSuccess,
     tarotSingleSuccess: r.tarotSingleSuccess,
     tarotThreeSuccess: r.tarotThreeSuccess,
     freeSuccess: r.tarotFreeSuccess,
+    paymentAttempts,
+    tarotPaymentAttempts: r.tarotPaymentAttempts,
+    astroProfilePaymentAttempts: r.astroProfilePaymentAttempts,
     paidSuccess,
     revenue,
     astroProfilePageViews: r.astroProfilePageViews,
@@ -237,6 +292,7 @@ function metricsFromRaw(r: RawDayMetrics, snap?: DocumentSnapshot): DayMetrics {
       generatedToPaid: calcRatio(r.astroProfilePaidSuccess, astroProfileSuccess),
       pageToPaid: calcRatio(r.astroProfilePaidSuccess, r.astroProfilePageViews),
     },
+    // 排行明細目前只在快照算（原始即時計算不重算來源 / 付費排行），有快照才帶入
     sourceStats: safeBreakdownRows((snapData.sourceStats as unknown) ?? dm.visitorSources),
     popularFeatureStats: safeBreakdownRows((snapData.popularFeatureStats as unknown) ?? dm.featureRanking),
     paymentSourceStats: safePaymentRows((snapData.paymentSourceStats as unknown) ?? dm.paymentSources),
@@ -247,10 +303,14 @@ function emptyTotals() {
   return {
     visitors: 0,
     pageViews: 0,
+    pageViewByFeature: emptyFeatureMap(),
     tarotDrawSuccess: 0,
     tarotSingleSuccess: 0,
     tarotThreeSuccess: 0,
     freeSuccess: 0,
+    paymentAttempts: 0,
+    tarotPaymentAttempts: 0,
+    astroProfilePaymentAttempts: 0,
     paidSuccess: 0,
     revenue: 0,
     astroProfilePageViews: 0,
@@ -266,10 +326,14 @@ type Totals = ReturnType<typeof emptyTotals>;
 function addMetricsToTotals(totals: Totals, m: DayMetrics) {
   totals.visitors += m.visitors;
   totals.pageViews += m.pageViews;
+  for (const f of PAGE_FEATURES) totals.pageViewByFeature[f] += m.pageViewByFeature[f] ?? 0;
   totals.tarotDrawSuccess += m.tarotDrawSuccess;
   totals.tarotSingleSuccess += m.tarotSingleSuccess;
   totals.tarotThreeSuccess += m.tarotThreeSuccess;
   totals.freeSuccess += m.freeSuccess;
+  totals.paymentAttempts += m.paymentAttempts;
+  totals.tarotPaymentAttempts += m.tarotPaymentAttempts;
+  totals.astroProfilePaymentAttempts += m.astroProfilePaymentAttempts;
   totals.paidSuccess += m.paidSuccess;
   totals.revenue += m.revenue;
   totals.astroProfilePageViews += m.astroProfilePageViews;
@@ -279,11 +343,12 @@ function addMetricsToTotals(totals: Totals, m: DayMetrics) {
   totals.astroProfileRevenue += m.astroProfileRevenue;
 }
 
-/** 是否有任何營運資料（用來判斷快照是否為空） */
+/** 是否有任何營運資料（用來判斷快照是否為空）；付費嘗試也算「有資料」 */
 function hasData(m: DayMetrics): boolean {
   return (
     m.visitors > 0 || m.pageViews > 0 || m.tarotDrawSuccess > 0 || m.freeSuccess > 0 ||
-    m.paidSuccess > 0 || m.revenue > 0 || m.astroProfilePageViews > 0 || m.astroProfileSuccess > 0
+    m.paymentAttempts > 0 || m.paidSuccess > 0 || m.revenue > 0 ||
+    m.astroProfilePageViews > 0 || m.astroProfileSuccess > 0
   );
 }
 
@@ -348,13 +413,14 @@ function totalsWithRates(totals: Totals) {
 }
 
 const DATA_NOTES = [
+  "付費嘗試 = 當天建立的訂單（含待付款），付費成功與收入只算已付款。",
   "tarotEmailSent：目前無事件來源，固定顯示 0（未假造）。",
   "tarotStoryDownloaded：由 share_image_downloads 輔助判斷，無資料則顯示 0（未假造）。",
 ];
 
-const NO_SNAPSHOT_NOTICE = "此日期尚無完整快照，請稍後或手動重算。";
-const EMPTY_SNAPSHOT_NOTICE = "此日期快照為空，請稍後或手動重算。";
-const PARTIAL_SNAPSHOT_NOTICE = "部分日期尚無完整快照，已略過；可手動重算補齊。";
+const NO_SNAPSHOT_NOTICE = "此日期尚無完整快照，請按「重新計算」查看原始資料，或「校正快照」重建。";
+const EMPTY_SNAPSHOT_NOTICE = "此日期快照為 0，請按「重新計算」核對原始資料（可能是當天只有管理員/測試流量）。";
+const PARTIAL_SNAPSHOT_NOTICE = "部分日期尚無完整快照，已略過；可手動重新計算或校正補齊。";
 
 export async function GET(req: NextRequest) {
   if (!(await verifyAdmin())) {
@@ -416,6 +482,8 @@ export async function GET(req: NextRequest) {
         rawRecomputable: true,
         counts: {
           analyticsEvents: rd.counts.analyticsEvents,
+          pageViewEvents: rd.counts.pageViewEvents,
+          sessionStartEvents: rd.counts.sessionStartEvents,
           tripleZodiacEvents: rd.counts.tripleZodiacEvents,
           paymentOrders: rd.counts.paymentOrders,
           astroProfileOrders: rd.counts.astroProfileOrders,
@@ -423,6 +491,9 @@ export async function GET(req: NextRequest) {
           dailyAdminStats: dailyAdminStatsCount,
           shareImageDownloads: rd.counts.shareImageDownloads,
         },
+        pendingOrderCount: rd.pendingOrderCount,
+        paidOrderCount: rd.paidOrderCount,
+        excludedOrderCount: rd.excludedOrderCount,
         adminEventCount: rd.adminEventCount,
         testEventCount: rd.testEventCount,
         normalEventCount: rd.normalEventCount,
@@ -436,6 +507,7 @@ export async function GET(req: NextRequest) {
         ok: true, today, start, end,
         days,
         totals: totalsWithRates(totals),
+        pageViewRanking: buildPageRanking(totals.pageViewByFeature),
         granular: granularFromRaw(rawResult.perDay),
         dataSource: "raw",
         snapshotState: null,
@@ -489,6 +561,8 @@ export async function GET(req: NextRequest) {
       counts: {
         // 快照模式不讀原始 collection，故為 null（未讀取）
         analyticsEvents: null,
+        pageViewEvents: null,
+        sessionStartEvents: null,
         tripleZodiacEvents: null,
         paymentOrders: null,
         astroProfileOrders: null,
@@ -496,6 +570,9 @@ export async function GET(req: NextRequest) {
         dailyAdminStats: dailyAdminStatsCount,
         shareImageDownloads: null,
       },
+      pendingOrderCount: null,
+      paidOrderCount: null,
+      excludedOrderCount: null,
       adminEventCount: null,
       testEventCount: null,
       normalEventCount: null,
@@ -509,6 +586,7 @@ export async function GET(req: NextRequest) {
       ok: true, today, start, end,
       days,
       totals: totalsWithRates(totals),
+      pageViewRanking: buildPageRanking(totals.pageViewByFeature),
       granular: granularFromSnapshots(snaps),
       dataSource: "snapshot",
       snapshotState,

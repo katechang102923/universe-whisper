@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { getAdminUserIds } from "@/lib/rateLimit";
-import { getAdminEmailList } from "@/lib/verifyAdmin";
+import { getAdminEmailList, verifyAdminSessionCookie, SESSION_COOKIE_NAME } from "@/lib/verifyAdmin";
 import { PAYMENT_ORDERS_COLLECTION, REDEEM_CODES_COLLECTION, type RedeemCodeData } from "@/lib/redeemCodes";
 import { jsonServerError } from "@/lib/apiErrors";
 
@@ -444,9 +445,25 @@ async function cleanupOldSnapshots(db: FirebaseFirestore.Firestore, cutoffDate: 
 }
 
 export async function GET(req: NextRequest) {
+  // 兩種授權：(1) Vercel cron 帶 CRON_SECRET；(2) 已登入管理員手動觸發「校正快照」。
   const secret = process.env.CRON_SECRET ?? "";
   const auth = req.headers.get("authorization") ?? "";
-  if (!secret || auth !== `Bearer ${secret}`) {
+  const cronOk = !!secret && auth === `Bearer ${secret}`;
+  let adminOk = false;
+  if (!cronOk) {
+    try {
+      const cookieStore = await cookies();
+      const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+      adminOk = await verifyAdminSessionCookie(sessionCookie);
+      if (!adminOk) {
+        const lineUserId = cookieStore.get("line_user_id")?.value ?? null;
+        adminOk = Boolean(lineUserId && getAdminUserIds().includes(lineUserId));
+      }
+    } catch {
+      adminOk = false;
+    }
+  }
+  if (!cronOk && !adminOk) {
     return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
   }
 
@@ -614,6 +631,23 @@ export async function GET(req: NextRequest) {
     revenue += astroProfileRevenue;
     const paidSuccess = orderStats.todayPaid + astroProfileCount;
 
+    // ── 付費嘗試 / 建立訂單：依建立日（Asia/Taipei），含 pending；排除 test / admin ──
+    const countOrderAttempts = (snap: FirebaseFirestore.QuerySnapshot | null): number => {
+      if (!snap) return 0;
+      let n = 0;
+      for (const doc of snap.docs) {
+        const order = doc.data() as { buyerEmail?: string } & Record<string, unknown>;
+        if (taipeiDayKey(resolveTs(order.createdAt)) !== date) continue;
+        if (isTestOrder(order)) continue;
+        if (order.buyerEmail && adminEmails.has(String(order.buyerEmail).toLowerCase())) continue;
+        n += 1;
+      }
+      return n;
+    };
+    const tarotOrderAttempts = countOrderAttempts(orderSnap);
+    const astroProfileOrderAttempts = countOrderAttempts(astroSnap);
+    const orderAttempts = tarotOrderAttempts + astroProfileOrderAttempts;
+
     // ── 三重星座（astro-profile）獨立統計 ──────────────────────────────────────
     // 行為事件來自 triple_zodiac_events（純儀表化，不含敏感個資）；
     // 付費與收入沿用 astroProfileOrders（金額權威來源）；
@@ -718,6 +752,10 @@ export async function GET(req: NextRequest) {
       // 付費成功＝塔羅付費 + 三重星座付費（與 revenue 同口徑，確保 revenue>0 時 paidSuccess>0）
       paidSuccess,
       tarotPaidSuccess,
+      // 付費嘗試 / 建立訂單（含待付款）；付費成功與收入仍只算 paid
+      orderAttempts,
+      tarotOrderAttempts,
+      astroProfileOrderAttempts,
       astroProfilePageViews: tripleZodiacPageViews,
       astroProfileSuccess: astroProfileSuccessTotal,
       astroProfileFreeSuccess: astroProfileFreeSuccessCount,

@@ -9,6 +9,8 @@
 //    標記 truncated，提醒可能截斷。
 //  - 主要營運數據預設排除 isAdmin / isTest / isTestPayment；管理員與測試另計到診斷區。
 //  - 事件名稱完全依現有程式（analytics_events / triple_zodiac_events）實際名稱，不臆測。
+//  - 付費嘗試 / 建立訂單：只要當天建立訂單（依 createdAt 的 Asia/Taipei 日）就計入，
+//    不論 pending / unpaid / paid；付費成功與收入僅 paid/success 才算。
 //
 // 不影響任何前台寫入、付款、LINE、Email、抽牌、內容生成流程。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -25,10 +27,15 @@ const LIMIT_ORDERS = 3000;
 const LIMIT_ASTRO_ORDERS = 1500;
 const LIMIT_SHARE = 5000;
 
+// 頁面瀏覽排行用的中文分類（後台一律顯示「四核心星座」，不再用「三重星座」）
+export const PAGE_FEATURES = ["首頁", "塔羅抽牌", "四核心星座", "今日星座", "其他頁面"] as const;
+
 export type RawDayMetrics = {
   date: string;
   visitors: number;
   pageViews: number;
+  /** 各頁面分類瀏覽次數（PAGE_FEATURES 為 key） */
+  pageViewByFeature: Record<string, number>;
   // 塔羅
   tarotPageViews: number;
   tarotDrawCompleted: number;
@@ -36,15 +43,17 @@ export type RawDayMetrics = {
   tarotThreeSuccess: number;
   tarotFreeSuccess: number;
   tarotPaidSuccess: number;
+  tarotPaymentAttempts: number; // 建立訂單（含 pending）
   tarotRevenue: number;
   tarotLineSent: number;
   tarotEmailSent: number; // 目前無事件來源 → 恆為 0（診斷區標示）
   tarotStoryDownloaded: number; // 由 share_image_downloads 輔助判斷，無資料則 0
-  // 三重星座
+  // 四核心星座（內部資料來源仍為 astro-profile / triple_zodiac，不改 key）
   astroProfilePageViews: number;
   astroProfileStarted: number;
   astroProfileFreeSuccess: number;
   astroProfilePaidSuccess: number;
+  astroProfilePaymentAttempts: number; // 建立訂單（含 pending）
   astroProfileRevenue: number;
   astroProfileLineSent: number;
   astroProfileEmailSent: number;
@@ -54,12 +63,19 @@ export type RawDayMetrics = {
 export type RawDiagnostics = {
   counts: {
     analyticsEvents: number;
+    pageViewEvents: number;
+    sessionStartEvents: number;
     tripleZodiacEvents: number;
     paymentOrders: number;
     astroProfileOrders: number;
     rateLimits: number;
     shareImageDownloads: number;
   };
+  /** 訂單狀態統計（已排除 test / admin，依 createdAt 的 Asia/Taipei 日落在區間內） */
+  pendingOrderCount: number;
+  paidOrderCount: number;
+  /** 因 test / admin 被排除的訂單數（createdAt 日落在區間內） */
+  excludedOrderCount: number;
   adminEventCount: number;
   testEventCount: number;
   normalEventCount: number;
@@ -77,17 +93,25 @@ export type RawResult = {
 
 // ── 內部工具 ──────────────────────────────────────────────────────────────────
 
+function emptyFeatureMap(): Record<string, number> {
+  const m: Record<string, number> = {};
+  for (const f of PAGE_FEATURES) m[f] = 0;
+  return m;
+}
+
 function emptyDay(date: string): RawDayMetrics {
   return {
     date,
     visitors: 0,
     pageViews: 0,
+    pageViewByFeature: emptyFeatureMap(),
     tarotPageViews: 0,
     tarotDrawCompleted: 0,
     tarotSingleSuccess: 0,
     tarotThreeSuccess: 0,
     tarotFreeSuccess: 0,
     tarotPaidSuccess: 0,
+    tarotPaymentAttempts: 0,
     tarotRevenue: 0,
     tarotLineSent: 0,
     tarotEmailSent: 0,
@@ -96,6 +120,7 @@ function emptyDay(date: string): RawDayMetrics {
     astroProfileStarted: 0,
     astroProfileFreeSuccess: 0,
     astroProfilePaidSuccess: 0,
+    astroProfilePaymentAttempts: 0,
     astroProfileRevenue: 0,
     astroProfileLineSent: 0,
     astroProfileEmailSent: 0,
@@ -160,11 +185,22 @@ function isPublicPath(path: string): boolean {
   return Boolean(path) && !path.startsWith("/admin") && !path.startsWith("/api/");
 }
 
+/** 塔羅 / 四核心星座 / 其他（給 tarotPageViews / astroProfilePageViews 累計用） */
 function featureFromPath(path?: string): "tarot" | "astro" | "other" {
   const p = normalizePath(path);
   if (p.startsWith("/tarot") || p.startsWith("/single") || p.startsWith("/three-card")) return "tarot";
   if (p.startsWith("/astro-profile") || p.startsWith("/triple-zodiac") || p.startsWith("/zodiac-report")) return "astro";
   return "other";
+}
+
+/** 頁面瀏覽排行用的中文分類 */
+function pageFeature(path?: string): (typeof PAGE_FEATURES)[number] {
+  const p = normalizePath(path);
+  if (p === "/") return "首頁";
+  if (p.startsWith("/tarot") || p.startsWith("/single") || p.startsWith("/three-card")) return "塔羅抽牌";
+  if (p.startsWith("/astro-profile") || p.startsWith("/triple-zodiac") || p.startsWith("/zodiac-report")) return "四核心星座";
+  if (p.startsWith("/daily") || p.startsWith("/horoscope")) return "今日星座";
+  return "其他頁面";
 }
 
 type AnalyticsEvent = {
@@ -179,12 +215,12 @@ type AnalyticsEvent = {
   isAdmin?: boolean;
 };
 
-/** 訪客去重鍵：以最穩定的身分優先（lineUserId → anonymousId → ipHash → sessionId）；皆無回 null */
+/** 訪客去重鍵：lineUserId → anonymousId → sessionId → ipHash；皆無回 null */
 function visitorKey(e: AnalyticsEvent): string | null {
   if (e.lineUserId) return `line:${e.lineUserId}`;
   if (e.anonymousId) return `anon:${e.anonymousId}`;
-  if (e.ipHash) return `ip:${e.ipHash}`;
   if (e.sessionId) return `sid:${e.sessionId}`;
+  if (e.ipHash) return `ip:${e.ipHash}`;
   return null;
 }
 
@@ -200,11 +236,64 @@ function resolveAmount(order: Record<string, unknown>): number {
   const n = typeof v === "number" ? v : typeof v === "string" ? parseFloat(v) : NaN;
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
-function orderAttributionDayKey(order: Record<string, unknown>, paid: boolean): string | null {
-  if (paid) {
-    return taipeiDayKey(resolveTs(order.paidAt) ?? resolveTs(order.paymentDate) ?? resolveTs(order.createdAt));
-  }
+/** 付款成功的歸屬日（付款日）；用於收入與付費成功 */
+function paidDayKey(order: Record<string, unknown>): string | null {
+  return taipeiDayKey(resolveTs(order.paidAt) ?? resolveTs(order.paymentDate) ?? resolveTs(order.createdAt));
+}
+/** 建立訂單的歸屬日（建立日）；用於付費嘗試 */
+function createdDayKey(order: Record<string, unknown>): string | null {
   return taipeiDayKey(resolveTs(order.createdAt));
+}
+
+/**
+ * 處理單一訂單集合：付費嘗試（建立日）+ 付費成功 / 收入（付款日）。
+ * kind 決定計入塔羅或四核心星座欄位。
+ */
+function tallyOrders(
+  snap: FirebaseFirestore.QuerySnapshot | null,
+  kind: "tarot" | "astro",
+  perDay: Record<string, RawDayMetrics>,
+  dateSet: Set<string>,
+  adminEmails: Set<string>,
+  diagnostics: RawDiagnostics,
+) {
+  if (!snap) return;
+  for (const doc of snap.docs) {
+    const order = doc.data() as { status?: string; buyerEmail?: string } & Record<string, unknown>;
+    const test = isTestOrder(order);
+    const adminEmail = !!(order.buyerEmail && adminEmails.has(String(order.buyerEmail).toLowerCase()));
+    const createdDay = createdDayKey(order);
+    const inRangeByCreated = !!(createdDay && dateSet.has(createdDay));
+
+    if (test || adminEmail) {
+      if (inRangeByCreated) diagnostics.excludedOrderCount += 1;
+      continue;
+    }
+
+    const paid = isPaidStatus(order.status);
+
+    // 付費嘗試 / 建立訂單：依建立日，含 pending
+    if (inRangeByCreated) {
+      if (kind === "tarot") perDay[createdDay!].tarotPaymentAttempts += 1;
+      else perDay[createdDay!].astroProfilePaymentAttempts += 1;
+      if (paid) diagnostics.paidOrderCount += 1;
+      else diagnostics.pendingOrderCount += 1;
+    }
+
+    // 付費成功 / 收入：依付款日，只算 paid
+    if (paid) {
+      const pDay = paidDayKey(order);
+      if (pDay && dateSet.has(pDay)) {
+        if (kind === "tarot") {
+          perDay[pDay].tarotPaidSuccess += 1;
+          perDay[pDay].tarotRevenue += resolveAmount(order);
+        } else {
+          perDay[pDay].astroProfilePaidSuccess += 1;
+          perDay[pDay].astroProfileRevenue += resolveAmount(order);
+        }
+      }
+    }
+  }
 }
 
 // ── 主函式 ────────────────────────────────────────────────────────────────────
@@ -222,12 +311,9 @@ export async function computeRawMetrics(db: Firestore, dates: string[]): Promise
   const perDay: Record<string, RawDayMetrics> = {};
   for (const d of dates) perDay[d] = emptyDay(d);
 
-  // 免費解鎖事件數（free_unlock）逐日，最後與 rate_limits 取較大值（補強、不覆蓋事件）
   const freeUnlockByDay: Record<string, number> = {};
-  // 訪客去重集合（一般訪客）逐日
   const visitorSets: Record<string, Set<string>> = {};
   for (const d of dates) { visitorSets[d] = new Set<string>(); freeUnlockByDay[d] = 0; }
-  // triple_zodiac_page_view 逐日（與 analytics 的 astro 頁面瀏覽取較大值）
   const triplePageViewByDay: Record<string, number> = {};
   for (const d of dates) triplePageViewByDay[d] = 0;
 
@@ -237,12 +323,17 @@ export async function computeRawMetrics(db: Firestore, dates: string[]): Promise
   const diagnostics: RawDiagnostics = {
     counts: {
       analyticsEvents: 0,
+      pageViewEvents: 0,
+      sessionStartEvents: 0,
       tripleZodiacEvents: 0,
       paymentOrders: 0,
       astroProfileOrders: 0,
       rateLimits: 0,
       shareImageDownloads: 0,
     },
+    pendingOrderCount: 0,
+    paidOrderCount: 0,
+    excludedOrderCount: 0,
     adminEventCount: 0,
     testEventCount: 0,
     normalEventCount: 0,
@@ -254,7 +345,6 @@ export async function computeRawMetrics(db: Firestore, dates: string[]): Promise
   // 訂單以 createdAt 寬鬆視窗查詢（±36h），避免跨午夜建立日≠付款日漏算；歸屬再用 Asia/Taipei 精算
   const orderWindowStart = new Date(taipeiDayStartUtc(startKey).getTime() - 36 * 3600 * 1000);
   const orderWindowEnd = new Date(taipeiDayStartUtc(addDays(endKey, 1)).getTime() + 36 * 3600 * 1000);
-  // 限動下載以 createdAt（= 下載時間）的 Asia/Taipei 日歸屬，視窗用日界即可
   const shareWindowStart = taipeiDayStartUtc(startKey);
   const shareWindowEnd = taipeiDayStartUtc(addDays(endKey, 1));
 
@@ -279,6 +369,9 @@ export async function computeRawMetrics(db: Firestore, dates: string[]): Promise
       if (!day || !dateSet.has(day)) continue;
 
       diagnostics.allEventCount += 1;
+      if (e.eventType === "page_view") diagnostics.counts.pageViewEvents += 1;
+      if (e.eventType === "session_start") diagnostics.counts.sessionStartEvents += 1;
+
       const isAdmin = e.isAdmin === true || Boolean(e.lineUserId && adminLineIds.has(e.lineUserId));
       const isTest = e.isTest === true;
       if (isAdmin) diagnostics.adminEventCount += 1;
@@ -296,6 +389,7 @@ export async function computeRawMetrics(db: Firestore, dates: string[]): Promise
       switch (e.eventType) {
         case "page_view": {
           m.pageViews += 1;
+          m.pageViewByFeature[pageFeature(e.path ?? e.url)] += 1;
           const feat = featureFromPath(e.path ?? e.url);
           if (feat === "tarot") m.tarotPageViews += 1;
           else if (feat === "astro") m.astroProfilePageViews += 1;
@@ -369,46 +463,22 @@ export async function computeRawMetrics(db: Firestore, dates: string[]): Promise
       diagnostics.counts.rateLimits += 1;
       const data = (snap.data() ?? {}) as { feature_usage?: Record<string, number> };
       const fu = data.feature_usage ?? {};
-      const single = Number(fu.single_tarot) || 0;
-      const three = Number(fu.three_card) || 0;
-      perDay[day].tarotSingleSuccess = single;
-      perDay[day].tarotThreeSuccess = three;
+      perDay[day].tarotSingleSuccess = Number(fu.single_tarot) || 0;
+      perDay[day].tarotThreeSuccess = Number(fu.three_card) || 0;
     }
   }
 
-  // ── paymentOrders（塔羅付費與收入；以付款日 Asia/Taipei 歸屬）────────────────
+  // ── 訂單（塔羅 / 四核心星座）：付費嘗試 + 付費成功 + 收入 ──────────────────────
   if (orderSnap) {
     diagnostics.counts.paymentOrders = orderSnap.size;
     if (orderSnap.size >= LIMIT_ORDERS) diagnostics.truncated.push(PAYMENT_ORDERS_COLLECTION);
-    for (const doc of orderSnap.docs) {
-      const order = doc.data() as { status?: string; buyerEmail?: string } & Record<string, unknown>;
-      const paid = isPaidStatus(order.status);
-      const day = orderAttributionDayKey(order, paid);
-      if (!day || !dateSet.has(day)) continue;
-      if (isTestOrder(order)) continue;
-      if (order.buyerEmail && adminEmails.has(String(order.buyerEmail).toLowerCase())) continue;
-      if (!paid) continue;
-      perDay[day].tarotPaidSuccess += 1;
-      perDay[day].tarotRevenue += resolveAmount(order);
-    }
   }
-
-  // ── astroProfileOrders（三重星座付費與收入）────────────────────────────────
   if (astroSnap) {
     diagnostics.counts.astroProfileOrders = astroSnap.size;
     if (astroSnap.size >= LIMIT_ASTRO_ORDERS) diagnostics.truncated.push("astroProfileOrders");
-    for (const doc of astroSnap.docs) {
-      const order = doc.data() as { status?: string; buyerEmail?: string } & Record<string, unknown>;
-      const paid = isPaidStatus(order.status);
-      const day = orderAttributionDayKey(order, paid);
-      if (!day || !dateSet.has(day)) continue;
-      if (isTestOrder(order)) continue;
-      if (order.buyerEmail && adminEmails.has(String(order.buyerEmail).toLowerCase())) continue;
-      if (!paid) continue;
-      perDay[day].astroProfilePaidSuccess += 1;
-      perDay[day].astroProfileRevenue += resolveAmount(order);
-    }
   }
+  tallyOrders(orderSnap, "tarot", perDay, dateSet, adminEmails, diagnostics);
+  tallyOrders(astroSnap, "astro", perDay, dateSet, adminEmails, diagnostics);
 
   // ── share_image_downloads（塔羅限動下載輔助；無資料則維持 0，不假造）──────────
   if (shareSnap) {
@@ -429,10 +499,8 @@ export async function computeRawMetrics(db: Firestore, dates: string[]): Promise
   for (const d of dates) {
     const m = perDay[d];
     m.visitors = visitorSets[d].size;
-    // 免費成功：以事件(free_unlock)與 rate_limits(single+three) 取較大值，避免任一來源漏計
     const rateFree = m.tarotSingleSuccess + m.tarotThreeSuccess;
     m.tarotFreeSuccess = Math.max(freeUnlockByDay[d], rateFree);
-    // 三重星座頁面瀏覽：analytics 的 /astro-profile page_view 與 triple_zodiac_page_view 取較大值
     m.astroProfilePageViews = Math.max(m.astroProfilePageViews, triplePageViewByDay[d]);
   }
 
