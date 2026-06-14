@@ -57,9 +57,19 @@ const BIRTH_YEARS = Array.from(
   (_, i) => String(CURRENT_YEAR - i),
 );
 const BIRTH_MONTHS = Array.from({ length: 12 }, (_, i) => String(i + 1));
+// 出生時間下拉選項：小時 00～23、分鐘 00～59（皆已補零，組合即為 HH:mm）。
+const BIRTH_HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
+const BIRTH_MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
 
 function padDatePart(value: string): string {
   return value.padStart(2, "0");
+}
+
+// 把 "HH:mm" 拆成小時 / 分鐘；格式不符（含空字串）時回空字串，避免出現 undefined / NaN。
+function parseBirthTime(value: string): { hour: string; minute: string } {
+  const match = value.match(/^(\d{2}):(\d{2})$/);
+  if (!match) return { hour: "", minute: "" };
+  return { hour: match[1], minute: match[2] };
 }
 
 function daysInMonth(year: string, month: string): number {
@@ -479,17 +489,10 @@ export function AstroProfileClient() {
               {showManual ? "（手動模式可不填）" : "（必填，需精確到分鐘）"}
             </span>
           </label>
-          <input
-            type="time"
-            step="60"
-            value={birthTime}
-            placeholder="08:23"
-            onChange={(e) => setBirthTime(e.target.value)}
-            className="w-full rounded-xl border border-white/14 bg-[#0a1028] px-4 py-2.5 text-sm text-moon outline-none transition focus:border-lavender/60 focus:ring-2 focus:ring-lavender/20"
-          />
+          <BirthTimeSelect value={birthTime} onChange={setBirthTime} />
           {!showManual && !hasTime && (
             <p className="mt-2 text-xs leading-6 text-moon/40">
-              請填寫出生時間，月亮、上升與金星星座才能精準計算。
+              請選擇完整出生時間（小時與分鐘），上升與宮位才會準確。
             </p>
           )}
         </div>
@@ -1064,20 +1067,37 @@ function planetHouseOf(planets: PlanetPosition[] | undefined, key: string): stri
   return h && h.trim() ? h : null;
 }
 
-// 12 宮的白話領域名稱（付費版把冷冰冰的「第五宮」翻成使用者看得懂的人生領域）
+// 12 宮的白話「短標」：用於標題下方「落入第X宮・___」的小標，求簡潔。
 const HOUSE_DOMAIN: Record<string, string> = {
-  第一宮: "自我形象與第一印象",
+  第一宮: "自我形象與外在氣質",
   第二宮: "金錢價值與安全感",
   第三宮: "溝通學習與日常互動",
   第四宮: "家庭根基與內在安全",
   第五宮: "戀愛創造與自我表現",
-  第六宮: "工作日常與身心習慣",
-  第七宮: "伴侶合作與一對一關係",
-  第八宮: "深層連結與資源共享",
-  第九宮: "高等學習與遠行視野",
-  第十宮: "事業定位與社會角色",
-  第十一宮: "朋友社群與理想願景",
+  第六宮: "工作日常與身心狀態",
+  第七宮: "伴侶合作與重要他人",
+  第八宮: "深層連結與情緒轉化",
+  第九宮: "信念視野與人生方向",
+  第十宮: "職涯方向與社會角色",
+  第十一宮: "朋友社群與共同理想",
   第十二宮: "潛意識休息與內在療癒",
+};
+
+// 12 宮的白話「長述」：用於卡片底部小框，寫成可放進句子的自然短語。
+// 刻意與上面的短標用不同說法，避免同一張卡片把同一句宮位描述重複兩次。
+const HOUSE_DOMAIN_PLAIN: Record<string, string> = {
+  第一宮: "你的外在氣質，以及別人第一眼看到的你",
+  第二宮: "金錢上的安全感，還有讓你覺得踏實的生活基礎",
+  第三宮: "溝通學習、日常互動，還有身邊近距離的人際往來",
+  第四宮: "家庭根基，以及你真正想安放自己的地方",
+  第五宮: "戀愛、創作、興趣，還有被看見的喜悅",
+  第六宮: "工作日常、生活習慣，還有身心狀態",
+  第七宮: "伴侶、合作，還有一對一的重要關係",
+  第八宮: "深層的信任、親密，還有情緒的轉化",
+  第九宮: "學習、旅行、信念，還有人生的方向感",
+  第十宮: "工作方向、你想被看見的方式，以及你在社會中想扮演的角色",
+  第十一宮: "朋友、社群，還有你和大家一起想完成的理想",
+  第十二宮: "休息、獨處、療癒，還有那些看不見的內在壓力",
 };
 
 /** 把「第五宮」變成「第五宮・戀愛創造與自我表現」；無對應時回 null（不顯示假資料） */
@@ -1087,20 +1107,24 @@ function houseDomainLabel(houseText: string | null | undefined): string | null {
   return domain ? `${houseText}・${domain}` : null;
 }
 
-/** 依行星與落宮，產生 1 句把宮位領域揉進解析的補充句（無對應宮位則回空字串） */
+/**
+ * 依行星與落宮，產生 1 句把宮位領域揉進解析的補充句（無對應宮位則回空字串）。
+ * 不同星體用不同語氣（思考 / 行動 / 成長 / 課題…），且用白話長述 HOUSE_DOMAIN_PLAIN，
+ * 不再沿用標題的短標，避免同一張卡片重複同一句宮位描述。
+ */
 function buildHouseFlavor(key: string, houseText: string | null | undefined): string {
   if (!houseText) return "";
-  const domain = HOUSE_DOMAIN[houseText];
+  const domain = HOUSE_DOMAIN_PLAIN[houseText];
   if (!domain) return "";
   const map: Record<string, string> = {
-    sun: `你最想被看見、最想活出自己的舞台，落在「${domain}」這個領域。`,
-    moon: `這份情緒與安全感的需求，在「${domain}」相關的情境裡會特別明顯。`,
-    rising: `別人對你的第一印象，常透過「${domain}」這個面向被認識。`,
-    mercury: `你的靈感與表達，容易在接觸「${domain}」相關的人事物時被打開。`,
-    venus: `你對愛與美好的渴望，主要投注在「${domain}」這個領域。`,
-    mars: `你的行動力與衝勁，最常被點燃在「${domain}」這類事情上。`,
-    jupiter: `你的成長與好運，常從「${domain}」這個領域慢慢展開。`,
-    saturn: `你需要建立耐心與結構的課題，集中在「${domain}」這個領域。`,
+    sun: `你的主導性與自我價值，最容易展現在${domain}。`,
+    moon: `你的情緒反應與安全感，最容易在${domain}這些面向被觸動。`,
+    rising: `別人常從${domain}，認識你面對世界的方式。`,
+    mercury: `你的思考與表達，容易在${domain}相關的情境裡被打開。`,
+    venus: `你的吸引力與安全感，容易落在${domain}相關的人事物裡。`,
+    mars: `你的行動力，最容易在${domain}這些事情上被啟動。`,
+    jupiter: `你的成長機會，常從${domain}慢慢展開。`,
+    saturn: `你需要練習耐心、慢慢建立界線的地方，常落在${domain}。`,
   };
   return map[key] ?? "";
 }
@@ -1229,17 +1253,22 @@ function buildEssenceCards(result: CalcResult, planets: PlanetPosition[] | undef
   return cards;
 }
 
-/** 外行星世代氛圍（120～180 字）：整合天王星 / 海王星 / 冥王星，強調世代特質而非個人命定 */
+/**
+ * 外行星「世代底色」（約 120～180 字，分 2～3 段）：用白話把天王星 / 海王星 / 冥王星
+ * 寫成你這個世代共同的背景感，不寫命定、不用抽象靈性術語，明確標示為背景參考。
+ */
 function buildOuterPlanetText(
   uranus: ZodiacSign | null,
   neptune: ZodiacSign | null,
   pluto: ZodiacSign | null,
 ): string {
-  const intro = "天王星、海王星、冥王星走得很慢，下面比較接近你所屬世代的共同氛圍，而不是你個人的命定。";
-  const parts = [intro];
-  if (uranus) parts.push(`天王星在${uranus}，${URANUS_SIGN_TEXTS[uranus]}`);
-  if (neptune) parts.push(`海王星在${neptune}，${NEPTUNE_SIGN_TEXTS[neptune]}`);
-  if (pluto) parts.push(`冥王星在${pluto}，${PLUTO_SIGN_TEXTS[pluto]}`);
+  const parts: string[] = [
+    "天王星、海王星與冥王星移動較慢，比起個人性格，它們更像是你這個世代共同面對的課題與氛圍。",
+  ];
+  if (uranus) parts.push(`天王星讓你這個世代${URANUS_SIGN_TEXTS[uranus]}。`);
+  if (neptune) parts.push(`海王星讓你們${NEPTUNE_SIGN_TEXTS[neptune]}。`);
+  if (pluto) parts.push(`冥王星則${PLUTO_SIGN_TEXTS[pluto]}。`);
+  parts.push("這不是用來定義你個人的全部，而是補充你所處時代的背景感，當作背景參考就好，不是個人命運的判決。");
   return parts.join("");
 }
 
@@ -1427,9 +1456,9 @@ function PaidPlanetSections({ result, planets }: { result: CalcResult; planets: 
           <div className="mb-1 flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-moon/40">
             <span aria-hidden="true">♅ ♆ ♇</span>外行星特質參考
           </div>
-          <h3 className="text-lg font-semibold text-moon/85">你的世代氛圍</h3>
+          <h3 className="text-lg font-semibold text-moon/85">你的世代底色</h3>
           <div className="mt-3 space-y-3">
-            {splitToParagraphs(outerText, 2).map((p, i) => (
+            {splitToParagraphs(outerText, 3).map((p, i) => (
               <p key={i} className="text-sm leading-8 text-moon/80">{p}</p>
             ))}
           </div>
@@ -2457,6 +2486,60 @@ function BirthDateSelect({
         placeholder="日"
         options={dayOptions}
         className="min-w-[5.5rem] flex-1"
+      />
+    </div>
+  );
+}
+
+// 出生時間：自訂的小時 / 分鐘兩個下拉（沿用 BirthDatePartSelect 的原生 select），
+// 桌機與手機共用同一套，避免手機跳出原生圓盤時間選擇器。組合後仍輸出 "HH:mm"。
+function BirthTimeSelect({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const parsed = useMemo(() => parseBirthTime(value), [value]);
+  const [hour, setHour] = useState(parsed.hour);
+  const [minute, setMinute] = useState(parsed.minute);
+
+  useEffect(() => {
+    // 延後到 microtask 同步小時 / 分鐘，避免在 effect body 內同步 setState（與日期選擇器一致）
+    queueMicrotask(() => {
+      setHour(parsed.hour);
+      setMinute(parsed.minute);
+    });
+  }, [parsed.hour, parsed.minute]);
+
+  const updateTime = useCallback((nextHour: string, nextMinute: string) => {
+    setHour(nextHour);
+    setMinute(nextMinute);
+    // 小時或分鐘任一未選，視為尚未填寫，輸出空字串（不送出半套時間，避免 NaN）。
+    if (nextHour && nextMinute) {
+      onChange(`${nextHour}:${nextMinute}`);
+      return;
+    }
+    onChange("");
+  }, [onChange]);
+
+  return (
+    <div className="flex flex-wrap items-stretch gap-2">
+      <BirthDatePartSelect
+        ariaLabel="Birth hour"
+        value={hour}
+        onChange={(nextHour) => updateTime(nextHour, minute)}
+        placeholder="請選擇小時"
+        options={BIRTH_HOURS}
+        className="min-w-[8rem] flex-1"
+      />
+      <BirthDatePartSelect
+        ariaLabel="Birth minute"
+        value={minute}
+        onChange={(nextMinute) => updateTime(hour, nextMinute)}
+        placeholder="請選擇分鐘"
+        options={BIRTH_MINUTES}
+        className="min-w-[8rem] flex-1"
       />
     </div>
   );
