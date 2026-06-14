@@ -42,9 +42,9 @@ function buildAstroLineMessage(payload: AstroLinePayload, siteUrl: string): stri
     overallSummary, sunCoreText, moonInnerText, risingOuterText, venusLoveText, whisper } = payload;
 
   const parts: string[] = [
-    "🌙 宇宙偷偷話｜三重星座解析",
+    "🌙 宇宙偷偷話｜四核心星座解析",
     "",
-    "你的三重星座",
+    "你的四核心星座",
     `☀ 太陽：${sym(sunSign)}${sunSign ?? "未知"}`,
     `🌙 月亮：${moonSign ? `${sym(moonSign)}${moonSign}` : "尚未提供"}`,
     `⬆ 上升：${risingSign ? `${sym(risingSign)}${risingSign}` : "尚未提供"}`,
@@ -80,7 +80,7 @@ function buildAstroLineMessage(payload: AstroLinePayload, siteUrl: string): stri
     parts.push("🌌 宇宙偷偷話", truncate(whisper, 120), "");
   }
 
-  parts.push(`📍 回到三重星座頁面：\n${siteUrl}/astro-profile`);
+  parts.push(`📍 回到星座解析頁面：\n${siteUrl}/astro-profile`);
   parts.push("");
   parts.push("此 LINE 訊息為精簡摘要，完整內容請以當次網頁結果或 Email 完整版保存。");
 

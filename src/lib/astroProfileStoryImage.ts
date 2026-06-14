@@ -556,11 +556,11 @@ function drawHeader(ctx: CanvasRenderingContext2D): number {
 
   ctx.font      = "bold 64px sans-serif";
   ctx.fillStyle = "#f7d987";
-  ctx.fillText("我的三重星座", W / 2, 244);
+  ctx.fillText("我的四核心星座", W / 2, 244);
 
   ctx.font      = "400 30px sans-serif";
   ctx.fillStyle = "rgba(255,247,230,0.46)";
-  ctx.fillText("太陽  ×  月亮  ×  上升", W / 2, 300);
+  ctx.fillText("太陽 × 月亮 × 上升 × 金星", W / 2, 300);
 
   const divY = 338;
   drawDivider(ctx, divY);
@@ -860,7 +860,7 @@ function drawOverallSummaryCard(
   ctx.textAlign = "left";
   ctx.font = "bold 30px sans-serif";   // 縮小（原 34px）
   ctx.fillStyle = "#f7d987";
-  ctx.fillText("三重星座整體解析", MARGIN_X + padX, titleY);
+  ctx.fillText("四核心整體解析", MARGIN_X + padX, titleY);
 
   drawFittedSummaryLines(
     ctx,
@@ -988,8 +988,8 @@ function drawUnlockTeaserCard(
   const DISPLAY_ITEMS = isUnlocked ? items! : [
     { icon: "💰", title: "個人事業與財富天賦報告", desc: "分析工作模式、累積財富的方式與金錢盲點。" },
     { icon: "❤️", title: "情感正緣與人際模式分析", desc: "了解你的吸引力、感情需求與人際互動模式。" },
-    { icon: "🌙", title: "流年與未來半年運勢",     desc: "整理三重星座能量與未來半年的方向機會。" },
-    { icon: "✨", title: "靈魂課題與人生方向",     desc: "找出太陽、月亮、上升三重能量的成長課題。" },
+    { icon: "🌙", title: "流年與未來半年運勢",     desc: "整理你的星盤能量與未來半年的方向機會。" },
+    { icon: "✨", title: "靈魂課題與人生方向",     desc: "找出太陽、月亮、上升、金星的成長課題。" },
   ];
 
   const colGap = 20;

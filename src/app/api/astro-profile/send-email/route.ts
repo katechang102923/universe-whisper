@@ -268,7 +268,7 @@ function buildAstroEmailHtml(payload: AstroEmailPayload, dateStr: string, siteUr
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>你的完整星盤深度解析｜Universe Whisper</title>
+  <title>你的完整星盤人格解析｜Universe Whisper</title>
   <style>
     @media print {
       body { margin: 0; background: #ffffff; }
@@ -282,10 +282,10 @@ function buildAstroEmailHtml(payload: AstroEmailPayload, dateStr: string, siteUr
       宇宙偷偷話 · Universe Whisper
     </p>
     <h1 style="font-size:23px;font-weight:700;color:${S.title};margin:0 0 6px;">
-      你的完整星盤深度解析
+      你的完整星盤人格解析
     </h1>
     <p style="font-size:13px;line-height:1.7;color:${S.textDim};margin:0 0 4px;">
-      包含三重星座、完整星盤資料、感情模式、人際盲點、職涯天賦與行動建議。
+      包含太陽、月亮、上升、金星四核心、完整星盤資料、感情模式、人際盲點、職涯天賦與行動建議。
     </p>
     <p style="font-size:12px;color:${S.textFaint};margin:0 0 18px;">${dateStr}</p>
 
@@ -293,7 +293,7 @@ function buildAstroEmailHtml(payload: AstroEmailPayload, dateStr: string, siteUr
 
     <div class="card" style="margin-top:18px;padding:15px 18px;background:${S.cardBg};border:1px solid ${S.cardBorder};border-radius:12px;break-inside:avoid;page-break-inside:avoid;">
       <p style="font-size:13.5px;line-height:1.85;color:${S.text};margin:0;">
-        這封信就是你的完整星盤深度解析保存版，建議妥善保存。
+        這封信就是你的完整星盤人格解析保存版，建議妥善保存。
       </p>
       <p style="font-size:13px;line-height:1.85;color:${S.textDim};margin:8px 0 0;">
         若想再次使用 Universe Whisper，可回到官網重新測算。
@@ -333,8 +333,8 @@ function buildAstroEmailText(payload: AstroEmailPayload, dateStr: string, siteUr
   };
   const lines = [
     "宇宙偷偷話 · Universe Whisper",
-    `你的完整星盤深度解析 | ${dateStr}`,
-    "包含三重星座、完整星盤資料、感情模式、人際盲點、職涯天賦與行動建議。",
+    `你的完整星盤人格解析 | ${dateStr}`,
+    "包含太陽、月亮、上升、金星四核心、完整星盤資料、感情模式、人際盲點、職涯天賦與行動建議。",
     "", D, "", "【星盤摘要】",
     `☀ 太陽：${sym(sunSign)}${sunSign ?? "未知"}`,
     `🌙 月亮：${moonSign ? `${sym(moonSign)}${moonSign}` : "尚未提供"}`,
@@ -399,7 +399,7 @@ function buildAstroEmailText(payload: AstroEmailPayload, dateStr: string, siteUr
 
   lines.push(
     "", D, "",
-    "這封信就是你的完整星盤深度解析保存版，建議妥善保存。",
+    "這封信就是你的完整星盤人格解析保存版，建議妥善保存。",
     "若想再次使用 Universe Whisper，可回到官網重新測算：",
     `${siteUrl}/astro-profile`,
     "",
@@ -450,7 +450,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         from:    emailFrom,
         to:      [email],
-        subject: "宇宙偷偷話｜你的完整星盤深度解析",
+        subject: "宇宙偷偷話｜你的完整星盤人格解析",
         html,
         text,
       }),

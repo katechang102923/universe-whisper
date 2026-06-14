@@ -94,7 +94,7 @@ export function buildLineAstroProfileMessage(data: AstroProfileClaimData): strin
   const parts: string[] = [];
 
   if (isPaid) {
-    parts.push("✨ 你的完整星盤深度解析已保存");
+    parts.push("✨ 你的完整星盤人格解析已保存");
     parts.push("Universe Whisper");
     parts.push(DIVIDER);
     parts.push("");
@@ -119,45 +119,39 @@ export function buildLineAstroProfileMessage(data: AstroProfileClaimData): strin
     parts.push("完整星盤資料表、宮位解析、金星感情模式、水星到冥王星深度解析、職涯天賦、人際盲點與行動建議，都收錄在你當次的網頁結果與 Email 完整版裡。");
     parts.push("");
 
-    parts.push("【回到三重星座頁面】");
+    parts.push("【回到星座解析頁面】");
     parts.push(ASTRO_PROFILE_URL);
     parts.push("此 LINE 訊息為精簡摘要，完整內容請以當次網頁結果或 Email 完整版保存。");
     parts.push("Email 版會寄出完整報告，較適合長期保存。");
     parts.push("");
 
     parts.push("【保存提醒】");
-    parts.push("這則 LINE 是精簡摘要版，方便你隨手保存重點；NT$149 完整星盤深度解析的完整內容，請以 Email 完整版為準。");
+    parts.push("這則 LINE 是精簡摘要版，方便你隨手保存重點；NT$149 完整星盤人格解析的完整內容，請以 Email 完整版為準。");
   } else {
-    parts.push("🌙 你的免費三重星座解析已保存");
+    parts.push("🌙 你的免費四核心星座解析已保存");
     parts.push("Universe Whisper");
     parts.push(DIVIDER);
     parts.push("");
 
-    parts.push("【三重星座】");
+    parts.push("【四核心星座】");
     if (data.sunSign) parts.push(`☀ 太陽：${data.sunSign}`);
     if (data.moonSign) parts.push(`🌙 月亮：${data.moonSign}`);
     if (data.risingSign) parts.push(`⬆ 上升：${data.risingSign}`);
+    if (data.venusSign) parts.push(`♀ 金星：${data.venusSign}`);
     parts.push("");
 
-    const outlineLead = buildOutlineLead(data, false);
+    const outlineLead = buildOutlineLead(data, true);
     const overall = sliceText(clean(data.overallSummary || data.shortSummary), 100);
     const outline = sliceText([outlineLead, overall].filter(Boolean).join(" ").trim(), 160);
     if (outline) {
-      parts.push("【你的三重星座輪廓】");
+      parts.push("【你的核心輪廓】");
       parts.push(outline);
       parts.push("");
     }
 
-    if (data.venusSign) {
-      parts.push("【金星延伸參考】");
-      parts.push(`♀ 金星：${data.venusSign}`);
-      parts.push("完整感情模式會在 NT$149 完整星盤深度解析中展開。");
-      parts.push("");
-    }
-
-    parts.push("【回到三重星座頁面】");
+    parts.push("【回到星座解析頁面】");
     parts.push(ASTRO_PROFILE_URL);
-    parts.push("此 LINE 訊息為精簡摘要；想要完整星盤深度解析，可在頁面升級 NT$149 完整版。");
+    parts.push("此 LINE 訊息為精簡摘要；想要完整星盤人格解析，可在頁面升級 NT$149 完整版。");
   }
 
   parts.push("");
