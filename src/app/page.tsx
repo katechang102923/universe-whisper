@@ -85,6 +85,13 @@ export default function Home() {
               >
                 抽三張看完整脈絡
               </Link>
+              {/* 三重星座入口（金邊外框，與抽牌按鈕區分；導向 /astro-profile，不開新視窗） */}
+              <Link
+                href="/astro-profile"
+                className="inline-flex min-h-[52px] w-full max-w-[360px] items-center justify-center rounded-full border border-[#d8bd70]/45 bg-[#d8bd70]/10 px-6 text-sm font-semibold text-[#d8bd70] transition hover:-translate-y-0.5 hover:bg-[#d8bd70]/20 hover:shadow-[0_0_22px_rgba(216,189,112,0.28)] active:scale-[0.98] sm:w-auto"
+              >
+                免費算三重星座 ✨
+              </Link>
             </div>
 
             {/* LINE 輔助文字 */}
@@ -98,7 +105,7 @@ export default function Home() {
               >
                 LINE
               </a>
-              ；每日免費也能看完整訊息，想再問更多問題可選擇加抽。
+              ；每日免費也能看完整訊息，想再問更多問題可選擇加抽。也可以免費查看你的太陽、月亮與上升星座輪廓。
             </p>
           </div>
 
