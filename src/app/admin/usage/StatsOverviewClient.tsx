@@ -38,6 +38,7 @@ type DayResult = { date: string; isToday: boolean; status?: DayStatus; missingSn
 
 type Totals = {
   visitors: number;
+  pageViews: number;
   tarotDrawSuccess: number;
   tarotSingleSuccess: number;
   tarotThreeSuccess: number;
@@ -109,20 +110,20 @@ type StatsResponse = {
 };
 type StatsApiResponse = StatsResponse | { ok: false; error?: string };
 
-/** 依資料來源與快照狀態組出顯示用標籤 */
+/** 依資料來源與狀態組出白話的顯示標籤 */
 function sourceLabel(dataSource?: DataSource, snapshotState?: SnapshotState): string {
-  if (dataSource === "raw") return "手動原始事件重算";
-  if (snapshotState === "missing") return "快照缺失";
-  if (snapshotState === "empty") return "快照為空";
-  return "快照資料";
+  if (dataSource === "raw") return "已手動重新計算原始資料";
+  if (snapshotState === "missing") return "此日期尚未產生統計";
+  if (snapshotState === "empty") return "此日期統計為 0";
+  return "已讀取昨日統計快照";
 }
 
 function dayStatusLabel(status: DayStatus | undefined, isToday: boolean): { text: string; cls: string } {
   if (status === "raw") return { text: "原始重算", cls: "text-lavender/80" };
-  if (status === "data") return { text: "快照資料", cls: "text-aurora/80" };
-  if (status === "empty") return { text: "快照為空", cls: "text-amber-300/80" };
+  if (status === "data") return { text: "已產生統計", cls: "text-aurora/80" };
+  if (status === "empty") return { text: "統計為 0", cls: "text-amber-300/80" };
   if (isToday) return { text: "今日未產出", cls: "text-amber-300" };
-  return { text: "快照缺失", cls: "text-moon/40" };
+  return { text: "尚未產生統計", cls: "text-moon/40" };
 }
 
 function fmtCount(value: number | null | undefined): string {
@@ -288,53 +289,53 @@ function DayTable({ days }: { days: DayResult[] }) {
   );
 }
 
-function DiagRow({ label, value }: { label: string; value: string | number }) {
+function DiagRow({ label, hint, value }: { label: string; hint?: string; value: string | number }) {
   return (
     <div className="flex items-center justify-between gap-3 border-b border-white/6 py-1.5 last:border-b-0">
-      <span className="text-moon/50">{label}</span>
+      <span className="text-moon/50">
+        {label}
+        {hint ? <span className="ml-1 text-[10px] text-moon/30">（{hint}）</span> : null}
+      </span>
       <span className="font-medium text-moon/80">{value}</span>
     </div>
   );
 }
 
-/** 小型診斷區：資料來源、各 collection 筆數、管理員/一般/測試事件數、是否不一致 */
-function DiagnosticsPanel({ diag, granular }: { diag: Diagnostics; granular?: Granular }) {
+/** 工程診斷資料（預設收合，排查時才看）：原始資料表筆數與事件來源細項 */
+function DiagnosticsPanel({ diag }: { diag: Diagnostics }) {
   return (
-    <Panel title="診斷 / 資料來源" subtitle="預設快照優先；原始事件需手動重算。以下為本次查詢的資料來源與筆數">
-      <div className="grid gap-x-6 gap-y-0 text-xs sm:grid-cols-2">
+    <details className="group rounded-3xl border border-white/10 bg-midnight/70 p-4 shadow-[0_18px_60px_rgba(0,0,0,0.2)] sm:p-5">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-[0.24em] text-moon/45">工程診斷資料（排查時才看）</p>
+          <p className="mt-1 text-xs text-moon/40">一般檢視不需要展開；數字看起來怪怪的時候再打開核對。</p>
+        </div>
+        <span className="shrink-0 rounded-full border border-white/12 px-3 py-1 text-xs text-moon/50 transition group-open:bg-white/8">
+          展開 / 收合
+        </span>
+      </summary>
+
+      <div className="mt-4 grid gap-x-6 gap-y-0 text-xs sm:grid-cols-2">
         <DiagRow label="查詢區間" value={`${diag.start} ～ ${diag.end}（${diag.days} 天）`} />
         <DiagRow label="資料來源" value={sourceLabel(diag.dataSource, diag.snapshotState)} />
-        <DiagRow label="可手動原始重算" value={diag.rawRecomputable ? "可（≤ 31 天）" : "否（區間過長）"} />
-        <DiagRow label="本次是否即時掃描原始事件" value={diag.mode === "raw" ? "是（手動重算）" : "否（僅讀快照）"} />
-        <DiagRow label="analytics_events 筆數" value={fmtCount(diag.counts.analyticsEvents)} />
-        <DiagRow label="triple_zodiac_events 筆數" value={fmtCount(diag.counts.tripleZodiacEvents)} />
-        <DiagRow label="paymentOrders 筆數" value={fmtCount(diag.counts.paymentOrders)} />
-        <DiagRow label="astroProfileOrders 筆數" value={fmtCount(diag.counts.astroProfileOrders)} />
-        <DiagRow label="rate_limits 筆數" value={fmtCount(diag.counts.rateLimits)} />
-        <DiagRow label="daily_admin_stats 筆數" value={fmtCount(diag.counts.dailyAdminStats)} />
-        <DiagRow label="share_image_downloads 筆數" value={fmtCount(diag.counts.shareImageDownloads)} />
+        <DiagRow label="本次是否即時掃描原始資料" value={diag.mode === "raw" ? "是（手動重新計算）" : "否（僅讀每日統計）"} />
+        <DiagRow label="是否可手動重新計算" value={diag.rawRecomputable ? "可（最多 31 天）" : "否（區間過長）"} />
+        <DiagRow label="網站瀏覽事件筆數" hint="analytics_events" value={fmtCount(diag.counts.analyticsEvents)} />
+        <DiagRow label="三重星座事件筆數" hint="triple_zodiac_events" value={fmtCount(diag.counts.tripleZodiacEvents)} />
+        <DiagRow label="塔羅付費訂單筆數" hint="paymentOrders" value={fmtCount(diag.counts.paymentOrders)} />
+        <DiagRow label="三重星座付費訂單筆數" hint="astroProfileOrders" value={fmtCount(diag.counts.astroProfileOrders)} />
+        <DiagRow label="免費使用紀錄筆數" hint="rate_limits" value={fmtCount(diag.counts.rateLimits)} />
+        <DiagRow label="每日統計快照筆數" hint="daily_admin_stats" value={fmtCount(diag.counts.dailyAdminStats)} />
+        <DiagRow label="限動圖下載紀錄筆數" hint="share_image_downloads" value={fmtCount(diag.counts.shareImageDownloads)} />
         <DiagRow label="一般使用者事件數" value={fmtCount(diag.normalEventCount)} />
         <DiagRow label="管理員事件數" value={fmtCount(diag.adminEventCount)} />
         <DiagRow label="測試事件數" value={fmtCount(diag.testEventCount)} />
         <DiagRow label="全部事件數" value={fmtCount(diag.allEventCount)} />
       </div>
 
-      {granular ? (
-        <div className="mt-4 grid gap-x-6 gap-y-0 text-xs sm:grid-cols-2">
-          <DiagRow label="LINE 傳送（塔羅）" value={fmtCount(granular.tarotLineSent)} />
-          <DiagRow label="LINE 傳送（三重星座）" value={fmtCount(granular.astroProfileLineSent)} />
-          <DiagRow label="LINE 傳送（合計）" value={fmtCount(granular.lineSentTotal)} />
-          <DiagRow label="Email 傳送（三重星座）" value={fmtCount(granular.astroProfileEmailSent)} />
-          <DiagRow label="Email 傳送（塔羅）" value={`${fmtCount(granular.tarotEmailSent)}（無事件來源）`} />
-          <DiagRow label="限動下載（塔羅）" value={fmtCount(granular.tarotStoryDownloaded)} />
-          <DiagRow label="限動下載（三重星座）" value={fmtCount(granular.astroProfileStoryDownloaded)} />
-          <DiagRow label="三重星座開始填寫" value={fmtCount(granular.astroProfileStarted)} />
-        </div>
-      ) : null}
-
       {diag.truncated.length ? (
         <p className="mt-3 rounded-xl border border-amber-400/25 bg-amber-400/8 px-4 py-2 text-xs text-amber-200">
-          以下 collection 達讀取上限、數字可能被截斷：{diag.truncated.join("、")}
+          以下資料表達讀取上限、數字可能被截斷：{diag.truncated.join("、")}
         </p>
       ) : null}
 
@@ -345,7 +346,7 @@ function DiagnosticsPanel({ diag, granular }: { diag: Diagnostics; granular?: Gr
           ))}
         </ul>
       ) : null}
-    </Panel>
+    </details>
   );
 }
 
@@ -445,10 +446,10 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
       {/* 說明 + 查詢區 */}
       <section className="rounded-3xl border border-white/10 bg-midnight/72 p-4 sm:p-5">
         <div>
-          <p className="text-xs uppercase tracking-[0.24em] text-lavender/70">Admin Statistics Snapshot</p>
-          <h2 className="mt-1 text-xl font-semibold text-moon">後台統計快照</h2>
+          <p className="text-xs uppercase tracking-[0.24em] text-lavender/70">USAGE OVERVIEW</p>
+          <h2 className="mt-1 text-xl font-semibold text-moon">後台使用統計</h2>
           <p className="mt-1 text-xs leading-6 text-moon/48">
-            每日 00:05 產出前一日完整快照；預設顯示昨日，僅讀快照。原始事件需手動重算（最多 31 天）。
+            後台預設顯示昨日完整統計，避免每次開啟都大量讀取 Firebase。若你覺得數字不對，可按「手動重新計算」檢查原始資料。
           </p>
         </div>
 
@@ -531,14 +532,14 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
             disabled={!recomputeAllowed}
             className="rounded-full border border-lavender/35 bg-lavender/10 px-5 py-2 text-xs font-semibold text-lavender transition hover:bg-lavender/20 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading ? "重算中..." : "手動用原始事件重算"}
+            {loading ? "重新計算中..." : "手動重新計算"}
           </button>
           <span className="text-xs text-moon/40">
             {queried
               ? recomputeDays > 31
-                ? "目前區間超過 31 天，無法手動重算（請縮短區間）"
-                : "改以原始事件即時計算本區間（read-only，不寫回快照）"
-              : "先查詢一個區間後即可重算"}
+                ? "目前區間超過 31 天，無法手動重新計算（請縮短區間）"
+                : "改用原始資料重新計算本區間（只顯示、不會覆蓋每日統計）"
+              : "先查詢一個區間後即可重新計算"}
           </span>
         </div>
       </section>
@@ -584,14 +585,14 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
           ) : null}
 
           <Panel
-            title="1. 查詢區間摘要"
-            subtitle={`${data.start} ～ ${data.end}（共 ${data.days.length} 天，讀取 ${data.snapshotsRead ?? data.days.length} 筆快照）`}
+            title="1. 總覽"
+            subtitle={`${data.start} ～ ${data.end}（共 ${data.days.length} 天）`}
           >
             <SummaryCards
               cards={[
-                { label: "訪客", value: data.totals.visitors },
-                { label: "完成抽牌", value: data.totals.tarotDrawSuccess },
-                { label: "免費成功", value: data.totals.freeSuccess },
+                { label: "訪客數", value: data.totals.visitors },
+                { label: "頁面瀏覽數", value: data.totals.pageViews },
+                { label: "免費使用成功", value: data.totals.freeSuccess + data.totals.astroProfileFreeSuccess },
                 { label: "付費成功", value: data.totals.paidSuccess, highlight: data.totals.paidSuccess > 0 },
                 { label: "收入", value: formatMoney(data.totals.revenue), highlight: data.totals.revenue > 0 },
               ]}
@@ -603,24 +604,40 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
             </div>
             {data.totals.visitors === 0 && (data.totals.paidSuccess > 0 || data.totals.revenue > 0) ? (
               <p className="mt-3 rounded-2xl border border-white/10 bg-midnight/50 px-4 py-3 text-xs leading-6 text-moon/55">
-                此日期舊版可能未記錄訪客事件，因此訪客可能無法回補；付款與收入已依訂單回補。
+                此日期較舊、可能未記錄訪客資料，因此訪客數無法回補；付款與收入仍以訂單為準。
               </p>
             ) : null}
           </Panel>
 
-          <Panel title="2. 三重星座（查詢區間）" subtitle="頁面瀏覽｜成功產出｜免費成功｜付費成功｜收入">
+          <Panel title="2. 塔羅牌" subtitle="單張 / 三張完成、免費解鎖、付費成功、LINE 傳送、限動圖下載">
             <SummaryCards
               cards={[
-                { label: "頁面瀏覽", value: data.totals.astroProfilePageViews },
-                { label: "成功產出", value: data.totals.astroProfileSuccess },
-                { label: "免費成功", value: data.totals.astroProfileFreeSuccess },
-                { label: "付費成功", value: data.totals.astroProfilePaidSuccess, highlight: data.totals.astroProfilePaidSuccess > 0 },
-                { label: "收入", value: formatMoney(data.totals.astroProfileRevenue), highlight: data.totals.astroProfileRevenue > 0 },
+                { label: "單張牌完成", value: data.totals.tarotSingleSuccess },
+                { label: "三張牌完成", value: data.totals.tarotThreeSuccess },
+                { label: "塔羅免費解鎖", value: data.totals.freeSuccess },
+                { label: "塔羅付費成功", value: Math.max(0, data.totals.paidSuccess - data.totals.astroProfilePaidSuccess), highlight: data.totals.paidSuccess - data.totals.astroProfilePaidSuccess > 0 },
+                { label: "塔羅 LINE 傳送", value: data.granular?.tarotLineSent ?? 0 },
+                { label: "塔羅限動圖下載", value: data.granular?.tarotStoryDownloaded ?? 0 },
               ]}
             />
           </Panel>
 
-          <Panel title="3. 每日明細" subtitle="每天一筆 daily_admin_stats；無快照或今日會標示狀態">
+          <Panel title="3. 三重星座" subtitle="頁面瀏覽、開始填寫、成功產出、免費 / 付費成功、LINE / Email 傳送、限動圖下載">
+            <SummaryCards
+              cards={[
+                { label: "頁面瀏覽", value: data.totals.astroProfilePageViews },
+                { label: "開始填寫", value: data.granular?.astroProfileStarted ?? 0 },
+                { label: "成功產出", value: data.totals.astroProfileSuccess },
+                { label: "免費成功", value: data.totals.astroProfileFreeSuccess },
+                { label: "付費成功", value: data.totals.astroProfilePaidSuccess, highlight: data.totals.astroProfilePaidSuccess > 0 },
+                { label: "LINE 傳送", value: data.granular?.astroProfileLineSent ?? 0 },
+                { label: "Email 傳送", value: data.granular?.astroProfileEmailSent ?? 0 },
+                { label: "限動圖下載", value: data.granular?.astroProfileStoryDownloaded ?? 0 },
+              ]}
+            />
+          </Panel>
+
+          <Panel title="4. 每日明細" subtitle="每天一列；尚未產生統計或今日會在狀態欄標示">
             {days.length ? <DayTable days={days} /> : <EmptyBox text="此區間沒有任何日期" />}
             {days.some((d) => d.isToday && d.missingSnapshot) ? (
               <p className="mt-3 rounded-2xl border border-amber-400/30 bg-amber-400/8 px-4 py-3 text-xs text-amber-200">{TODAY_NOTICE}</p>
@@ -632,19 +649,19 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
 
           {singleDayMetrics ? (
             <>
-              <Panel title="4. 訪客來源" subtitle={singleDayMetrics.date}>
+              <Panel title="5. 訪客來源" subtitle={singleDayMetrics.date}>
                 <BreakdownTable rows={singleDayMetrics.sourceStats} countLabel="訪客" />
               </Panel>
-              <Panel title="5. 熱門功能排行" subtitle={singleDayMetrics.date}>
+              <Panel title="6. 熱門功能排行" subtitle={singleDayMetrics.date}>
                 <BreakdownTable rows={singleDayMetrics.popularFeatureStats} countLabel="瀏覽次數" />
               </Panel>
-              <Panel title="6. 付費來源排行" subtitle={singleDayMetrics.date}>
+              <Panel title="7. 付費來源排行" subtitle={singleDayMetrics.date}>
                 <PaymentTable rows={singleDayMetrics.paymentSourceStats} />
               </Panel>
             </>
           ) : null}
 
-          {data.diagnostics ? <DiagnosticsPanel diag={data.diagnostics} granular={data.granular} /> : null}
+          {data.diagnostics ? <DiagnosticsPanel diag={data.diagnostics} /> : null}
         </>
       ) : null}
     </div>
