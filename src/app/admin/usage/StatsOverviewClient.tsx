@@ -90,6 +90,8 @@ type StatsApiResponse = StatsResponse | { ok: false; error?: string };
 interface UsageOverviewProps {
   today: string;
   fetchError: boolean;
+  /** 預設收件 Email（管理員），可為空字串 */
+  defaultEmail?: string;
 }
 
 const MAX_RANGE_DAYS = 31;
@@ -328,8 +330,18 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
   const [error, setError] = useState("");
   const [hasQueried, setHasQueried] = useState(false);
 
+  // 保存 / Email 備份（僅後台管理員）
+  const [email, setEmail] = useState(props.defaultEmail ?? "");
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [saveMsg, setSaveMsg] = useState("");
+  const [emailStatus, setEmailStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [emailMsg, setEmailMsg] = useState("");
+
   const runQuery = useCallback(async (start: string, end: string) => {
     setError("");
+    // 每次新查詢都重置保存 / 寄送狀態
+    setSaveStatus("idle"); setSaveMsg("");
+    setEmailStatus("idle"); setEmailMsg("");
     const lo = start <= end ? start : end;
     const hi = start <= end ? end : start;
 
@@ -395,6 +407,90 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
       .map(([label, r]) => ({ label, count: r.count, ratio: total ? `${Math.round((r.count / total) * 1000) / 10}%` : "0%", revenue: r.revenue }))
       .sort((a, b) => b.count - a.count);
   })();
+
+  // 組裝保存 / Email 用的統計結果（與畫面一致）
+  const buildStatsResult = () => ({
+    totals: data?.totals,
+    days: withMetrics.map((m) => ({
+      date: m.date,
+      visitors: m.visitors,
+      pageViews: m.pageViews,
+      tarotSingleSuccess: m.tarotSingleSuccess,
+      tarotThreeSuccess: m.tarotThreeSuccess,
+      astroProfileSuccess: m.astroProfileSuccess,
+      paidAttempts: m.paidAttempts,
+      paidSuccess: m.paidSuccess,
+      revenue: m.revenue,
+    })),
+    featureRanking: mergedFeatures.map((r) => ({ label: r.label, count: r.count })),
+  });
+
+  async function handleSave() {
+    if (!data || !data.days) return;
+    setSaveStatus("saving");
+    setSaveMsg("");
+    try {
+      const res = await fetch("/api/admin/stats/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          start: data.start,
+          end: data.end,
+          source: data.source ?? "raw_events",
+          statsResult: buildStatsResult(),
+          diagnostics: data.diagnostics ?? null,
+        }),
+      });
+      const json = await readJsonResponse<{ ok: boolean }>(res, { ok: false });
+      if (json.ok) {
+        setSaveStatus("saved");
+        setSaveMsg("已保存本次統計結果。");
+      } else {
+        setSaveStatus("error");
+        setSaveMsg("保存失敗，請稍後再試。");
+      }
+    } catch {
+      setSaveStatus("error");
+      setSaveMsg("保存失敗，請稍後再試。");
+    }
+  }
+
+  async function handleSendEmail() {
+    if (!data || !data.days) return;
+    const to = email.trim();
+    if (!to) {
+      setEmailStatus("error");
+      setEmailMsg("請輸入收件 Email。");
+      return;
+    }
+    setEmailStatus("sending");
+    setEmailMsg("");
+    try {
+      const res = await fetch("/api/admin/stats/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: to,
+          dateFrom: data.start,
+          dateTo: data.end,
+          source: saveStatus === "saved" ? "manual_cache" : "raw_events",
+          statsResult: buildStatsResult(),
+          diagnostics: data.diagnostics ?? {},
+        }),
+      });
+      const json = await readJsonResponse<{ ok: boolean; message?: string }>(res, { ok: false });
+      if (json.ok) {
+        setEmailStatus("sent");
+        setEmailMsg(`Email 已寄出至 ${to}`);
+      } else {
+        setEmailStatus("error");
+        setEmailMsg(json.message ?? "Email 寄送失敗，請稍後再試。");
+      }
+    } catch {
+      setEmailStatus("error");
+      setEmailMsg("Email 寄送失敗，請稍後再試。");
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -507,6 +603,54 @@ export function StatsOverviewClient(props: UsageOverviewProps) {
 
       {!loading && data && data.days ? (
         <>
+          {/* 保存 + Email 備份（僅後台管理員，手動觸發，不自動寄送） */}
+          <section className="rounded-3xl border border-[#d8bd70]/25 bg-[#d8bd70]/6 p-4 sm:p-5">
+            <p className="text-xs uppercase tracking-[0.24em] text-[#d8bd70]/70">保存與 Email 備份</p>
+            <p className="mt-1 text-sm text-moon/55">
+              {saveStatus === "saved"
+                ? "已保存本次統計，可寄送已保存統計到 Email。"
+                : "可保存本次統計結果，或寄送到 Email 備份。寄送需手動點擊，不會自動寄出。"}
+            </p>
+            <div className="mt-4 flex flex-wrap items-end gap-3">
+              <label className="text-sm text-moon/60">
+                <span className="mb-1 block text-xs text-moon/45">收件 Email</span>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => { setEmail(e.target.value); if (emailMsg) setEmailMsg(""); }}
+                  placeholder="輸入收件 Email"
+                  className="w-72 max-w-full rounded-xl border border-white/12 bg-midnight/60 px-3 py-2 text-moon"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => void handleSave()}
+                disabled={saveStatus === "saving"}
+                className="rounded-full border border-white/15 bg-white/8 px-5 py-2.5 text-sm font-medium text-moon transition hover:bg-white/14 disabled:opacity-60"
+              >
+                {saveStatus === "saving" ? "保存中..." : saveStatus === "saved" ? "✓ 已保存統計" : "保存本次統計結果"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSendEmail()}
+                disabled={emailStatus === "sending"}
+                className="rounded-full border border-[#d8bd70]/35 bg-[#d8bd70] px-5 py-2.5 text-sm font-semibold text-midnight transition hover:bg-moon disabled:cursor-wait disabled:opacity-70"
+              >
+                {emailStatus === "sending"
+                  ? "寄送中..."
+                  : saveStatus === "saved"
+                    ? "寄送已保存統計到 Email"
+                    : "寄送統計到 Email"}
+              </button>
+            </div>
+            {saveMsg ? (
+              <p className={`mt-2 text-xs ${saveStatus === "error" ? "text-red-300" : "text-aurora"}`}>{saveMsg}</p>
+            ) : null}
+            {emailMsg ? (
+              <p className={`mt-1 text-xs ${emailStatus === "error" ? "text-red-300" : "text-aurora"}`}>{emailMsg}</p>
+            ) : null}
+          </section>
+
           <Panel
             title="1. 查詢區間摘要"
             subtitle={`${data.start} ～ ${data.end}（共 ${data.days.length} 天 · 原始資料計算）`}

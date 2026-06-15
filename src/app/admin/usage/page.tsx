@@ -314,14 +314,17 @@ function serializeCodes(codes: RedeemCodeData[]): SerializableRedeemCode[] {
 function OverviewTab({
   today,
   fetchError,
+  defaultEmail,
 }: {
-  today:       string;
-  fetchError:    boolean;
+  today:        string;
+  fetchError:   boolean;
+  defaultEmail: string;
 }) {
   return (
     <StatsOverviewClient
       today={today}
       fetchError={fetchError}
+      defaultEmail={defaultEmail}
     />
   );
 }
@@ -571,6 +574,7 @@ export default async function AdminUsagePage({
             <OverviewTab
               today={today}
               fetchError={fetchError}
+              defaultEmail={sessionCheck.email ?? getAdminEmailList()[0] ?? ""}
             />
           )}
 
