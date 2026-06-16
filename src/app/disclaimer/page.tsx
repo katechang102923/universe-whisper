@@ -5,6 +5,7 @@ import { PageNavActions } from "@/components/PageNavActions";
 export const metadata: Metadata = {
   title: "娛樂聲明",
   description: "宇宙偷偷話內容僅供娛樂、自我探索與心靈陪伴參考，不構成專業建議。",
+  alternates: { canonical: "/disclaimer" },
   openGraph: {
     title: "娛樂聲明 | 宇宙偷偷話 Universe Whisper",
     description: "宇宙偷偷話內容僅供娛樂、自我探索與心靈陪伴參考，不構成專業建議。",

@@ -13,8 +13,14 @@ export const metadata: Metadata = {
     siteName: "宇宙偷偷話 Universe Whisper",
     title: "宇宙偷偷話 Universe Whisper",
     description: "療癒系星座、塔羅牌與宇宙訊息網站，陪你以溫柔方式探索內在感受。",
+    url: "https://universe-whisper.vercel.app/",
     type: "website",
     locale: "zh_TW",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "宇宙偷偷話 Universe Whisper",
+    description: "療癒系星座、塔羅牌與宇宙訊息網站，陪你以溫柔方式探索內在感受。",
   },
 };
 

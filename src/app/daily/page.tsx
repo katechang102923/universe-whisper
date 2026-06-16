@@ -6,6 +6,7 @@ import { DailyFortuneClient } from "./DailyFortuneClient";
 export const metadata: Metadata = {
   title: "今日星座運勢",
   description: "選擇你的星座，查看今日愛情、工作、財運、人際運勢，每天一組全新預測。",
+  alternates: { canonical: "/daily" },
   openGraph: {
     title: "今日星座運勢 | 宇宙偷偷話 Universe Whisper",
     description: "選擇你的星座，查看今日愛情、工作、財運、人際運勢，每天一組全新預測。",

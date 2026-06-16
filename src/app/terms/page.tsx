@@ -5,6 +5,7 @@ import { PageNavActions } from "@/components/PageNavActions";
 export const metadata: Metadata = {
   title: "服務條款",
   description: "使用宇宙偷偷話前，請閱讀服務範圍、付費規則、付款授權、退款政策與免責聲明。",
+  alternates: { canonical: "/terms" },
   openGraph: {
     title: "服務條款 | 宇宙偷偷話 Universe Whisper",
     description: "宇宙偷偷話服務範圍、付費規則、付款授權、退款政策與系統異常處理說明。",

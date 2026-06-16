@@ -5,6 +5,7 @@ import { TarotModeClient } from "./TarotModeClient";
 export const metadata: Metadata = {
   title: "塔羅抽牌",
   description: "抽一張或三張塔羅牌，讓宇宙給你溫柔而直接的回應，作為娛樂與自我探索參考。",
+  alternates: { canonical: "/tarot" },
   openGraph: {
     title: "塔羅抽牌 | 宇宙偷偷話 Universe Whisper",
     description: "抽一張或三張塔羅牌，讓宇宙透過牌面給你一個溫柔的提醒。",
