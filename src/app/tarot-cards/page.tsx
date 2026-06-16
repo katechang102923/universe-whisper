@@ -7,6 +7,7 @@ import { TarotCardsClient } from "./TarotCardsClient";
 export const metadata: Metadata = {
   title: "塔羅牌介紹",
   description: "認識大阿爾克那、小阿爾克那、四元素牌組、正位逆位與三張牌解讀方式。",
+  alternates: { canonical: "/tarot-cards" },
   openGraph: {
     title: "塔羅牌介紹 | 宇宙偷偷話 Universe Whisper",
     description: "認識塔羅牌結構、四元素牌組、常見牌義與娛樂自我探索聲明。",

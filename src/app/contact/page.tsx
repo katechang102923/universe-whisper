@@ -6,6 +6,7 @@ import { PageNavActions } from "@/components/PageNavActions";
 export const metadata: Metadata = {
   title: "聯絡我們",
   description: "如有合作、隱私權或服務相關需求，歡迎聯絡宇宙偷偷話 Universe Whisper。",
+  alternates: { canonical: "/contact" },
   openGraph: {
     title: "聯絡我們 | 宇宙偷偷話 Universe Whisper",
     description: "宇宙偷偷話 Universe Whisper 聯絡資訊。",

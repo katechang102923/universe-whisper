@@ -5,6 +5,7 @@ import { PageNavActions } from "@/components/PageNavActions";
 export const metadata: Metadata = {
   title: "隱私政策",
   description: "了解宇宙偷偷話可能收集的資料、使用目的與使用者權利。",
+  alternates: { canonical: "/privacy" },
   openGraph: {
     title: "隱私政策 | 宇宙偷偷話 Universe Whisper",
     description: "了解宇宙偷偷話的資料收集、使用目的與使用者權利。",

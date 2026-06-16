@@ -5,6 +5,7 @@ import { PageNavActions } from "@/components/PageNavActions";
 export const metadata: Metadata = {
   title: "付款說明 | Universe Whisper 宇宙塔羅",
   description: "Universe Whisper 宇宙塔羅解讀服務付款方案、交付方式、系統異常與客服資訊。",
+  alternates: { canonical: "/payment-info" },
   openGraph: {
     title: "付款說明 | Universe Whisper 宇宙偷偷話",
     description: "Universe Whisper 宇宙塔羅解讀服務付款方案、交付方式、系統異常與客服資訊。",

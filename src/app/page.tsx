@@ -5,11 +5,32 @@ import { AppShell } from "@/components/AppShell";
 import { FeatureCard } from "@/components/FeatureCard";
 
 export const metadata: Metadata = {
-  title: "宇宙偷偷話 Universe Whisper",
-  description: "每天免費抽一張塔羅牌，不用登入、不用付款，30 秒看見今天的提醒。感情、工作、財運、生活都可以問。",
+  title: { absolute: "宇宙偷偷話｜免費塔羅抽牌、每日運勢與四核心星座" },
+  description:
+    "宇宙偷偷話提供每日免費塔羅抽牌、三張牌占卜、今日星座運勢與四核心星座解析。感情、工作、財運、生活問題，都可以抽一張牌看方向。",
+  keywords: [
+    "宇宙偷偷話",
+    "免費塔羅",
+    "塔羅抽牌",
+    "每日塔羅",
+    "三張牌占卜",
+    "今日星座運勢",
+    "四核心星座",
+    "太陽星座",
+    "月亮星座",
+    "上升星座",
+    "金星星座",
+  ],
+  alternates: { canonical: "/" },
   openGraph: {
-    title: "宇宙偷偷話 Universe Whisper",
-    description: "每天免費抽一張塔羅牌，不用登入、不用付款，30 秒看見今天的提醒。感情、工作、財運、生活都可以問。",
+    title: "宇宙偷偷話｜免費塔羅抽牌、每日運勢與四核心星座",
+    description:
+      "每日免費抽一張塔羅牌，查看感情、工作、財運與生活方向，也可以查看今日星座運勢與四核心星座解析。",
+    url: "https://universe-whisper.vercel.app/",
+  },
+  twitter: {
+    title: "宇宙偷偷話｜免費塔羅抽牌、每日運勢與四核心星座",
+    description: "每日免費塔羅抽牌、三張牌占卜、今日星座運勢與四核心星座解析。",
   },
 };
 
@@ -31,11 +52,24 @@ const cosmicMessages = [
 
 const lineAddFriendUrl = "https://liff.line.me/2010215499-WrEJvUzE";
 
+const websiteJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: "宇宙偷偷話 Universe Whisper",
+  url: "https://universe-whisper.vercel.app/",
+  description: "免費塔羅抽牌、每日運勢與四核心星座解析網站。",
+  inLanguage: "zh-Hant",
+};
+
 export default function Home() {
   const todayMessage = cosmicMessages[new Date().getDate() % cosmicMessages.length];
 
   return (
     <AppShell>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }}
+      />
       {/* ── Hero ───────────────────────────────────────────────────── */}
       <section className="relative flex items-center py-5 sm:py-8 lg:py-10">
         {/* Floating star decorations */}
@@ -363,6 +397,13 @@ export default function Home() {
             }
           />
         </div>
+      </section>
+
+      {/* ── SEO 說明文字（給搜尋引擎理解網站用途，樣式低調）─────────────── */}
+      <section className="pb-12">
+        <p className="mx-auto max-w-3xl text-center text-xs leading-7 text-moon/45">
+          宇宙偷偷話是一個免費塔羅抽牌與星座解析網站。你可以每天免費抽一張塔羅牌，查看感情、工作、財運、生活方向，也可以查看今日星座運勢與四核心星座解析。
+        </p>
       </section>
     </AppShell>
   );
