@@ -399,6 +399,37 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ── 內部連結區塊：你可以從這裡開始 ─────────────────────────────── */}
+      <section className="pb-10 sm:pb-14">
+        <h2 className="mb-5 text-center text-lg font-semibold text-moon sm:text-left">
+          你可以從這裡開始
+        </h2>
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+          {[
+            { href: "/tarot", label: "免費塔羅抽牌", desc: "每日免費抽一張牌看方向" },
+            { href: "/tarot/love", label: "感情塔羅抽牌", desc: "為一段感情整理心情" },
+            { href: "/tarot/work", label: "工作塔羅抽牌", desc: "面對職場選擇與卡關" },
+            { href: "/tarot/money", label: "財運塔羅抽牌", desc: "覺察自己與金錢的關係" },
+            { href: "/tarot/three-card", label: "三張牌占卜", desc: "用三張牌看整體脈絡" },
+            { href: "/astro-profile", label: "四核心星座查詢", desc: "免費算太陽、月亮、上升與金星" },
+          ].map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="group flex items-center justify-between rounded-2xl border border-[#d8bd70]/24 bg-midnight/40 px-5 py-3.5 text-left transition hover:-translate-y-0.5 hover:border-[#d8bd70]/50 hover:bg-white/5 active:scale-[0.98]"
+            >
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-moon/88">{item.label}</span>
+                <span className="mt-0.5 block text-xs text-moon/50">{item.desc}</span>
+              </span>
+              <span className="ml-3 shrink-0 text-xs text-aurora/70 transition-transform group-hover:translate-x-1">
+                前往 →
+              </span>
+            </Link>
+          ))}
+        </div>
+      </section>
+
       {/* ── SEO 說明文字（給搜尋引擎理解網站用途，樣式低調）─────────────── */}
       <section className="pb-12">
         <p className="mx-auto max-w-3xl text-center text-xs leading-7 text-moon/45">
