@@ -382,7 +382,7 @@ export function AstroProfileClient() {
         <ChartDeco className="relative mx-auto mb-6 h-24 w-24 text-lavender/60 sm:h-28 sm:w-28" />
         <p className="relative text-xs uppercase tracking-[0.3em] text-aurora/70">免費四核心星座解析</p>
         <h1 className="relative mx-auto mt-3 max-w-xl text-[1.7rem] font-semibold leading-snug text-moon sm:text-4xl">
-          免費算出你的<span className="bg-gradient-to-r from-[#d8bd70] via-lavender to-aurora bg-clip-text text-transparent">四核心星座</span>
+          免費<span className="bg-gradient-to-r from-[#d8bd70] via-lavender to-aurora bg-clip-text text-transparent">四核心星座</span>查詢
         </h1>
         <p className="relative mx-auto mt-2 max-w-md text-sm leading-7 text-moon/70 sm:text-base">
           太陽 × 月亮 × 上升 × 金星

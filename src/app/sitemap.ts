@@ -7,7 +7,12 @@ const SITE_URL =
 const routes = [
   "", // 首頁
   "/tarot",
+  "/tarot/love",
+  "/tarot/work",
+  "/tarot/money",
+  "/tarot/three-card",
   "/astro-profile",
+  "/astrology/four-core",
   "/daily",
   "/tarot-cards",
   "/terms",

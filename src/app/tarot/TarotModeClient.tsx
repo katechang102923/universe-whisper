@@ -52,9 +52,9 @@ export function TarotModeClient({
           <p className="text-xs uppercase tracking-[0.32em] text-aurora/80">
             cosmic tarot · 星夜牌陣
           </p>
-          <h1 className="mt-3 text-4xl font-semibold text-moon sm:text-5xl">
+          <h2 className="mt-3 text-4xl font-semibold text-moon sm:text-5xl">
             {current.label}
-          </h1>
+          </h2>
           <div className="mt-1.5 h-px w-24 bg-gradient-to-r from-aurora/60 to-transparent" />
           <p className="mt-4 max-w-[400px] text-base leading-8 text-moon/72">
             {current.longDesc}
