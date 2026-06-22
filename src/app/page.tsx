@@ -79,11 +79,11 @@ export default function Home() {
         <span className="floating-star right-[8%] bottom-[28%] [animation-delay:3.6s]" />
 
         <div className="grid w-full items-center gap-6 lg:grid-cols-2 lg:gap-10">
-          {/* ── Left: headline + CTAs ─────────────────────────── */}
+          {/* ── Left: 品牌名稱 + 標語 + 簡短說明 ─────────────── */}
           <div className="text-center lg:text-left">
             {/* 小標籤列 */}
             <div className="flex flex-wrap items-center justify-center gap-2 lg:justify-start">
-              {["每日免費一次", "可存到 LINE", "免費也能看完整版"].map((tag) => (
+              {["每天免費一次", "可存到 LINE", "免費也能看完整版"].map((tag) => (
                 <span
                   key={tag}
                   className="rounded-full border border-[#d8bd70]/30 bg-[#d8bd70]/10 px-3 py-1 text-xs font-medium text-aurora/90"
@@ -93,43 +93,18 @@ export default function Home() {
               ))}
             </div>
 
-            <h1 className="mx-auto mt-4 max-w-[14em] text-[2.2rem] font-semibold leading-[1.16] text-moon drop-shadow-[0_0_22px_rgba(203,184,255,0.16)] sm:text-[2.7rem] lg:mx-0 lg:text-[3.2rem]">
-              現在最困住你的問題，
-              <br className="hidden sm:block" />
-              抽一張牌先看方向
+            <h1 className="mt-4 text-[2.4rem] font-semibold leading-[1.12] tracking-[0.04em] text-moon drop-shadow-[0_0_22px_rgba(203,184,255,0.16)] sm:text-[2.9rem] lg:text-[3.3rem]">
+              宇宙偷偷話
             </h1>
-            <p className="mx-auto mt-5 max-w-xl text-base leading-8 text-moon/78 sm:text-lg lg:mx-0">
-              感情、工作、財運、生活都可以問。每天免費一次，不用登入、不用付款，30 秒看見今天的提醒。
+            <p className="mt-3 text-lg font-medium text-lavender/90 sm:text-xl">
+              免費塔羅占卜 × 四核心星座解析
+            </p>
+            <p className="mx-auto mt-4 max-w-xl text-sm leading-7 text-moon/72 sm:text-base lg:mx-0">
+              每天免費一次，可以選擇單張塔羅或三張塔羅。不用登入、不用付款，30 秒看見今天的提醒。
             </p>
 
-            {/* ── CTA：主要按鈕（最醒目）+ 次要按鈕 ── */}
-            <div className="mt-7 flex flex-col items-center gap-3 sm:flex-row sm:flex-wrap lg:items-start">
-              <Link
-                href="/tarot?spread=single"
-                className="inline-flex min-h-[60px] w-full max-w-[360px] items-center justify-center rounded-full px-8 text-lg font-bold text-midnight shadow-[0_18px_50px_rgba(216,189,112,0.34),0_0_30px_rgba(203,184,255,0.2)] transition hover:brightness-110 active:scale-[0.98] sm:w-auto"
-                style={{
-                  background: "linear-gradient(135deg, #f7d987 0%, #d8bd70 42%, #cbb8ff 100%)",
-                }}
-              >
-                免費抽一張
-              </Link>
-              <Link
-                href="/tarot?spread=three"
-                className="inline-flex min-h-[52px] w-full max-w-[360px] items-center justify-center rounded-full border border-lavender/45 bg-lavender/10 px-6 text-sm font-semibold text-lavender transition hover:bg-lavender/20 active:scale-[0.98] sm:w-auto"
-              >
-                抽三張看完整脈絡
-              </Link>
-              {/* 四核心星座入口（金邊外框，與抽牌按鈕區分；導向 /astro-profile，不開新視窗） */}
-              <Link
-                href="/astro-profile"
-                className="inline-flex min-h-[52px] w-full max-w-[360px] items-center justify-center rounded-full border border-[#d8bd70]/45 bg-[#d8bd70]/10 px-6 text-sm font-semibold text-[#d8bd70] transition hover:-translate-y-0.5 hover:bg-[#d8bd70]/20 hover:shadow-[0_0_22px_rgba(216,189,112,0.28)] active:scale-[0.98] sm:w-auto"
-              >
-                免費算四核心星座 ✨
-              </Link>
-            </div>
-
-            {/* LINE 輔助文字 */}
-            <p className="mt-4 text-xs text-moon/45">
+            {/* LINE 輔助文字 — 桌機版顯示，手機版第一屏保持精簡 */}
+            <p className="mt-4 hidden text-xs text-moon/45 sm:block">
               抽完牌可同步收藏至{" "}
               <a
                 href={lineAddFriendUrl}
@@ -139,14 +114,14 @@ export default function Home() {
               >
                 LINE
               </a>
-              ；每日免費也能看完整訊息，想再問更多問題可選擇加抽。也可以免費查看你的太陽、月亮、上升與金星四核心星座輪廓。
+              ；每天免費也能看完整訊息，想再問更多問題可選擇加抽。也可以免費查看你的太陽、月亮、上升與金星四核心星座輪廓。
             </p>
           </div>
 
-          {/* ── Right: cat illustration + today's cosmic message ─── */}
-          <div className="flex flex-col items-center gap-3 sm:gap-4">
-            {/* Hero cat photo — 手機版固定高度容器 + 放大貓咪本體，桌機維持原尺寸 */}
-            <div className="cat-float relative mx-auto flex h-[240px] w-[clamp(220px,62vw,260px)] items-center justify-center overflow-hidden sm:block sm:h-auto sm:w-[360px] sm:overflow-visible lg:w-[430px] xl:w-[460px]">
+          {/* ── Right: cat illustration + today's cosmic message（手機版第一屏隱藏）─── */}
+          <div className="hidden flex-col items-center gap-3 sm:flex sm:gap-4">
+            {/* Hero cat photo */}
+            <div className="cat-float relative mx-auto w-[360px] lg:w-[430px] xl:w-[460px]">
               <div className="pointer-events-none absolute inset-[-8%] rounded-full bg-[radial-gradient(circle,rgba(216,189,112,0.22),rgba(109,77,242,0.18)_38%,transparent_68%)] blur-2xl" />
               <Image
                 src="/images/hero/main-cosmic-cat.webp"
@@ -155,12 +130,12 @@ export default function Home() {
                 height={307}
                 priority
                 style={{ width: "100%", height: "auto" }}
-                className="relative h-auto w-full origin-center scale-[1.3] object-contain drop-shadow-[0_10px_52px_rgba(109,77,242,0.54)] [filter:drop-shadow(0_0_22px_rgba(216,189,112,0.24))] sm:scale-100"
+                className="relative h-auto w-full origin-center object-contain drop-shadow-[0_10px_52px_rgba(109,77,242,0.54)] [filter:drop-shadow(0_0_22px_rgba(216,189,112,0.24))]"
               />
             </div>
 
-            {/* Today's cosmic message — 桌機版完整卡片（手機版隱藏） */}
-            <div className="hidden w-full max-w-[340px] rounded-2xl border border-white/10 bg-midnight/48 p-4 backdrop-blur-sm sm:block">
+            {/* Today's cosmic message */}
+            <div className="w-full max-w-[340px] rounded-2xl border border-white/10 bg-midnight/48 p-4 backdrop-blur-sm">
               <p className="text-xs text-lavender/70">
                 <span className="mr-1 text-[#d8bd70]/70">✦</span>
                 今日宇宙訊息
@@ -169,6 +144,112 @@ export default function Home() {
                 {todayMessage}
               </p>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── 兩大主要入口卡片（手機版第一屏聚焦於此）──────────────────── */}
+      <section className="pb-9 pt-1 sm:pb-12">
+        <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
+          {/* 卡片一：免費抽牌 → 現有塔羅抽牌頁 /tarot */}
+          <Link
+            href="/tarot"
+            className="group flex flex-col overflow-hidden rounded-[1.75rem] border border-[#d8bd70]/30 bg-midnight/54 shadow-[0_18px_54px_rgba(4,7,26,0.24)] backdrop-blur-sm transition hover:-translate-y-1 hover:border-[#d8bd70]/55 hover:shadow-[0_12px_48px_rgba(216,189,112,0.26)] active:scale-[0.99]"
+          >
+            <div className="h-1 bg-gradient-to-r from-[#f7d987] to-[#d8bd70]" />
+            <div className="flex flex-1 flex-col p-5 sm:p-6">
+              <div className="flex items-center gap-3">
+                <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[#d8bd70]/25 bg-[#d8bd70]/10 text-xl">
+                  🃏
+                </span>
+                <div>
+                  <h2 className="text-xl font-semibold text-moon">免費抽牌</h2>
+                  <p className="mt-0.5 text-xs font-medium text-[#d8bd70]/85">
+                    單張塔羅、三張塔羅，每天免費一次
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 space-y-2 text-sm leading-6 text-moon/72">
+                <p>
+                  <span className="font-medium text-moon/88">單張：</span>適合快速看方向
+                </p>
+                <p>
+                  <span className="font-medium text-moon/88">三張：</span>適合看完整脈絡
+                </p>
+              </div>
+              <span
+                className="mt-6 inline-flex min-h-[48px] items-center justify-center rounded-full px-6 text-base font-bold text-midnight transition group-hover:brightness-110 sm:mt-auto"
+                style={{
+                  background: "linear-gradient(135deg, #f7d987 0%, #d8bd70 50%, #cbb8ff 100%)",
+                }}
+              >
+                開始抽牌
+              </span>
+            </div>
+          </Link>
+
+          {/* 卡片二：四核心星座 → 現有四核心星座頁 /astro-profile */}
+          <Link
+            href="/astro-profile"
+            className="group flex flex-col overflow-hidden rounded-[1.75rem] border border-lavender/30 bg-midnight/54 shadow-[0_18px_54px_rgba(4,7,26,0.24)] backdrop-blur-sm transition hover:-translate-y-1 hover:border-lavender/55 hover:shadow-[0_12px_48px_rgba(203,184,255,0.28)] active:scale-[0.99]"
+          >
+            <div className="h-1 bg-gradient-to-r from-lavender to-nebula" />
+            <div className="flex flex-1 flex-col p-5 sm:p-6">
+              <div className="flex items-center gap-3">
+                <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-lavender/25 bg-lavender/10 text-xl">
+                  ✦
+                </span>
+                <div>
+                  <h2 className="text-xl font-semibold text-moon">四核心星座</h2>
+                  <p className="mt-0.5 text-xs font-medium text-lavender/85">
+                    太陽、月亮、上升、金星
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 space-y-2 text-sm leading-6 text-moon/72">
+                <p>看懂你的個性、感情模式與人際盲點。</p>
+                <p className="text-moon/55">輸入出生資訊，立即查看完整四核心輪廓。</p>
+              </div>
+              <span className="mt-6 inline-flex min-h-[48px] items-center justify-center rounded-full border border-lavender/50 bg-lavender/15 px-6 text-base font-bold text-lavender transition group-hover:bg-lavender/25 sm:mt-auto">
+                免費查看
+              </span>
+            </div>
+          </Link>
+        </div>
+      </section>
+
+      {/* ── 單張塔羅 vs 三張塔羅（桌機版顯示）──────────────────────────── */}
+      <section className="hidden pb-10 sm:block sm:pb-14">
+        <h2 className="mb-5 text-lg font-semibold text-moon">單張塔羅 vs 三張塔羅</h2>
+        <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
+          {/* 單張塔羅 */}
+          <div className="rounded-2xl border border-[#d8bd70]/24 bg-midnight/40 p-6 backdrop-blur-sm">
+            <h3 className="text-base font-semibold text-moon">單張塔羅</h3>
+            <dl className="mt-4 space-y-3 text-sm leading-7">
+              <div>
+                <dt className="text-xs font-semibold text-[#d8bd70]/80">適合</dt>
+                <dd className="mt-0.5 text-moon/78">簡單問題、快速決定、今天方向</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold text-[#d8bd70]/80">特色</dt>
+                <dd className="mt-0.5 text-moon/78">答案直接、速度快，適合第一次使用</dd>
+              </div>
+            </dl>
+          </div>
+
+          {/* 三張塔羅 */}
+          <div className="rounded-2xl border border-lavender/24 bg-midnight/40 p-6 backdrop-blur-sm">
+            <h3 className="text-base font-semibold text-moon">三張塔羅</h3>
+            <dl className="mt-4 space-y-3 text-sm leading-7">
+              <div>
+                <dt className="text-xs font-semibold text-lavender/80">適合</dt>
+                <dd className="mt-0.5 text-moon/78">感情發展、工作選擇、搬家／轉職等重大選擇</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold text-lavender/80">特色</dt>
+                <dd className="mt-0.5 text-moon/78">看過去／現在／未來，脈絡更完整，建議更具體</dd>
+              </div>
+            </dl>
           </div>
         </div>
       </section>
